@@ -12,12 +12,10 @@ urlpatterns = [
     url(r'^admin/', admin.site.urls),
 
     # Third party urls
-    url(r'^o/', include('oauth2_provider.urls', namespace='oauth2_provider')),
+    url(r'^oauth/', include('oauth2_provider.urls', namespace='oauth2_provider')),
 
     # Application urls
-    #url(r'^main/', include('main.urls', namespace='main')),
     url(r'^api/', include('api.urls', namespace='api')),
-    #url(r'^ui/', include('ui.urls', namespace='ui')),
 
     # Top-level urls
     url(r'^$', RedirectView.as_view(url='/static/html/index.html')),

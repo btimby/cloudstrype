@@ -3,5 +3,9 @@ from django.conf.urls import (
     url, include
 )
 
+from api.views import router
 
-urlpatterns = []
+
+urlpatterns = [
+    url(r'^', include(router.urls)),
+]
