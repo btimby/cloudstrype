@@ -44,6 +44,8 @@ INSTALLED_APPS = [
 
     # Custom apps.
     'main',
+    'api',
+    'ui',
 ]
 
 MIDDLEWARE = [
@@ -125,7 +127,6 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/1.10/howto/static-files/
 
 STATIC_URL = '/static/'
-
 # Custom settings (additions go here).
 
 AUTH_USER_MODEL = 'main.User'
@@ -143,3 +144,5 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticated',
     )
 }
+
+STATIC_ROOT = '/var/www/cloudstrype.io/static'

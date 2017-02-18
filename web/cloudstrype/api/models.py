@@ -1,7 +1,7 @@
 from django.conf import settings
 from django.db import models
 
-from cloudstrype.main.models import User
+from main.models import User
 
 
 class Token(models.Model):
