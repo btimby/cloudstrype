@@ -1,2 +1,7 @@
+Django
+djangorestframework
+django-oauth-toolkit
+
+oauthlib
 redis
 aiohttp
