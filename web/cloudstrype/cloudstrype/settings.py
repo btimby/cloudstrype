@@ -37,12 +37,42 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django.contrib.sites',
 
-    # Dependencies
+    # Allows us to be an OAuth provider (maybe not necessary, but perhaps is
+    # for desktop/mobile app).
     'oauth2_provider',
+    # Mainly for `reset_db` management command.
+    'django_extensions',
+
+    # API.
     'rest_framework',
 
-    # Custom apps.
+    # Provide endpoints for normal user login and access token creation. I
+    # don't think I will end up using this, instead, I will probably use
+    # oauth2_provider to allow desktop/mobile app authentication.
+    'rest_framework.authtoken',
+    'rest_auth',
+
+    # OAuth2 login/registration. Used by rest_auth, and also allows server-side
+    # registration via views such as:
+    # - /accounts/google/login/
+    # - /accounts/amazon/login/
+    # - /accounts/dropbox_oauth2/login/
+    'allauth',
+    'allauth.account',
+    'allauth.socialaccount',
+
+    # OAuth2 providers, some are built in...
+    'allauth.socialaccount.providers.amazon',
+    'allauth.socialaccount.providers.dropbox_oauth2',
+    'allauth.socialaccount.providers.google',
+    # TODO: add support for OneDrive and box.net:
+    # https://github.com/pennersr/django-allauth/issues/1478
+    'allauth.socialaccount.providers.onedrive',
+    'allauth.socialaccount.providers.box',
+
+    # Integrated apps (part of the project).
     'main',
     'api',
     'ui',
@@ -84,8 +114,11 @@ WSGI_APPLICATION = 'cloudstrype.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
+        'ENGINE': 'django.db.backends.postgresql_psycopg2',
+        'NAME': 'cloudstrype',
+        'USER': 'cloudstrype',
+        'PASSWORD': 'password',
+        'HOST': 'localhost',
     }
 }
 
@@ -134,7 +167,11 @@ AUTH_USER_MODEL = 'main.User'
 
 OAUTH2_PROVIDER = {
     # this is the list of available scopes
-    'SCOPES': {'read': 'Read scope', 'write': 'Write scope', 'groups': 'Access to your groups'}
+    'SCOPES': {
+        'read': 'Read scope',
+        'write': 'Write scope',
+        'groups': 'Access to your groups'
+    }
 }
 
 REST_FRAMEWORK = {
@@ -147,3 +184,21 @@ REST_FRAMEWORK = {
 }
 
 STATIC_ROOT = '/var/www/cloudstrype.io/static'
+
+AUTHENTICATION_BACKENDS = (
+    # Needed to login by username in Django admin, regardless of `allauth`
+    'django.contrib.auth.backends.ModelBackend',
+
+    # `allauth` specific authentication methods, such as login by e-mail
+    'allauth.account.auth_backends.AuthenticationBackend',
+)
+
+ACCOUNT_USER_MODEL_USERNAME_FIELD = None
+ACCOUNT_EMAIL_REQUIRED = True
+ACCOUNT_USERNAME_REQUIRED = False
+ACCOUNT_AUTHENTICATION_METHOD = 'email'
+
+SITE_ID = 1
+
+EMAIL_BACKEND = 'django.core.mail.backends.dummy.EmailBackend'
+LOGIN_REDIRECT_URL = '/'

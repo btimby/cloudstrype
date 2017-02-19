@@ -4,7 +4,9 @@ from django.conf.urls import (
 )
 from django.contrib import admin
 from django.contrib.staticfiles.views import serve
-from django.views.generic import RedirectView
+from django.views.generic import (
+    RedirectView, TemplateView
+)
 
 
 urlpatterns = [
@@ -12,7 +14,8 @@ urlpatterns = [
     url(r'^admin/', admin.site.urls),
 
     # Third party urls
-    url(r'^oauth/', include('oauth2_provider.urls', namespace='oauth2_provider')),
+    url(r'^oauth2/', include('oauth2_provider.urls', namespace='oauth2_provider')),
+    url(r'^accounts/', include('allauth.urls')),
 
     # Application urls
     url(r'^api/', include('api.urls', namespace='api')),

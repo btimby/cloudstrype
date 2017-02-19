@@ -8,4 +8,5 @@ from api.views import router
 
 urlpatterns = [
     url(r'^', include(router.urls)),
+    url(r'^rest-auth/', include('rest_auth.urls'))
 ]

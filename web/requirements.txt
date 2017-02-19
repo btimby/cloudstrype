@@ -1,7 +1,10 @@
-Django
+django
 djangorestframework
 django-oauth-toolkit
+django-allauth
+django-rest-auth
+django-extensions
 
-oauthlib
+psycopg2
 redis
 aiohttp
