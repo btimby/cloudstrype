@@ -12,7 +12,7 @@ LOGGER = logging.getLogger(__file__)
 LOGGER.setLevel(logging.DEBUG)
 LOGGER.addHandler(logging.StreamHandler())
 
-DROPBOX_TOKEN = 'Ymlx3VCX1KYAAAAAAAAB7ZxkPb3XHVkq4u5oBatzdfbLdhJrBIN1xBm-oVeo6K43'
+DROPBOX_TOKEN = ''
 
 FILES = [
     '/seeds/f20.jpg',
