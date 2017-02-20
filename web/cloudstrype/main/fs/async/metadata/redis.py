@@ -1,0 +1,77 @@
+import redis
+
+from os.path import split as pathsplit
+
+from . import BaseMetastore
+from .. import Chunk
+
+
+class RedisMetastore(BaseMetastore):
+    """
+    Low-level API.
+
+    Implements Metastore interface for Redis.
+
+    Stores a file system's namespace in Redis. Does so using a hash for the top
+    level directory. Each key in this hash is a directory or file contained
+    within. Each value refers to either another hash or a list. If a hash, then
+    the item is a directory. If a list, then the item is a file, and the list
+    contains it's chunk identifiers.
+
+    Chunks are individual lists that contain the URLs referring to the
+    datastores containing replicas of the given chunk.
+
+    Datastore URLs can be used to retrieve a given chunk.
+    """
+
+    def __init__(self, ns, host='localhost', port=6379, db=0):
+        self.ns = ns
+        self._redis = redis.StrictRedis(host=host, port=port, db=db)
+
+    def _key(self, type, name):
+        assert isinstance(type, str), 'Type must be string'
+        assert isinstance(name, str), 'Name must be string'
+        return '{0}:{1}:{2}'.format(self.ns, type, name)
+
+    def _decode(self, value):
+        return str(value, 'utf-8')
+
+    def get_file(self, name):
+        dname, bname = pathsplit(name)
+        if self._redis.hget(self._key('dir', dname), bname) != b'file':
+            raise FileDoesNotExistError(name)
+        # Get all items in the list, these are chunk identifiers.
+        chunks = list(map(self._decode, self._redis.lrange(self._key('file', name), 0, -1)))
+        chunks = list(map(Chunk.from_string, chunks))
+        return chunks
+
+    def del_file(self, name):
+        dname, bname = pathsplit(name)
+        self._redis.hdel(self._key('dir', dname), bname)
+        while True:
+            cname = self._redis.rpoplpush(self._key('file', name),
+                                          self._key('meta', 'tombstone'))
+            if cname is None:
+                break
+        self._redis.delete(self._key('file', name))
+
+    def put_file(self, name, chunks=[]):
+        dname, bname = pathsplit(name)
+        # Adds an item to the hash located at dirname with key of basename, and
+        # value of 'file'.
+        self._redis.hset(self._key('dir', dname), bname, 'file')
+        if chunks:
+            self._redis.lpush(self._key('file', name), *map(str, chunks))
+
+    def get_dir(self, name):
+        items = self._redis.hgetall(self._key('dir', name))
+        return {self._decode(k): self._decode(v) for k, v in items.items()}
+
+    def del_dir(self, name):
+        dname, bname = pathsplit(name)
+        self._redis.hdel(self._key('dir', dname), bname)
+        self._redis.delete(self._key('dir', name))
+
+    def put_dir(self, name):
+        dname, bname = pathsplit(name)
+        self._redis.hset(self._key('dir', dname), bname, 'dir')
