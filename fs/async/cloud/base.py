@@ -35,8 +35,11 @@ class HTTPProvider:
         return self._request(*self.DOWNLOAD_URL, id)
 
     def write(self, id, data):
-        r = self._request(*self.UPLOAD_URL, id)
-        r.write(data)
+        headers = {
+            'Content-Type': 'application/octet-stream',
+        }
+        r = self._request(*self.UPLOAD_URL, id, headers=headers)
+        await r.write(data)
 
 
 class OAuthProvider(HTTPProvider):
