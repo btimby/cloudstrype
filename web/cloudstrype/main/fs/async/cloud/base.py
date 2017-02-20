@@ -10,10 +10,15 @@ LOGGER.setLevel(logging.DEBUG)
 LOGGER.addHandler(logging.StreamHandler())
 
 
-class HTTPProvider:
+class BaseProvider(object):
+    pass
+
+
+class HTTPProvider(BaseProvider):
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, connection):
+    def __init__(self, id, connection):
+        self.id = '%04x' % id
         self.connection = connection
 
     @abc.abstractproperty
