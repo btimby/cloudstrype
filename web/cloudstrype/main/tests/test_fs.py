@@ -10,9 +10,9 @@ from main.fs.async import Chunk
 from main.fs.async.errors import (
     FileNotFoundError, DirectoryNotFoundError, DirectoryNotEmptyError
 )
+from main.fs.async import MulticloudManager
 from main.fs.async.cloud.base import BaseProvider
 from main.fs.async.metadata.redis import RedisMetastore
-from main.fs.async import MulticloudManager
 
 
 class DummyProvider(BaseProvider):
@@ -23,14 +23,17 @@ class DummyProvider(BaseProvider):
         self.id = '%04x' % id
         self.data = {}
 
-    async def download(self, id):
-        return self.data.get(id)
+    async def download(self, chunk):
+        assert isinstance(chunk, Chunk), 'must be chunk instance'
+        return self.data.get(chunk.id)
 
-    async def upload(self, id, data):
-        self.data[id] = data
+    async def upload(self, chunk):
+        assert isinstance(chunk, Chunk), 'must be chunk instance'
+        self.data[chunk.id] = chunk.data
 
-    async def delete(self, id):
-        self.data.pop(id)
+    async def delete(self, chunk):
+        assert isinstance(chunk, Chunk), 'must be chunk instance'
+        self.data.pop(chunk.id)
 
 
 class DummyMetastore(RedisMetastore):
@@ -47,13 +50,14 @@ class FSTestCase(TestCase):
     Test ancillary functions.
     """
 
-    TEST_CHUNK_ID = '0001:acbd18db4cc2f85cedef654fccc4a4d8'
+    # A chunk id consists of a cloud instance ID (as hex) and an MD5 sum of
+    # the chunk itself.
+    TEST_CHUNK_ID = '{"id": "acbd18db4cc2f85cedef654fccc4a4d8", "clouds": {"0001": null}}'
 
     def test_chunk(self):
         chunk = Chunk.from_string(self.TEST_CHUNK_ID)
-        self.assertEqual(['0001'], chunk.clouds)
+        self.assertEqual({'0001': None}, chunk.clouds)
         self.assertEqual('acbd18db4cc2f85cedef654fccc4a4d8', chunk.id)
-        self.assertEqual(self.TEST_CHUNK_ID, str(chunk))
 
     def test_chunker(self):
         f = BytesIO()
@@ -71,7 +75,9 @@ class MCTestCase(TestCase):
     TEST_SMALL_FILE = b'This is a small test file.'
 
     def setUp(self):
-        # Create a manager with three dummy clouds. And a dummy metastore.
+        # Create a manager with three dummy clouds and a dummy metastore. This
+        # excersizes all of the code except that which connects to external
+        # resources. That code is tested separately with mocks.
         self.mc = MulticloudManager(
             [
                 DummyProvider(1), DummyProvider(2),
@@ -85,22 +91,28 @@ class MCTestCase(TestCase):
     def test_up_down_delete(self):
         # Test upload.
         f = BytesIO(self.TEST_SMALL_FILE)
-        self.mc.upload('foobar.txt', f)
+        yield from self.mc.upload('foobar.txt', f)
 
         # Test download.
-        contents = yield from self.mc.download('foobar.txt').read()
+        f = yield from self.mc.download('foobar.txt')
+        contents = f.read()
         self.assertEqual(self.TEST_SMALL_FILE, contents)
 
+        # Should raise if read() after close()
+        f.close()
+        with self.assertRaises(ValueError):
+            f.read()
+
         # Test delete.
-        self.mc.delete('foobar.txt')
+        yield from self.mc.delete('foobar.txt')
         with self.assertRaises(FileNotFoundError):
-            self.mc.download('foobar.txt').read()
+            yield from self.mc.download('foobar.txt')
 
     def test_delete(self):
         with self.assertRaises(FileNotFoundError):
-            self.mc.delete('/barfoo')
+            yield from self.mc.delete('/barfoo')
 
-        self.mc.create('/bar/foo')
+        yield from self.mc.create('/bar/foo')
 
         with self.assertRaises(DirectoryNotEmptyError):
-            self.mc.delete('/bar')
+            yield from self.mc.delete('/bar')

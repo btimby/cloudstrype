@@ -1,7 +1,8 @@
 import json
 import logging
 
-from .base import OAuthProvider
+from main.fs.async import Chunk
+from main.fs.async.cloud.base import OAuthProvider
 
 
 LOGGER = logging.getLogger(__file__)
@@ -20,20 +21,34 @@ class DropboxProvider(OAuthProvider):
 
     @property
     def DELETE_URL(self):
-        return ('post', 'https://content.dropboxapi.com/2/files/delete')
+        return ('post', 'https://api.dropboxapi.com/2/files/delete')
 
-    def _request(self, method, url, id, headers={}):
+    async def _request(self, method, url, chunk, headers={}, **kwargs):
         """
         Make connection for Dropbox.
 
         Uses _request(), which is provided by OAuthProvider and HTTPProvider.
         """
-        headers['Dropbox-API-Arg'] = json.dumps({'path': id})
-        return super()._request(method, url, id, headers)
+        headers['Dropbox-API-Arg'] = json.dumps({'path': '/%s' % chunk.id})
+        return await super()._request(method, url, chunk, headers=headers,
+                                      skip_auto_headers=['Content-Type'],
+                                      **kwargs)
 
-    async def delete(self, id):
+    async def upload(self, chunk):
+        assert isinstance(chunk, Chunk), 'must be chunk instance'
         headers = {
             'Content-Type': 'application/octet-stream',
         }
-        r = await self._request(*self.DOWNLOAD_URL, id, headers=headers)
-        r.write(json.dumps({'path': id}))
+        r = await self._request(*self.UPLOAD_URL, chunk, headers=headers,
+                                data=chunk.data)
+        r.close()
+
+    async def delete(self, chunk):
+        assert isinstance(chunk, Chunk), 'must be chunk instance'
+        headers = {
+            'Content-Type': 'application/json'
+        }
+        r = await super()._request(*self.DELETE_URL, chunk, headers=headers,
+                                   skip_auto_headers=['Content-Type'],
+                                   data=json.dumps({'path': '/%s' % chunk.id}))
+        r.close()

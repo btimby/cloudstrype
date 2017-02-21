@@ -1,12 +1,12 @@
 import asyncio
 import collections
+import json
 import random
 
 from io import BytesIO
 from hashlib import md5
 
-from .cloud.base import BaseProvider
-from ..async.errors import (
+from main.fs.async.errors import (
     FileNotFoundError, DirectoryNotFoundError
 )
 
@@ -47,10 +47,7 @@ class Chunk(object):
     """
 
     def __init__(self, clouds, data, id=None):
-        assert isinstance(clouds, collections.Iterable), \
-            'clouds must be iterable'
-        for cloud in clouds:
-            assert isinstance(cloud, str), 'clouds must be strings'
+        assert isinstance(clouds, dict), 'clouds must be a dictionary'
         self.clouds = clouds
         if id is None:
             id = md5(data).hexdigest()
@@ -58,18 +55,16 @@ class Chunk(object):
         self.data = data
 
     def __str__(self):
-        ids = []
-        for cloud_id in self.clouds:
-            ids.append('%s:%s' % (cloud_id, self.id))
-        return ','.join(ids)
+        data = {
+            'id': self.id,
+            'clouds': self.clouds,
+        }
+        return json.dumps(data)
 
     @classmethod
     def from_string(self, s):
-        clouds = []
-        for cloud_chunk in s.split(','):
-            cloud_id, _, chunk_id = cloud_chunk.partition(':')
-            clouds.append(cloud_id)
-        return Chunk(clouds, None, id=chunk_id)
+        data = json.loads(s)
+        return Chunk(data['clouds'], None, id=data['id'])
 
 
 class MulticloudBase(object):
@@ -92,7 +87,27 @@ class MulticloudBase(object):
         raise ValueError('invalid cloud id')
 
 
-class MulticloudReader(MulticloudBase):
+class FileLikeBase(object):
+    """
+    Implement File-like methods.
+
+    Implements methods shared by both MulticloudReader and MulticloudWriter.
+    """
+
+    def tell(self):
+        raise NotImplementedError()
+
+    def seek(self):
+        raise NotImplementedError()
+
+    def flush(self):
+        pass
+
+    def close(self):
+        self._closed = True
+
+
+class MulticloudReader(MulticloudBase, FileLikeBase):
     """
     File-like object that reads from multiple clouds.
     """
@@ -102,6 +117,7 @@ class MulticloudReader(MulticloudBase):
         self.meta = meta
         self.chunks = meta.get_file(path)
         self._buffer = []
+        self._closed = False
 
     def _read_chunk(self):
         try:
@@ -111,7 +127,7 @@ class MulticloudReader(MulticloudBase):
         for cloud_id in chunk.clouds:
             cloud = self.get_cloud(cloud_id)
             try:
-                return cloud.download(chunk.id)
+                return cloud.download(chunk)
             except:
                 pass
         raise IOError('could not read chunk')
@@ -120,6 +136,8 @@ class MulticloudReader(MulticloudBase):
         """
         Read series of chunks from multiple clouds.
         """
+        if self._closed:
+            raise ValueError('I/O operation on closed file.')
         if not self.chunks:
             return
         if size == -1:
@@ -162,7 +180,7 @@ class MulticloudReader(MulticloudBase):
             return buff.getvalue()
 
 
-class MulticloudWriter(MulticloudBase):
+class MulticloudWriter(MulticloudBase, FileLikeBase):
     """
     File-like object that writes to multiple clouds.
     """
@@ -186,7 +204,7 @@ class MulticloudWriter(MulticloudBase):
         """
         Write a single chunk.
 
-        Writes to multiple clouds in parallel.
+        Writes chunk to multiple clouds in parallel.
         """
         def _select_clouds():
             clouds = set()
@@ -195,9 +213,9 @@ class MulticloudWriter(MulticloudBase):
             return clouds
 
         clouds = _select_clouds()
-        chunk = Chunk([cloud.id for cloud in clouds], chunk)
+        chunk = Chunk({cloud.id: None for cloud in clouds}, chunk)
         futures = [
-            cloud.upload(chunk.id, chunk.data)
+            cloud.upload(chunk)
             for cloud in clouds
         ]
         execute_futures(futures)
@@ -205,11 +223,13 @@ class MulticloudWriter(MulticloudBase):
 
     def write(self, data):
         """
-        Write a chunk to multiple clouds.
+        Write data to multiple clouds.
 
         Uses a write-through buffer to ensure each chunk is the proper size.
-        Close will flush the remainder of the buffer.
+        Close flushes the remainder of the buffer.
         """
+        if self._closed:
+            raise ValueError('I/O operation on closed file.')
         self._buffer.append(data)
         # Write chunks until our buffer is < self.chunk_size.
         while True:
@@ -243,12 +263,14 @@ class MulticloudWriter(MulticloudBase):
         if self._closed:
             return
         self._write_chunk(b''.join(self._buffer))
-        self._closed = True
+        super().close()
 
 
 class MulticloudManager(MulticloudBase):
     def __init__(self, clouds, meta, chunk_size=CHUNK_SIZE, replicas=REPLICAS):
         super().__init__(clouds)
+        assert len(clouds) >= replicas, \
+            'not enough clouds (%s) for %s replicas' % (len(clouds), replicas)
         self.meta = meta
         self.chunk_size = chunk_size
         self.replicas = replicas
@@ -266,37 +288,43 @@ class MulticloudManager(MulticloudBase):
         """
         Upload to multiple clouds.
 
-        Reads the provided file-like object into a series of chunks, writing
-        each to multiple cloud providers. Stores chunk information into the
+        Reads the provided file-like object as a series of chunks, writing each
+        to multiple cloud providers. Stores chunk information into the
         Metastore backend.
         """
         with MulticloudWriter(self.clouds, path, self.meta,
                               chunk_size=self.chunk_size,
                               replicas=self.replicas) as out:
-            for chunk in chunker(file):
+            for chunk in chunker(file, chunk_size=self.chunk_size):
                 out.write(chunk)
 
     def delete(self, path):
         """
         Delete from multiple clouds.
 
+        If path is a file it is deleted (as described below). If path is a
+        directory then it is simply removed from the Metastore.
+
         Uses Metastore backend to resolve path to a series of chunks. Deletes
         the chunks from cloud providers and Metastore backend.
         """
         try:
-            futures = []
-            for chunk in self.meta.get_file(path):
-                for cloud_id in chunk.clouds:
-                    cloud = self.get_cloud(cloud_id)
-                    futures.append(cloud.delete(chunk_id))
-            execute_futures(futures)
-            self.meta.del_file(path)
+            chunks = self.meta.get_file(path)
         except FileNotFoundError as e:
-            # It's not a file, perhaps it is a directory.
+            # Not a file, maybe a directory?
             try:
-                self.meta.del_dir(path)
+                return self.meta.del_dir(path)
             except DirectoryNotFoundError:
-                raise FileNotFoundError(path)
+                # Neither, raise original...
+                raise e
+        # File was found, now delete it.
+        futures = []
+        for chunk in chunks:
+            for cloud_id in chunk.clouds:
+                cloud = self.get_cloud(cloud_id)
+                futures.append(cloud.delete(chunk_id))
+        execute_futures(futures)
+        self.meta.del_file(path)
 
     def create(self, path):
         """
@@ -306,3 +334,6 @@ class MulticloudManager(MulticloudBase):
         necessary.
         """
         self.meta.put_dir(path)
+
+
+from main.fs.async.cloud.base import BaseProvider
