@@ -1,8 +1,7 @@
-import json
-import logging
-
 import abc
 import aiohttp
+import json
+import logging
 
 
 LOGGER = logging.getLogger(__file__)
@@ -10,13 +9,21 @@ LOGGER.setLevel(logging.DEBUG)
 LOGGER.addHandler(logging.StreamHandler())
 
 
-class BaseProvider(object):
-    pass
+class BaseProvider(metaclass=abc.ABCMeta):
+    @abc.abstractmethod
+    async def download(self, id):
+        return
+
+    @abc.abstractmethod
+    async def upload(self, id, data):
+        return
+
+    @abc.abstractmethod
+    async def delete(self, id):
+        return
 
 
 class HTTPProvider(BaseProvider):
-    __metaclass__ = abc.ABCMeta
-
     def __init__(self, id, connection):
         self.id = '%04x' % id
         self.connection = connection
@@ -29,6 +36,10 @@ class HTTPProvider(BaseProvider):
     def UPLOAD_URL(self):
         pass
 
+    @abc.abstractproperty
+    def DELETE_URL(self):
+        pass
+
     async def _request(self, method, url, id, headers={}):
         """
         Perform HTTP request.
@@ -36,15 +47,18 @@ class HTTPProvider(BaseProvider):
         return await aiohttp.request(
             method, url, headers=headers, skip_auto_headers=['Content-Type'])
 
-    def read(self, id):
+    async def download(self, id):
         return self._request(*self.DOWNLOAD_URL, id)
 
-    def write(self, id, data):
+    async def upload(self, id, data):
         headers = {
             'Content-Type': 'application/octet-stream',
         }
         r = self._request(*self.UPLOAD_URL, id, headers=headers)
-        await r.write(data)
+        r.write(data)
+
+    async def delete(self, id):
+        return self._request(*self.DOWNLOAD_URL, id)
 
 
 class OAuthProvider(HTTPProvider):
@@ -52,7 +66,7 @@ class OAuthProvider(HTTPProvider):
         super().__init__(connection)
         self.access_token = connection.get('token')
 
-    def _request(self, method, url, id, headers={}):
+    async def _request(self, method, url, id, headers={}):
         """
         Perform HTTP request for OAuth.
         """

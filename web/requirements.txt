@@ -5,6 +5,7 @@ django-allauth
 django-rest-auth
 django-extensions
 
+aiohttp
 psycopg2
 redis
-aiohttp
+mockredis

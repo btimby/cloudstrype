@@ -2,8 +2,11 @@ import redis
 
 from os.path import split as pathsplit
 
-from . import BaseMetastore
+from .base import BaseMetastore
 from .. import Chunk
+from ..errors import (
+    FileNotFoundError, DirectoryNotFoundError, DirectoryNotEmptyError
+)
 
 
 class RedisMetastore(BaseMetastore):
@@ -37,41 +40,62 @@ class RedisMetastore(BaseMetastore):
         return str(value, 'utf-8')
 
     def get_file(self, name):
+        key = self._key('file', name)
         dname, bname = pathsplit(name)
-        if self._redis.hget(self._key('dir', dname), bname) != b'file':
-            raise FileDoesNotExistError(name)
+        dkey = self._key('dir', dname)
+        if self._redis.hget(dkey, bname) != b'file':
+            raise FileNotFoundError(name)
         # Get all items in the list, these are chunk identifiers.
-        chunks = list(map(self._decode, self._redis.lrange(self._key('file', name), 0, -1)))
+        chunks = list(map(self._decode, self._redis.lrange(key, 0, -1)))
         chunks = list(map(Chunk.from_string, chunks))
         return chunks
 
     def del_file(self, name):
+        key = self._key('file', name)
         dname, bname = pathsplit(name)
-        self._redis.hdel(self._key('dir', dname), bname)
+        dkey = self._key('dir', dname)
+        self._redis.hdel(dkey, bname)
         while True:
-            cname = self._redis.rpoplpush(self._key('file', name),
-                                          self._key('meta', 'tombstone'))
+            cname = self._redis.rpoplpush(key, self._key('meta', 'tombstone'))
             if cname is None:
                 break
-        self._redis.delete(self._key('file', name))
+        self._redis.delete(key)
 
     def put_file(self, name, chunks=[]):
+        key = self._key('file', name)
         dname, bname = pathsplit(name)
+        dkey = self._key('dir', dname)
         # Adds an item to the hash located at dirname with key of basename, and
         # value of 'file'.
-        self._redis.hset(self._key('dir', dname), bname, 'file')
+        self._redis.hset(dkey, bname, 'file')
         if chunks:
-            self._redis.lpush(self._key('file', name), *map(str, chunks))
+            self._redis.lpush(key, *map(str, chunks))
 
     def get_dir(self, name):
-        items = self._redis.hgetall(self._key('dir', name))
+        key = self._key('dir', name)
+        dname, bname = pathsplit(name)
+        dkey = self._key('dir', dname)
+        if self._redis.hget(dkey, bname) != b'dir':
+            raise DirectoryNotFoundError(name)
+        items = self._redis.hgetall(key)
         return {self._decode(k): self._decode(v) for k, v in items.items()}
 
     def del_dir(self, name):
+        key = self._key('dir', name)
+        if self._redis.hgetall(key):
+            raise DirectoryNotEmptyError(name)
         dname, bname = pathsplit(name)
-        self._redis.hdel(self._key('dir', dname), bname)
-        self._redis.delete(self._key('dir', name))
+        dkey = self._key('dir', dname)
+        if self._redis.hget(dkey, bname) != b'dir':
+            raise DirectoryNotFoundError(name)
+        self._redis.hdel(dkey, bname)
+        self._redis.delete(key)
 
     def put_dir(self, name):
-        dname, bname = pathsplit(name)
-        self._redis.hset(self._key('dir', dname), bname, 'dir')
+        while name != '/':
+            dname, bname = pathsplit(name)
+            dkey = self._key('dir', dname)
+            if self._redis.hget(dkey, bname) == b'file':
+                raise FileExistsError(name)
+            self._redis.hset(dkey, bname, 'dir')
+            name = dname

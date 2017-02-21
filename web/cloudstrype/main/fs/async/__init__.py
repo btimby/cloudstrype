@@ -5,7 +5,10 @@ import random
 from io import BytesIO
 from hashlib import md5
 
-from cloud.base import BaseProvider
+from .cloud.base import BaseProvider
+from ..async.errors import (
+    FileNotFoundError, DirectoryNotFoundError
+)
 
 
 # Default 32K chunk size.
@@ -27,7 +30,7 @@ def chunker(f, chunk_size=CHUNK_SIZE):
 
 def execute_futures(futures):
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(asyncio.gather(futures))
+    loop.run_until_complete(asyncio.gather(*futures))
     loop.close()
 
 
@@ -50,14 +53,14 @@ class Chunk(object):
             assert isinstance(cloud, str), 'clouds must be strings'
         self.clouds = clouds
         if id is None:
-            id = md5(chunk).hexdigest()
+            id = md5(data).hexdigest()
         self.id = id
         self.data = data
 
     def __str__(self):
         ids = []
-        for cloud in self.clouds:
-            ids.append('%s:%s' % (cloud.id, self.id))
+        for cloud_id in self.clouds:
+            ids.append('%s:%s' % (cloud_id, self.id))
         return ','.join(ids)
 
     @classmethod
@@ -93,14 +96,16 @@ class MulticloudReader(MulticloudBase):
     """
     File-like object that reads from multiple clouds.
     """
-    def __init__(self, clouds, chunks):
+    def __init__(self, clouds, path, meta):
         super().__init__(clouds)
-        self._chunks = chunks
+        self.path = path
+        self.meta = meta
+        self.chunks = meta.get_file(path)
         self._buffer = []
 
     def _read_chunk(self):
         try:
-            chunk = self._chunks.pop()
+            chunk = self.chunks.pop()
         except IndexError:
             raise EOFError('out of chunks')
         for cloud_id in chunk.clouds:
@@ -115,7 +120,7 @@ class MulticloudReader(MulticloudBase):
         """
         Read series of chunks from multiple clouds.
         """
-        if not self._chunks:
+        if not self.chunks:
             return
         if size == -1:
             # If we have a buffer, return it, otherwise, return the next full
@@ -161,9 +166,15 @@ class MulticloudWriter(MulticloudBase):
     """
     File-like object that writes to multiple clouds.
     """
-    def __init__(self, clouds, chunk_size=CHUNK_SIZE):
+    def __init__(self, clouds, path, meta, chunk_size=CHUNK_SIZE,
+                 replicas=REPLICAS):
         super().__init__(clouds)
+        self.path = path
+        self.meta = meta
+        self.chunk_size = chunk_size
+        self.replicas = replicas
         self._buffer = []
+        self._closed = False
 
     def __enter__(self):
         return self
@@ -179,7 +190,7 @@ class MulticloudWriter(MulticloudBase):
         """
         def _select_clouds():
             clouds = set()
-            while len(clouds) < replicas:
+            while len(clouds) < self.replicas:
                 clouds.add(random.choice(self.clouds))
             return clouds
 
@@ -190,9 +201,9 @@ class MulticloudWriter(MulticloudBase):
             for cloud in clouds
         ]
         execute_futures(futures)
-        self.ms.put_file(path, chunks=[chunk])
+        self.meta.put_file(self.path, chunks=[chunk])
 
-    def write(self, data, replicas=REPLICAS):
+    def write(self, data):
         """
         Write a chunk to multiple clouds.
 
@@ -229,16 +240,18 @@ class MulticloudWriter(MulticloudBase):
         """
         Flush remaining buffer and disable writing.
         """
-        if self._buffer.closed:
+        if self._closed:
             return
         self._write_chunk(b''.join(self._buffer))
-        self._buffer.close()
+        self._closed = True
 
 
 class MulticloudManager(MulticloudBase):
-    def __init__(self, clouds, meta):
+    def __init__(self, clouds, meta, chunk_size=CHUNK_SIZE, replicas=REPLICAS):
         super().__init__(clouds)
         self.meta = meta
+        self.chunk_size = chunk_size
+        self.replicas = replicas
 
     def download(self, path):
         """
@@ -247,8 +260,7 @@ class MulticloudManager(MulticloudBase):
         Uses Metastore backend to resolve path to a series of chunks. Returns a
         MulticloudReader that can read these chunks in order.
         """
-        chunks = self.meta.get_file(path)
-        return MulticloudReader(self.clouds, chunks)
+        return MulticloudReader(self.clouds, path, self.meta)
 
     def upload(self, path, file, replicas=None):
         """
@@ -258,10 +270,11 @@ class MulticloudManager(MulticloudBase):
         each to multiple cloud providers. Stores chunk information into the
         Metastore backend.
         """
-        with MulticloudWriter(self.clouds) as out:
+        with MulticloudWriter(self.clouds, path, self.meta,
+                              chunk_size=self.chunk_size,
+                              replicas=self.replicas) as out:
             for chunk in chunker(file):
                 out.write(chunk)
-        self.meta.put_file(path)
 
     def delete(self, path):
         """
@@ -270,9 +283,26 @@ class MulticloudManager(MulticloudBase):
         Uses Metastore backend to resolve path to a series of chunks. Deletes
         the chunks from cloud providers and Metastore backend.
         """
-        futures = []
-        for chunk in self.meta.get_file(path):
-            for cloud in chunk.clouds:
-                futures.append(cloud.delete(chunk_id))
-        execute_futures(futures)
-        self.meta.del_file(path)
+        try:
+            futures = []
+            for chunk in self.meta.get_file(path):
+                for cloud_id in chunk.clouds:
+                    cloud = self.get_cloud(cloud_id)
+                    futures.append(cloud.delete(chunk_id))
+            execute_futures(futures)
+            self.meta.del_file(path)
+        except FileNotFoundError as e:
+            # It's not a file, perhaps it is a directory.
+            try:
+                self.meta.del_dir(path)
+            except DirectoryNotFoundError:
+                raise FileNotFoundError(path)
+
+    def create(self, path):
+        """
+        Create a directory.
+
+        Adds a directory to the Metastore backend. Creates parents if
+        necessary.
+        """
+        self.meta.put_dir(path)

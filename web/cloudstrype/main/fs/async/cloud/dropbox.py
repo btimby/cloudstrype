@@ -18,6 +18,10 @@ class DropboxProvider(OAuthProvider):
     def UPLOAD_URL(self):
         return ('post', 'https://content.dropboxapi.com/2/files/upload')
 
+    @property
+    def DELETE_URL(self):
+        return ('post', 'https://content.dropboxapi.com/2/files/delete')
+
     def _request(self, method, url, id, headers={}):
         """
         Make connection for Dropbox.
@@ -26,3 +30,10 @@ class DropboxProvider(OAuthProvider):
         """
         headers['Dropbox-API-Arg'] = json.dumps({'path': id})
         return super()._request(method, url, id, headers)
+
+    async def delete(self, id):
+        headers = {
+            'Content-Type': 'application/octet-stream',
+        }
+        r = await self._request(*self.DOWNLOAD_URL, id, headers=headers)
+        r.write(json.dumps({'path': id}))
