@@ -37,7 +37,6 @@ class BoxProvider(OAuthProvider):
         while True:
             tries += 1
             try:
-                import pdb; pdb.set_trace()
                 r = await self._request(*self.UPLOAD_URL, chunk, data=data)
                 break
             except HTTPError as e:
