@@ -118,7 +118,6 @@ class LoginComplete(OAuth2View):
             access_token=token['access_token'])
         return user
 
-
     @transaction.atomic
     def get(self, request, provider_name):
         try:
@@ -134,8 +133,20 @@ class LoginComplete(OAuth2View):
             email_field = provider.fields.get('email', email_field)
 
         # Get uid and email (needed to fetch or create the user).
-        uid = profile[uid_field]
-        email = profile.get(email_field)
+        def _get_profile_field(field_name):
+            if isinstance(field_name, str):
+                return profile.get(field_name)
+            else:
+                value, field_name = profile, field_name[:]
+                while field_name:
+                    value = value.get(field_name.pop(0))
+                return value
+
+        uid = _get_profile_field(uid_field)
+        try:
+            email = _get_profile_field(email_field)
+        except ValueError:
+            email = None
 
         try:
             # Try to fetch the user and log them in.
@@ -144,7 +155,11 @@ class LoginComplete(OAuth2View):
             # User is a new user.
             if not email:
                 return self.get_user_email(request, provider_name, profile, token)
-            user = self.save_user(uid, email, token)
+            try:
+                # Email already used by another account (different uid).
+                user = self.save_user(uid, email, token)
+            except IntegrityError:
+                return self.get_user_email(request, provider_name, profile, token)
 
         login(request, user)
         return redirect('/static/html/main.html')
