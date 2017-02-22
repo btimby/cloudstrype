@@ -5,7 +5,7 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql_psycopg2',
         'NAME': 'cloudstrype',
-        'USER': 'cloudstrype',
+        'USER': 'postgres',
         'PASSWORD': '',
         'HOST': 'localhost',
     }
