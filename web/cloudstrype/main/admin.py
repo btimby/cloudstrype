@@ -1,16 +1,17 @@
 from django.contrib import admin
 
 from main.models import (
-    Provider, ProviderOAuth, Storage
+    OAuth2Provider, OAuth2AccessToken
 )
 
 
-class ProviderOAuthAdmin(admin.StackedInline):
-    model = ProviderOAuth
+class OAuth2ProviderAdmin(admin.ModelAdmin):
+    pass
 
 
-class ProviderAdmin(admin.ModelAdmin):
-    inlines = (ProviderOAuthAdmin, )
+class OAuth2AccessTokenAdmin(admin.ModelAdmin):
+    pass
 
 
-admin.site.register(Provider, ProviderAdmin)
+admin.site.register(OAuth2Provider, OAuth2ProviderAdmin)
+admin.site.register(OAuth2AccessToken, OAuth2AccessTokenAdmin)

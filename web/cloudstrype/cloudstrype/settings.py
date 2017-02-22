@@ -54,24 +54,6 @@ INSTALLED_APPS = [
     'rest_framework.authtoken',
     'rest_auth',
 
-    # OAuth2 login/registration. Used by rest_auth, and also allows server-side
-    # registration via views such as:
-    # - /accounts/google/login/
-    # - /accounts/amazon/login/
-    # - /accounts/dropbox_oauth2/login/
-    'allauth',
-    'allauth.account',
-    'allauth.socialaccount',
-
-    # OAuth2 providers, some are built in...
-    'allauth.socialaccount.providers.amazon',
-    'allauth.socialaccount.providers.dropbox_oauth2',
-    'allauth.socialaccount.providers.google',
-    # TODO: add support for OneDrive and box.net:
-    # https://github.com/pennersr/django-allauth/issues/1478
-    'allauth.socialaccount.providers.onedrive',
-    'allauth.socialaccount.providers.box',
-
     # Integrated apps (part of the project).
     'main',
     'api',
@@ -188,9 +170,6 @@ STATIC_ROOT = '/var/www/cloudstrype.io/static'
 AUTHENTICATION_BACKENDS = (
     # Needed to login by username in Django admin, regardless of `allauth`
     'django.contrib.auth.backends.ModelBackend',
-
-    # `allauth` specific authentication methods, such as login by e-mail
-    'allauth.account.auth_backends.AuthenticationBackend',
 )
 
 ACCOUNT_USER_MODEL_USERNAME_FIELD = None
@@ -202,3 +181,23 @@ SITE_ID = 1
 
 EMAIL_BACKEND = 'django.core.mail.backends.dummy.EmailBackend'
 LOGIN_REDIRECT_URL = '/'
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+            'level': os.getenv('DJANGO_LOG_LEVEL', 'INFO'),
+        },
+    },
+}
+
+if DEBUG:
+    import os
+    os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'

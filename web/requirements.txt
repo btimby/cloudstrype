@@ -5,6 +5,9 @@ django-allauth
 django-rest-auth
 django-extensions
 
+oauthlib
+requests_oauthlib
+
 aiohttp
 psycopg2
 redis
