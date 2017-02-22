@@ -1,3 +1,3 @@
 .PHONY: travis-ci
 travis-ci:
-	DJANGO_SETTINGS_MODULE="cloudstrype.settings_test" python manage.py test
+	DJANGO_SETTINGS_MODULE="cloudstrype.settings_travis_ci" python manage.py test
