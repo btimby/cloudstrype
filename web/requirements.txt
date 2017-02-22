@@ -4,10 +4,12 @@ django-oauth-toolkit
 django-allauth
 django-rest-auth
 django-extensions
+django-mustache
 
 oauthlib
 requests_oauthlib
 
+fabric
 aiohttp
 psycopg2
 redis
