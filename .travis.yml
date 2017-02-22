@@ -14,3 +14,11 @@ before_script:
   - psql -c 'create database cloudstrype' -U postgres
 script:
   - make travis-ci
+before_deploy:
+  - openssl aes-256-cbc -K $encrypted_dd65d59d6c9b_key -iv $encrypted_dd65d59d6c9b_iv -in deploy.tar.gz.enc -out deploy.tar.gz -d
+  - tar xf deploy-tar.gz
+deploy:
+  - provider: script
+  - script: deploy/deploy.sh
+  - on:
+    - branch: master
