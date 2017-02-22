@@ -1,4 +1,6 @@
 language: python
+services:
+  - postgresql
 python:
   - "3.5"
   - "3.6"
@@ -6,5 +8,7 @@ env:
   - DJANGO=1.10
 install:
   - pip install --timeout=30 -r web/requirements.txt
+before_script:
+  - psql -c 'create database cloudstrype' -U postgres
 script:
   - make test
