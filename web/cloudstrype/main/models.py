@@ -96,7 +96,6 @@ class OAuth2Provider(models.Model):
         return 'OAuth2 Provider: %s' % self.name
 
 
-
 class OAuth2AccessToken(models.Model):
     """
     An access token obtain for a user from a provider.

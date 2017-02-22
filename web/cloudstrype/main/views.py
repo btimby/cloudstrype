@@ -79,7 +79,7 @@ class Login(OAuth2View):
     COMPLETE_VIEW = 'main:login_complete'
 
     def get(self, request, provider_name):
-        return self.step_one()
+        return self.step_one(request, provider_name)
 
 
 class LoginComplete(OAuth2View):
@@ -93,10 +93,36 @@ class LoginComplete(OAuth2View):
     one.
     """
 
+    COMPLETE_VIEW = 'main:login_complete'
+
+    def post(self, request):
+        "Save user after receiving email from form."
+        form = EmailForm(request.POST)
+        if not form.is_valid():
+            return render('main/get_email.html', form)
+        user = self.save_user(**session_data)
+        login(request, user)
+        return redirect('/static/html/main.html')
+
+    def get_user_email(self, request, provider_name, token):
+        request.session['oauth2_token_%s' % provider_name] = token
+        form = EmailForm()
+        return render('main/get_email.html', form)
+
+    def save_user(self, uid, email, token):
+        user = User.objects.create_user(uid=uid, email=email)
+        # Only save the token for new users, we don't want to invalidate
+        # the old token.
+        # TODO: save expires
+        OAuth2AccessToken.objects.create(provider=provider, user=user,
+            access_token=token['access_token'])
+        return user
+
+
     @transaction.atomic
     def get(self, request, provider_name):
         try:
-            token, oauth, provider = self.get_token(request, provider_name)
+            token, oauth, provider = self.step_two(request, provider_name)
         except Http400:
             return HttpResponseBadRequest('Missing state')
 
@@ -116,14 +142,9 @@ class LoginComplete(OAuth2View):
             user = User.objects.get(uid=uid)
         except User.DoesNotExist:
             # User is a new user.
-            # TODO: if email is not set, or not unique, ask the user for an
-            # email address.
-            user = User.objects.create_user(uid=uid, email=profile['email'])
-            # Only save the token for new users, we don't want to invalidate
-            # the old token.
-            # TODO: save expires
-            OAuth2AccessToken.objects.create(provider=provider, user=user,
-                access_token=token['access_token'])
+            if not email:
+                return self.get_user_email(request, provider_name, profile, token)
+            user = self.save_user(uid, email, token)
 
         login(request, user)
         return redirect('/static/html/main.html')
@@ -146,6 +167,7 @@ class Expand(Login):
             return HttpResponseBadRequest('Provider already registered')
         except OAuth2AccessToken.DoesNotExist:
             pass
+
         return self.step_one(request, provider_name)
 
 
@@ -155,6 +177,9 @@ class ExpandComplete(LoginComplete):
 
     Reuses the OAuth workflow from LoginComplete view.
     """
+
+    COMPLETE_VIEW = 'main:login_complete'
+
     def get(self, request, provider_name):
         # The user is logged in, so add the new token.
         try:
