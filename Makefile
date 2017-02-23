@@ -7,4 +7,5 @@ deploy.tar.gz: deploy/.ssh/deploy-id_rsa deploy/.ssh/deploy-id_rsa.pub
 
 deploy.tar.gz.enc: deploy.tar.gz
 	travis encrypt-file -f deploy.tar.gz
+	rm -f deploy.tar.gz
 
