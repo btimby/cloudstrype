@@ -20,6 +20,7 @@ before_deploy:
 deploy:
   skip_cleanup: true
   provider: script
-  script: deploy/deploy.sh
+  script:
+    - make deploy
   on:
     branch: master

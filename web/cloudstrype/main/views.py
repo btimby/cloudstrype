@@ -37,7 +37,7 @@ class OAuth2View(View):
         else:
             raise Http404()
 
-        redirect_uri = reverse(self.COMPLETE_VIEW, args=[provider_name])
+        redirect_uri = reverse('login_complete', args=[provider_name])
         redirect_uri = request.build_absolute_uri(redirect_uri)
 
         provider = get_object_or_404(OAuth2Provider, provider=id)
@@ -84,8 +84,6 @@ class Login(OAuth2View):
     Begins OAuth2 workflow.
     """
 
-    COMPLETE_VIEW = 'main:login_complete'
-
     def get(self, request, provider_name):
         return self.step_one(request, provider_name)
 
@@ -100,8 +98,6 @@ class LoginComplete(OAuth2View):
     email address. However, if email is not present, we prompt the user for
     one.
     """
-
-    COMPLETE_VIEW = 'main:login_complete'
 
     @transaction.atomic
     def get(self, request, provider_name):
@@ -157,5 +153,6 @@ class Logout(RedirectView):
     url = '/'
 
     def get(self, request):
+        "Log user out, let base class redirect."
         logout(request)
         return super().get(request)
