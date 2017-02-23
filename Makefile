@@ -13,6 +13,7 @@ travis-ci:
 #: deploy - Deploys application to server.
 .PHONY: deploy
 deploy:
+	$(MAKE) -C deploy
 
 #: deploy.tar.gz - Creates tarball with secret contents.
 deploy.tar.gz: deploy/.ssh/deploy-id_rsa deploy/.ssh/deploy-id_rsa.pub

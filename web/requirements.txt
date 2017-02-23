@@ -3,6 +3,7 @@ djangorestframework
 django-oauth-toolkit
 django-rest-auth
 django-extensions
+django-filters
 
 oauthlib
 requests_oauthlib
