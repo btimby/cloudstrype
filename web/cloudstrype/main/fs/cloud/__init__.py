@@ -1,6 +1,13 @@
+import json
+
+from datetime import datetime, timedelta
+from io import BytesIO
 from inspect import isclass
 
+from requests.exceptions import HTTPError
 from requests_oauthlib import OAuth2Session
+
+from django.utils import timezone
 
 from main.fs import Chunk
 from main.models import OAuth2Provider
@@ -25,13 +32,14 @@ class OAuth2APIClient(object):
             if isclass(item) and issubclass(item, cls) and \
                getattr(item, 'PROVIDER', None) == \
                provider.provider:
-                   provider_cls = item
-                   break
+                provider_cls = item
+                break
         else:
             raise ValueError('Invalid provider')
         return provider_cls(provider, oauth_access=None, **kwargs)
 
-    def __init__(self, provider, oauth_access=None, **kwargs):
+    def __init__(self, provider, oauth_access=None, redirect_uri=None,
+                 **kwargs):
         self.provider = provider
         self.oauth_access = oauth_access
         if self.oauth_access:
@@ -56,12 +64,12 @@ class OAuth2APIClient(object):
         return self.oauthsession.authorization_url(self.AUTHORIZATION_URL)
 
     def fetch_token(self, request_uri):
-        token = self.oauthsession.fetch_token(self.ACCESS_TOKEN_URL,
-            authorization_response=request_uri,
+        token = self.oauthsession.fetch_token(
+            self.ACCESS_TOKEN_URL, authorization_response=request_uri,
             client_secret=self.provider.client_secret)
         if 'expires_at' in token:
             expires = datetime.fromtimestamp(token['expires_at'],
-                                                timezone.utc)
+                                             timezone.utc)
         elif 'expires_in' in token:
             expires = datetime.now(timezone.utc) + \
                       timedelta(seconds=token['expires_in'])
@@ -96,17 +104,18 @@ class OAuth2APIClient(object):
 
     def download(self, chunk):
         assert isinstance(chunk, Chunk), 'must be chunk instance'
-        r = self.request(*self.DOWNLOAD_URL, chunk)
+        r = self.request(self.DOWNLOAD_URL[0], self.DOWNLOAD_URL[1], chunk)
         chunk.data = r.read()
 
     def upload(self, chunk):
         assert isinstance(chunk, Chunk), 'must be chunk instance'
-        r = self.request(*self.UPLOAD_URL, chunk, data=chunk.data)
+        r = self.request(self.UPLOAD_URL[0], self.UPLOAD_URL[1], chunk,
+                         data=chunk.data)
         r.close()
 
     def delete(self, chunk):
         assert isinstance(chunk, Chunk), 'must be chunk instance'
-        r = self.request(*self.DELETE_URL, chunk)
+        r = self.request(self.DELETE_URL[0], self.DELETE_URL[1], chunk)
         r.close()
 
 
@@ -131,13 +140,13 @@ class DropboxAPIClient(OAuth2APIClient):
         headers = {
             'Content-Type': 'application/octet-stream',
         }
-        r = self.request(*self.UPLOAD_URL, chunk, headers=headers,
-                         data=chunk.data)
+        r = self.request(self.UPLOAD_URL[0], self.UPLOAD_URL[1], chunk,
+                         headers=headers, data=chunk.data)
         r.close()
 
     def download(self, chunk, **kwargs):
         assert isinstance(chunk, Chunk), 'must be chunk instance'
-        r = self.request(*self.DOWNLOAD_URL, chunk)
+        r = self.request(self.DOWNLOAD_URL[0], self.DOWNLOAD_URL[1], chunk)
         chunk.data = r.read()
 
     def delete(self, chunk, **kwargs):
@@ -145,7 +154,8 @@ class DropboxAPIClient(OAuth2APIClient):
         headers = {
             'Content-Type': 'application/json'
         }
-        r = super().request(*self.DELETE_URL, chunk, headers=headers,
+        r = super().request(self.DELETE_URL[0], self.DELETE_URL[1], chunk,
+                            headers=headers,
                             data=json.dumps({'path': '/%s' % chunk.id}))
         r.close()
 
@@ -207,7 +217,8 @@ class BoxAPIClient(OAuth2APIClient):
         while True:
             tries += 1
             try:
-                r = self.request(*self.UPLOAD_URL, chunk, data=data)
+                r = self.request(self.UPLOAD_URL[0], self.UPLOAD_URL[1], chunk,
+                                 data=data)
                 break
             except HTTPError as e:
                 if tries < 3 and e.response.status == 409:
@@ -238,7 +249,8 @@ class GDriveAPIClient(OAuth2APIClient):
     USER_PROFILE_URL = 'https://www.googleapis.com/oauth2/v1/userinfo'
 
     DOWNLOAD_URL = \
-        ('GET', 'https://www.googleapis.com/drive/v3/files/{file_id}?alt=media')
+        ('GET',
+         'https://www.googleapis.com/drive/v3/files/{file_id}?alt=media')
     UPLOAD_URL = \
         ('POST', 'https://www.googleapis.com/upload/drive/v2/files')
     DELETE_URL = \

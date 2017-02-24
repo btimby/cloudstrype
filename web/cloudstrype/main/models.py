@@ -1,4 +1,5 @@
 from os.path import normpath, dirname
+from os.path import split as pathsplit
 
 from django.db import models
 from django.db.models import Max
@@ -274,7 +275,7 @@ class DirectoryQuerySet(UidQuerySet):
     @staticmethod
     def _args(kwargs):
         """Convert path to name/parents."""
-        super()._args(kwargs)
+        UidQuerySet._args(kwargs)
         path = kwargs.pop('path', None)
         if path:
             parents = normpath(path).split('/')
@@ -289,7 +290,7 @@ class DirectoryQuerySet(UidQuerySet):
         DirectoryQuerySet._args(kwargs)
         kwargs.pop('display_name', None)
         kwargs.pop('display_path', None)
-        return super(DirectoryQuerySet, self).filter(*args, **kwargs)
+        return super().filter(*args, **kwargs)
 
 
 class DirectoryManager(models.Manager):
@@ -298,6 +299,7 @@ class DirectoryManager(models.Manager):
     def get_queryset(self):
         """
         Override default QuerySet.
+
         Allow filtering with full path.
         """
         return DirectoryQuerySet(self.model, using=self._db)
@@ -307,8 +309,8 @@ class DirectoryManager(models.Manager):
             raise ValueError('User required for directory creation')
         user = kwargs['user']
         path = kwargs.get('path', None)
-        if path:
-            parent = dirname(path)
+        parent = dirname(path)
+        if parent:
             kwargs['parent'], _ = Directory.objects.get_or_create(user=user,
                                                                   path=parent)
         DirectoryQuerySet._args(kwargs)
@@ -317,6 +319,7 @@ class DirectoryManager(models.Manager):
     def get_or_create(self, *args, **kwargs):  # noqa: D402
         """
         Override default get_or_create().
+
         Does not include display_name and display_path in the query portion,
         but ensures they are set to the requested values during save.
         """
@@ -324,8 +327,7 @@ class DirectoryManager(models.Manager):
         DirectoryQuerySet._args(kwargs)
         display_name = kwargs.pop('display_name', None)
         display_path = kwargs.pop('display_path', None)
-        obj, created = super(DirectoryManager, self).get_or_create(*args,
-                                                                   **kwargs)
+        obj, created = super().get_or_create(*args, **kwargs)
         if created:
             obj.display_name = display_name
             obj.display_path = display_path
@@ -343,18 +345,53 @@ class Directory(UidModelMixin, models.Model):
         unique_together = ('user', 'name', 'parents')
 
     user = models.ForeignKey(User, on_delete=models.CASCADE)
-    parent = models.ForeignKey('self', related_name='dirs',
+    parent = models.ForeignKey('self', null=True, related_name='dirs',
                                on_delete=models.CASCADE)
     name = models.CharField(max_length=255)
     display_name = models.CharField(max_length=45)
     display_path = models.TextField()
     parents = ArrayField(models.CharField(max_length=45))
+    attrs = JSONField(null=True, blank=True)
 
     objects = DirectoryManager()
 
     @property
     def path(self):
         return self.display_path
+
+
+class FileQuerySet(UidQuerySet):
+    @staticmethod
+    def _args(kwargs):
+        if 'user' not in kwargs:
+            raise ValueError('User required for directory creation')
+        user = kwargs['user']
+        path = kwargs.pop('path', None)
+        if path:
+            directory, kwargs['name'] = pathsplit(path)
+            try:
+                kwargs['directory'] = Directory.objects.get(
+                    path=directory, user=user)
+            except Directory.DoesNotExist:
+                raise Directory.DoesNotExist('Parent directory does not exist')
+
+    def filter(self, *args, **kwargs):
+        FileQuerySet._args(kwargs)
+        return super().filter(*args, **kwargs)
+
+
+class FileManager(models.Manager):
+    def get_queryset(self):
+        """
+        Override default QuerySet
+
+        Allow filtering wth full path.
+        """
+        return FileQuerySet(self.model, using=self._db)
+
+    def create(self, *args, **kwargs):
+        FileQuerySet._args(kwargs)
+        return super().create(*args, **kwargs)
 
 
 class File(UidModelMixin, models.Model):
@@ -375,6 +412,9 @@ class File(UidModelMixin, models.Model):
     size = models.IntegerField(default=0)
     md5 = models.CharField(max_length=32)
     created = models.DateTimeField(null=False, default=timezone.now)
+    attrs = JSONField(null=True, blank=True)
+
+    objects = FileManager()
 
     @property
     def path(self):

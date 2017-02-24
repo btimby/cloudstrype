@@ -1,3 +1,7 @@
+.PHONY: lint
+lint:
+	flake8 .
+
 .PHONY: test
 test:
 	coverage run --include=cloudstrype/* manage.py test
