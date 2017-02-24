@@ -1,6 +1,10 @@
-.PHONY: travis-ci
-travis-ci:
-	DJANGO_SETTINGS_MODULE="cloudstrype.settings_travis_ci" python manage.py test
+.PHONY: test
+test:
+	coverage run --include=cloudstrype/* manage.py test
+
+.PHONY: ci-test
+ci-test:
+	DJANGO_SETTINGS_MODULE="cloudstrype.settings_travis_ci" coverage run --include=cloudstrype/* manage.py test
 
 .PHONY: run
 run:

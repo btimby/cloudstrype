@@ -11,3 +11,6 @@ requests_oauthlib
 fabric
 psycopg2
 hashids
+coverage
+pyflakes
+

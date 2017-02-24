@@ -5,10 +5,20 @@ help:
 	@echo "Here are available targets:"
 	@egrep -o "^#: (.+)" [Mm]akefile | sed 's/#: /* /'
 
-#: travis-ci - Runs CI in Travis.
-.PHONY: travis-ci
-travis-ci:
-	$(MAKE) -C web travis-ci
+#: test - Runs tests.
+.PHONY: test
+test:
+	$(MAKE) -C web test
+
+#: ci-test - Runs CI in Travis.
+.PHONY: ci-test
+ci-test:
+	$(MAKE) -C web ci-test
+
+#: lint - Runs linters.
+.PHONY: lint
+lint:
+	$(MAKE) -C web lint
 
 #: venv - Creates virtualenv.
 .PHONY: venv
