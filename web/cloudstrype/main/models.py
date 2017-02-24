@@ -326,12 +326,12 @@ class DirectoryManager(models.Manager):
         return DirectoryQuerySet(self.model, using=self._db)
 
     def create(self, *args, **kwargs):
-        if 'user' not in kwargs:
-            raise ValueError('User required for directory creation')
-        user = kwargs['user']
         path = kwargs.get('path', None)
         parent = dirname(path)
         if parent:
+            if 'user' not in kwargs:
+                raise ValueError('User required for directory creation')
+            user = kwargs['user']
             kwargs['parent'], _ = Directory.objects.get_or_create(user=user,
                                                                   path=parent)
         DirectoryQuerySet._args(kwargs)
@@ -384,11 +384,11 @@ class Directory(UidModelMixin, models.Model):
 class FileQuerySet(UidQuerySet):
     @staticmethod
     def _args(kwargs):
-        if 'user' not in kwargs:
-            raise ValueError('User required for directory creation')
-        user = kwargs['user']
         path = kwargs.pop('path', None)
         if path:
+            if 'user' not in kwargs:
+                raise ValueError('User required for directory creation')
+            user = kwargs['user']
             directory, kwargs['name'] = pathsplit(path)
             kwargs['directory'], _ = Directory.objects.get_or_create(
                 user=user, path=directory)
@@ -429,6 +429,7 @@ class File(UidModelMixin, models.Model):
     name = models.CharField(max_length=255)
     size = models.IntegerField(default=0)
     md5 = models.CharField(max_length=32)
+    sha1 = models.CharField(max_length=40)
     created = models.DateTimeField(null=False, default=timezone.now)
     attrs = JSONField(null=True, blank=True)
 

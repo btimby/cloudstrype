@@ -4,7 +4,7 @@ import logging
 
 from io import BytesIO
 from os.path import join as pathjoin
-from hashlib import md5
+from hashlib import md5, sha1
 
 from django.conf import settings
 from django.db import transaction
@@ -167,6 +167,9 @@ class MulticloudWriter(MulticloudBase, FileLikeBase):
         self.file = file
         self.chunk_size = chunk_size
         self.replicas = replicas
+        self._md5 = md5()
+        self._sha1 = sha1()
+        self._size = 0
         self._buffer = []
         self._closed = False
 
@@ -206,6 +209,9 @@ class MulticloudWriter(MulticloudBase, FileLikeBase):
         """
         if self._closed:
             raise ValueError('I/O operation on closed file.')
+        self._size += len(data)
+        self._md5.update(data)
+        self._sha1.update(data)
         self._buffer.append(data)
         # Write chunks until our buffer is < self.chunk_size.
         while True:
@@ -238,6 +244,9 @@ class MulticloudWriter(MulticloudBase, FileLikeBase):
         """
         if self._closed:
             return
+        File.objects.filter(pk=self.file.pk).update(
+            size=self._size, md5=self._md5.hexdigest(),
+            sha1=self._sha1.hexdigest())
         self._write_chunk(b''.join(self._buffer))
         super().close()
 
