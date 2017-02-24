@@ -12,5 +12,5 @@ fabric
 psycopg2
 hashids
 coverage
-pyflakes
+flake8
 
