@@ -2,11 +2,11 @@ import redis
 
 from os.path import split as pathsplit
 
-from . import BaseMetastore
-from .. import Chunk
-from ..errors import (
+from main.fs import Chunk
+from main.fs.errors import (
     FileNotFoundError, DirectoryNotFoundError, DirectoryNotEmptyError
 )
+from main.fs.metadata import BaseMetastore
 
 
 class RedisMetastore(BaseMetastore):

@@ -2,7 +2,7 @@ from inspect import isclass
 
 from requests_oauthlib import OAuth2Session
 
-from .. import Chunk
+from main.fs import Chunk
 from main.models import OAuth2Provider
 
 
@@ -16,7 +16,8 @@ class OAuth2APIClient(object):
         provider_cls = cls
         for item in globals().values():
             if isclass(item) and issubclass(item, cls) and \
-               getattr(item, 'PROVIDER', None) == provider.provider:
+               getattr(item, 'PROVIDER', None) == \
+               oauth_access.provider.provider:
                    provider_cls = item
                    break
         else:
@@ -31,7 +32,7 @@ class OAuth2APIClient(object):
             'refresh_token': self.oauth_access.refresh_token
         }
         self.oauthsession = OAuth2Session(
-            token=token, auto_refresh_url=self.provider.token_refresh_url,
+            token=token, auto_refresh_url=self.REFRESH_TOKEN_URL,
             token_updater=self._refresh_token_callback, **kwargs)
 
     def _refresh_token_callback(self, token):
@@ -64,6 +65,8 @@ class OAuth2APIClient(object):
 
 class DropboxAPIClient(OAuth2APIClient):
     PROVIDER = OAuth2Provider.PROVIDER_DROPBOX
+
+    REFRESH_TOKEN_URL = None
 
     DOWNLOAD_URL = ('post', 'https://content.dropboxapi.com/2/files/download')
     UPLOAD_URL = ('post', 'https://content.dropboxapi.com/2/files/upload')
@@ -100,6 +103,8 @@ class DropboxAPIClient(OAuth2APIClient):
 class OnedriveAPIClient(OAuth2APIClient):
     PROVIDER = OAuth2Provider.PROVIDER_ONEDRIVE
 
+    REFRESH_TOKEN_URL = 'https://login.live.com/oauth20_token.srf'
+
     DOWNLOAD_URL = \
         ('get', 'https://api.onedrive.com/v1.0/drive/root:/{path}:/content')
     UPLOAD_URL = \
@@ -114,6 +119,8 @@ class OnedriveAPIClient(OAuth2APIClient):
 
 class BoxAPIClient(OAuth2APIClient):
     PROVIDER = OAuth2Provider.PROVIDER_BOX
+
+    REFRESH_TOKEN_URL = 'https://api.box.com/oauth2/token'
 
     DOWNLOAD_URL = ('get', 'https://api.box.com/2.0/files/{file_id}/content')
     UPLOAD_URL = ('post', 'https://upload.box.com/api/2.0/files/content')
@@ -155,6 +162,8 @@ class BoxAPIClient(OAuth2APIClient):
 class GDriveAPIClient(OAuth2APIClient):
     PROVIDER = OAuth2Provider.PROVIDER_GDRIVE
 
+    REFRESH_TOKEN_URL = 'https://www.googleapis.com/oauth2/v4/token'
+
     DOWNLOAD_URL = \
         ('GET', 'https://www.googleapis.com/drive/v3/files/{file_id}?alt=media')
     UPLOAD_URL = \
@@ -166,6 +175,8 @@ class GDriveAPIClient(OAuth2APIClient):
 class SmartFileAPIClient(OAuth2APIClient):
     PROVIDER = OAuth2Provider.PROVIDER_SMARTFILE
 
+    REFRESH_TOKEN_URL = None
+
     DOWNLOAD_URL = ('get', 'https://app.smartfile.com/api/2/path/data/{path}')
     UPLOAD_URL = ('post', 'https://app.smartfile.com/api/2/path/data/{dir}')
     DELETE_URL = ('delete', 'https://app.smartfile.com/api/2/path/data/{path}')
@@ -173,8 +184,6 @@ class SmartFileAPIClient(OAuth2APIClient):
     def request(self, method, url, chunk, headers={}, **kwargs):
         url = url.format(path=chunk.id, dir='')
         return super().request(method, url, chunk, headers=headers, **kwargs)
-
-    def upload(self, chunk):
 
 
 class S3APIClient(object):

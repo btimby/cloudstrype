@@ -1,10 +1,71 @@
+from os.path import normpath
+
 from django.db import models
+from django.db.models.query import QuerySet
 from django.contrib.auth.base_user import (
     AbstractBaseUser, BaseUserManager
 )
 from django.contrib.postgres.fields import (
     JSONField, ArrayField
 )
+from django.utils import timezone
+from hashids import Hashids
+
+
+class UidQuerySet(QuerySet):
+    """
+    QuerySet with uid capabilities.
+
+    Allow objects to be easily selected by uid.
+    """
+
+    @staticmethod
+    def _args(kwargs):
+        uid = kwargs.pop('uid', None)
+        if uid:
+            kwargs['id'] = Hashids().decode(uid)[0]
+
+    def filter(self, *args, **kwargs):
+        UidQuerySet._args(kwargs)
+        return super().filter(*args, **kwargs)
+
+
+class UidManagerMixin(object):
+    """
+    Mix in Uid capabilities for a Manager.
+
+    A Model can use a custom manager with this mixin to gain uid capabilities.
+    """
+
+    def get_queryset(self):
+        "Return UidQuerySet instance."
+        return UidQuerySet(self.model, using=self._db)
+
+
+class UidManager(UidManagerMixin, models.Manager):
+    """
+    Basic manager with Uid capabilities.
+
+    A Model can use this Manager to add uid capabilities if it does not
+    otherwise need a custom Manager.
+    """
+
+    pass
+
+
+class UidModelMixin(object):
+    """
+    Mix in Uid capabilities for a Model.
+
+    Adds a uid property and uses UidManager by default.
+    """
+
+    @property
+    def uid(self):
+        "Return a random-looking id."
+        return Hashids(min_length=16).encode(self.id)
+
+    objects = UidManager()
 
 
 class UserManager(BaseUserManager):
@@ -74,7 +135,7 @@ class User(AbstractBaseUser):
         return self.is_admin
 
 
-class OAuth2Provider(models.Model):
+class OAuth2Provider(UidModelMixin, models.Model):
     """
     A storage provider or login provider that supports OAuth2.
     """
@@ -126,7 +187,7 @@ class OAuth2Provider(models.Model):
         return self.provider in self.STORAGE_PROVIDERS
 
 
-class OAuth2AccessToken(models.Model):
+class OAuth2AccessToken(UidModelMixin, models.Model):
     """
     An access token obtain for a user from a provider.
     """
@@ -150,7 +211,7 @@ class OAuth2AccessToken(models.Model):
         return OAuth2APIClient.get_client(self)
 
 
-class OAuth2LoginToken(models.Model):
+class OAuth2LoginToken(UidModelMixin, models.Model):
     """
     Track tokens used for login vs. storage.
     """
@@ -161,3 +222,168 @@ class OAuth2LoginToken(models.Model):
 
     user = models.OneToOneField(User)
     token = models.ForeignKey(OAuth2AccessToken)
+
+    def __str__(self):
+        return 'OAuth2 Login Token: %s for %s' % (self.user.email,
+                                                   self.token.provider.name)
+
+
+class OAuth2StorageToken(UidModelMixin, models.Model):
+    """
+    Track tokens used for storage vs. login.
+    """
+
+    class Meta:
+        verbose_name = 'OAuth2 Storage Token'
+        verbose_name_plural = 'OAuth2 Storage Tokens'
+
+    user = models.OneToOneField(User)
+    token = models.ForeignKey(OAuth2AccessToken)
+    size = models.IntegerField(default=0)
+    used = models.IntegerField(default=0)
+
+    def __str__(self):
+        return 'OAuth2 Storage Token: %s for %s' % (self.user.email,
+                                                    self.token.provider.name)
+
+
+class DirectoryQuerySet(UidQuerySet):
+    """
+    QuerySet for Directories.
+
+    Allow filtering by full path or uid.
+    """
+
+    @staticmethod
+    def _args(kwargs):
+        """Convert path to name/parents."""
+        super()._args(kwargs)
+        path = kwargs.pop('path', None)
+        if path:
+            parents = normpath(path).split('/')
+            name = parent.pop()
+            kwargs['name'] = name.lower()
+            kwargs['display_name'] = name
+            kwargs['display_path'] = path
+            kwargs['parents'] = [p.lower() for p in parents]
+
+    def filter(self, *args, **kwargs):
+        """Filter objects using full path."""
+        DirectoryQuerySet._args(kwargs)
+        kwargs.pop('display_name', None)
+        kwargs.pop('display_path', None)
+        return super(DirectoryQuerySet, self).filter(*args, **kwargs)
+
+
+class DirectoryManager(models.Manager):
+    """Manage Directory model."""
+
+    def get_queryset(self):
+        """
+        Override default QuerySet.
+        Allow filtering with full path.
+        """
+        return DirectoryQuerySet(self.model, using=self._db)
+
+    def get_or_create(self, *args, **kwargs):  # noqa: D402
+        """
+        Override default get_or_create().
+        Does not include display_name and display_path in the query portion,
+        but ensures they are set to the requested values during save.
+        """
+        # It might be better to do this in save().
+        DirectoryQuerySet._args(kwargs)
+        display_name = kwargs.pop('display_name', None)
+        display_path = kwargs.pop('display_path', None)
+        obj, created = super(DirectoryManager, self).get_or_create(*args,
+                                                                   **kwargs)
+        if created:
+            obj.display_name = display_name
+            obj.display_path = display_path
+        return obj, created
+
+
+class Directory(UidModelMixin, models.Model):
+    """
+    Directory model.
+
+    Represents a directory in the FS.
+    """
+
+    class Meta:
+        unique_together = ('user', 'name', 'parents')
+
+    user = models.ForeignKey(User)
+    name = models.CharField(max_length=255)
+    display_name = models.CharField(max_length=45)
+    display_path = models.TextField()
+    parents = ArrayField(models.CharField(max_length=45))
+
+    objects = DirectoryManager()
+
+    @property
+    def path(self):
+        return self.display_path
+
+
+class File(UidModelMixin, models.Model):
+    """
+    File model.
+
+    Represents a file in the FS.
+    """
+
+    class Meta:
+        unique_together = ('directory', 'name')
+
+    user = models.ForeignKey(User, related_name='files')
+    directory = models.ForeignKey(Directory, related_name='files')
+    name = models.CharField(max_length=255)
+    size = models.IntegerField(default=0)
+    md5 = models.CharField(max_length=32)
+    created = models.DateTimeField(null=False, default=timezone.now)
+
+    @property
+    def path(self):
+        return '{}/{}'.format(self.directory.path, self.name)
+
+
+class Chunk(models.Model):
+    """
+    Chunk model.
+
+    Represents a unique chunk of data.
+    """
+
+    file = models.ManyToManyField(to=File, through='FileChunk', related_name='chunks')
+    md5 = models.CharField(max_length=32)
+
+
+class FileChunk(models.Model):
+    """
+    FileChunk model.
+
+    A file consists of a series of chunks. This model ties chunks to a file,
+    ordering is provided by `serial`.
+    """
+
+    class Meta:
+        unique_together = ('file', 'serial')
+
+    file = models.ForeignKey(File)
+    chunk = models.ForeignKey(Chunk)
+    serial = models.IntegerField()
+
+
+class ChunkStorage(models.Model):
+    """
+    ChunkStorage model.
+
+    Represents a chunk in cloud storage.
+    """
+
+    class Meta:
+        unique_together = ('chunk', 'storage')
+
+    chunk = models.ForeignKey(Chunk, related_name='storage')
+    storage = models.ForeignKey(OAuth2StorageToken)

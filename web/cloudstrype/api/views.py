@@ -1,19 +1,33 @@
 from django.shortcuts import render
 
 from rest_framework import (
-    routers, serializers, permissions, viewsets, generics
+    routers, serializers, permissions, views, viewsets, generics, response
 )
 from oauth2_provider.ext.rest_framework import (
     TokenHasReadWriteScope, TokenHasScope
 )
-
-from main.models import User
+from main.models import (
+    User, OAuth2Provider, OAuth2AccessToken
+)
+from main.fs import MulticloudManager
 
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ('id', 'uid', 'email')
+
+
+class OAuth2AccessTokenSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = OAuth2AccessToken
+        fields = ('provider', )
+
+
+class OAuth2ProviderSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = OAuth2Provider
+        fields = ('name', )
 
 
 class MeView(generics.RetrieveAPIView):
@@ -28,11 +42,29 @@ class MeView(generics.RetrieveAPIView):
         return self.retrieve(request, *args, **kwargs)
 
 
-class UserViewSet(viewsets.ModelViewSet):
-    permission_classes = [permissions.IsAuthenticated, TokenHasReadWriteScope]
-    queryset = User.objects.all()
-    serializer_class = UserSerializer
+class CloudListView(generics.ListAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+    queryset = OAuth2Provider.objects.all()
+    serializer_class = OAuth2ProviderSerializer
+
+    def get_queryset(self):
+        queryset = OAuth2Provider.objects.filter(
+            tokens__user=self.request.user)
+        return (o for o in queryset if o.is_storage())
 
 
-router = routers.DefaultRouter()
-router.register(r'users', UserViewSet)
+class FileListView(views.APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_manager(self, namespace):
+        tokens = OAuth2AccessToken.objects.filter(user=self.request.user)
+        tokens = [o for o in tokens if o.provider.is_storage()]
+        clouds = [o.get_client() for o in tokens]
+        return MulticloudManager(namespace, clouds)
+
+    def get(self, request, path, format=None):
+        manager = self.get_manager('')
+        return response.Response(['foo', 'bar'])
+
+    def post(self, request, path, format=None):
+        pass

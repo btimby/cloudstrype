@@ -5,16 +5,18 @@ from django.conf.urls import (
 
 from rest_framework.urlpatterns import format_suffix_patterns
 
-from api.views import router, MeView
+from api.views import (
+    MeView, CloudListView, FileListView
+)
 
 urlpatterns = [
     url(r'^v1/users/me', MeView.as_view()),
+    url(r'^v1/clouds/', CloudListView.as_view()),
+    url(r'^v1/files(/.*)$', FileListView.as_view()),
 ]
 
 urlpatterns = format_suffix_patterns(urlpatterns, allowed=['json', 'html'])
 
 urlpatterns += [
-    url(r'^v1/', include(router.urls)),
     url(r'^rest-auth/', include('rest_auth.urls')),
 ]
-

@@ -1,4 +1,3 @@
-import asyncio
 import collections
 import json
 import random
@@ -9,8 +8,6 @@ from hashlib import md5
 from main.fs.errors import (
     FileNotFoundError, DirectoryNotFoundError
 )
-from main.fs.cloud import OAuth2APIClient
-from main.fs.metadata.redis import RedisMetastore
 
 
 # Default 32K chunk size.
@@ -28,12 +25,6 @@ def chunker(f, chunk_size=CHUNK_SIZE):
             return
         assert len(chunk) <= chunk_size, 'chunk exceeds %s' % chunk_size
         yield chunk
-
-
-def execute_futures(futures):
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(asyncio.gather(*futures))
-    loop.close()
 
 
 class Chunk(object):
@@ -77,9 +68,6 @@ class MulticloudBase(object):
     def __init__(self, clouds):
         assert isinstance(clouds, collections.Iterable), \
             'clouds must be iterable'
-        for cloud in clouds:
-            assert isinstance(cloud, OAuth2APIClient), \
-                'clouds must derive from OAuth2APIClient'
         self.clouds = clouds
 
     def get_cloud(self, id):
@@ -269,13 +257,14 @@ class MulticloudWriter(MulticloudBase, FileLikeBase):
 
 
 class MulticloudManager(MulticloudBase):
-    def __init__(self, clouds, meta=None, chunk_size=CHUNK_SIZE,
+    def __init__(self, ns, clouds, meta=None, chunk_size=CHUNK_SIZE,
                  replicas=REPLICAS):
         super().__init__(clouds)
         assert len(clouds) >= replicas, \
             'not enough clouds (%s) for %s replicas' % (len(clouds), replicas)
         if meta is None:
-            meta = RedisMetastore()
+            from main.fs.metadata.redis import RedisMetastore
+            meta = RedisMetastore(ns)
         self.meta = meta
         self.chunk_size = chunk_size
         self.replicas = replicas

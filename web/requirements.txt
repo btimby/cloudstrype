@@ -9,7 +9,5 @@ oauthlib
 requests_oauthlib
 
 fabric
-aiohttp
 psycopg2
-redis
-mockredis
+hashids

@@ -73,7 +73,6 @@ class DropboxClient(OAuth2Client):
 
     AUTHORIZATION_URL = 'https://www.dropbox.com/1/oauth2/authorize'
     ACCESS_TOKEN_URL = 'https://api.dropbox.com/1/oauth2/token'
-    REFRESH_TOKEN_URL = None
     USER_PROFILE_URL = 'https://api.dropbox.com/1/account/info'
 
 
@@ -89,7 +88,6 @@ class OnedriveClient(OAuth2Client):
 
     AUTHORIZATION_URL = 'https://login.live.com/oauth20_authorize.srf'
     ACCESS_TOKEN_URL = 'https://login.live.com/oauth20_token.srf'
-    REFRESH_TOKEN_URL = 'https://login.live.com/oauth20_token.srf'
     USER_PROFILE_URL = 'https://apis.live.net/v5.0/me'
 
 
@@ -101,7 +99,6 @@ class GDriveClient(OAuth2Client):
 
     AUTHORIZATION_URL = 'https://accounts.google.com/o/oauth2/v2/auth'
     ACCESS_TOKEN_URL = 'https://www.googleapis.com/oauth2/v4/token'
-    REFRESH_TOKEN_URL = 'https://www.googleapis.com/oauth2/v4/token'
     USER_PROFILE_URL = 'https://www.googleapis.com/oauth2/v1/userinfo'
 
     def authoriziation_url(self):
@@ -118,7 +115,6 @@ class BoxClient(OAuth2Client):
 
     AUTHORIZATION_URL = 'https://account.box.com/api/oauth2/authorize'
     ACCESS_TOKEN_URL = 'https://api.box.com/oauth2/token'
-    REFRESH_TOKEN_URL = 'https://api.box.com/oauth2/token'
     USER_PROFILE_URL = 'https://api.box.com/2.0/users/me'
 
 
@@ -127,7 +123,6 @@ class AmazonClient(OAuth2Client):
 
     AUTHORIZATION_URL = ''
     ACCESS_TOKEN_URL = ''
-    REFRESH_TOKEN_URL = ''
     USER_PROFILE_URL = ''
 
 
@@ -136,5 +131,4 @@ class SmartFileClient(OAuth2Client):
 
     AUTHORIZATION_URL = ''
     ACCESS_TOKEN_URL = ''
-    REFRESH_TOKEN_URL = ''
     USER_PROFILE_URL = ''
