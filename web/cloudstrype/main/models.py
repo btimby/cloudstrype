@@ -107,16 +107,23 @@ class User(AbstractBaseUser):
                            max_length=255)
     email = models.EmailField(null=False, blank=False, unique=True,
                               max_length=255, verbose_name='email address')
+    full_name = models.CharField(max_length=64)
+    first_name = models.CharField(max_length=64)
     is_active = models.BooleanField(default=True)
     is_admin = models.BooleanField(default=False)
 
     objects = UserManager()
 
+    def save(self, *args, **kwargs):
+        if self.full_name:
+            self.first_name = self.full_name.split(' ')[0]
+        return super().save(*args, **kwargs)
+
     def get_full_name(self):
-        return self.email
+        return self.full_name
 
     def get_short_name(self):
-        return self.email
+        return self.first_name
 
     def __str__(self):
         return self.email
@@ -183,6 +190,7 @@ class OAuth2Provider(UidModelMixin, models.Model):
         from main.auth.oauth import OAuth2Client
         return OAuth2Client.get_client(self, redirect_uri, **kwargs)
 
+    @property
     def is_storage(self):
         return self.provider in self.STORAGE_PROVIDERS
 
@@ -196,8 +204,10 @@ class OAuth2AccessToken(UidModelMixin, models.Model):
         verbose_name = 'OAuth2 Access Token'
         verbose_name_plural = 'OAuth2 Access Tokens'
 
-    provider = models.ForeignKey(OAuth2Provider, related_name='tokens')
-    user = models.ForeignKey(User, related_name='tokens')
+    provider = models.ForeignKey(OAuth2Provider, related_name='tokens',
+                                 on_delete=models.CASCADE)
+    user = models.ForeignKey(User, related_name='tokens',
+                             on_delete=models.CASCADE)
     access_token = models.TextField()
     refresh_token = models.TextField(null=True)
     expires = models.DateTimeField(null=True)
@@ -221,7 +231,7 @@ class OAuth2LoginToken(UidModelMixin, models.Model):
         verbose_name_plural = 'OAuth2 Login Tokens'
 
     user = models.OneToOneField(User)
-    token = models.ForeignKey(OAuth2AccessToken)
+    token = models.ForeignKey(OAuth2AccessToken, on_delete=models.CASCADE)
 
     def __str__(self):
         return 'OAuth2 Login Token: %s for %s' % (self.user.email,
@@ -237,10 +247,13 @@ class OAuth2StorageToken(UidModelMixin, models.Model):
         verbose_name = 'OAuth2 Storage Token'
         verbose_name_plural = 'OAuth2 Storage Tokens'
 
-    user = models.OneToOneField(User)
-    token = models.ForeignKey(OAuth2AccessToken)
+    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    token = models.ForeignKey(OAuth2AccessToken, on_delete=models.CASCADE)
     size = models.IntegerField(default=0)
     used = models.IntegerField(default=0)
+    # Provider-specific attribute storage, such as chunk storage location
+    # directory ID.
+    attrs = models.JSONField()
 
     def __str__(self):
         return 'OAuth2 Storage Token: %s for %s' % (self.user.email,
@@ -285,6 +298,18 @@ class DirectoryManager(models.Manager):
         """
         return DirectoryQuerySet(self.model, using=self._db)
 
+    def create(self, *args, **kwargs):
+        if 'user' not in kwargs:
+            raise ValueError('User required for directory creation')
+        user = kwargs['user']
+        path = kwargs.get('path', None)
+        if path:
+            parent = dirname(path)
+            kwargs['parent'], _ = Directory.objects.get_or_create(user=user,
+                                                                  path=parent)
+        DirectoryQuerySet._args(kwargs)
+        return super().create(*args, **kwargs)
+
     def get_or_create(self, *args, **kwargs):  # noqa: D402
         """
         Override default get_or_create().
@@ -313,7 +338,9 @@ class Directory(UidModelMixin, models.Model):
     class Meta:
         unique_together = ('user', 'name', 'parents')
 
-    user = models.ForeignKey(User)
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    parent = models.ForeignKey('self', related_name='dirs',
+                               on_delete=models.CASCADE)
     name = models.CharField(max_length=255)
     display_name = models.CharField(max_length=45)
     display_path = models.TextField()
@@ -336,8 +363,10 @@ class File(UidModelMixin, models.Model):
     class Meta:
         unique_together = ('directory', 'name')
 
-    user = models.ForeignKey(User, related_name='files')
-    directory = models.ForeignKey(Directory, related_name='files')
+    user = models.ForeignKey(User, related_name='files',
+                             on_delete=models.CASCADE)
+    directory = models.ForeignKey(Directory, related_name='files',
+                                  on_delete=models.CASCADE)
     name = models.CharField(max_length=255)
     size = models.IntegerField(default=0)
     md5 = models.CharField(max_length=32)
@@ -347,6 +376,14 @@ class File(UidModelMixin, models.Model):
     def path(self):
         return '{}/{}'.format(self.directory.path, self.name)
 
+    def add_chunk(self, chunk):
+        "Adds a chunk to a file, taking care to set the serial number."
+        fc = FileChunk(file=self, chunk=chunk)
+        fc.serial = (FileChunk.objects.filter(file=self).aggregate(
+            Max('serial'))['serial__max'] or 0) + 1
+        fc.save()
+        return fc
+
 
 class Chunk(models.Model):
     """
@@ -355,7 +392,8 @@ class Chunk(models.Model):
     Represents a unique chunk of data.
     """
 
-    file = models.ManyToManyField(to=File, through='FileChunk', related_name='chunks')
+    file = models.ManyToManyField(to=File, through='FileChunk',
+                                  related_name='chunks')
     md5 = models.CharField(max_length=32)
 
 
@@ -370,9 +408,9 @@ class FileChunk(models.Model):
     class Meta:
         unique_together = ('file', 'serial')
 
-    file = models.ForeignKey(File)
-    chunk = models.ForeignKey(Chunk)
-    serial = models.IntegerField()
+    file = models.ForeignKey(File, on_delete=models.CASCADE)
+    chunk = models.ForeignKey(Chunk, on_delete=models.PROTECT)
+    serial = models.IntegerField(default=0)
 
 
 class ChunkStorage(models.Model):
@@ -385,5 +423,8 @@ class ChunkStorage(models.Model):
     class Meta:
         unique_together = ('chunk', 'storage')
 
-    chunk = models.ForeignKey(Chunk, related_name='storage')
-    storage = models.ForeignKey(OAuth2StorageToken)
+    chunk = models.ForeignKey(Chunk, related_name='storage',
+                              on_delete=models.CASCADE)
+    storage = models.ForeignKey(OAuth2StorageToken, on_delete=models.CASCADE)
+    # Provider-specific attribute storage, such as the chunk's file ID.
+    attrs = models.JSONField()
