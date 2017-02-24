@@ -244,10 +244,11 @@ class MulticloudWriter(MulticloudBase, FileLikeBase):
         """
         if self._closed:
             return
+        self._write_chunk(b''.join(self._buffer))
+        # Update content related attributes.
         File.objects.filter(pk=self.file.pk).update(
             size=self._size, md5=self._md5.hexdigest(),
             sha1=self._sha1.hexdigest())
-        self._write_chunk(b''.join(self._buffer))
         super().close()
 
 
