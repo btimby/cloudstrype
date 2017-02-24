@@ -341,12 +341,29 @@ class MulticloudFilesystem(MulticloudBase):
         raise PathNotFoundError('src')
 
     @transaction.atomic
-    def _copy_file(self, file, dst):
-        pass
+    def _copy_file(self, src, dst):
+        # Clone file first.
+        file = \
+            File.objects.create(md5=src.md5, path=pathjoin(dst, src.name),
+                                user=self.user)
+        # Then clone it's chunks:
+        for chunk in Chunk.objects.filter(
+            filechunk__file=file).order_by('filechunk__serial'):
+            file.add_chunk(chunk)
+        return file
 
     @transaction.atomic
-    def _copy_dir(self, dir, dst):
-        pass
+    def _copy_dir(self, src, dst):
+        # Clone dir first.
+        dir = Directory.objects.create(path=pathjoin(dst, src.name),
+                                       user=self.user)
+        # Then copy children recursively.
+        dirs, files = self.listdir(dir.path, dir=dir)
+        for subdir in dirs:
+            self._copy_dir(subdir, dir.path)
+        for subfile in files:
+            self._copy_file(subfile, dir.path)
+        return dir
 
     @transaction.atomic
     def copy(self, src, dst):
@@ -363,6 +380,17 @@ class MulticloudFilesystem(MulticloudBase):
         except Directory.DoesNotExist:
             pass
         raise PathNotFoundError('src')
+
+    def listdir(self, path, dir=None):
+        if dir is None:
+            try:
+                dir = Directory.objects.get(path=path, user=self.user)
+            except Directory.DoesNotExist:
+                raise DirectoryNotFoundError(path)
+        return (
+            Directory.objects.filter(parent=dir, user=self.user),
+            File.objects.filter(directory=dir, user=self.user),
+        )
 
     def isdir(self, path):
         return Directory.objects.filter(path=path, user=self.user).exists()
