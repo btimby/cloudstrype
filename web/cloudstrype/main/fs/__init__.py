@@ -5,6 +5,10 @@ import random
 from io import BytesIO
 from hashlib import md5
 
+from main.models import (
+    User, Directory, File, Chunk, FileChunk, ChunkStorage, OAuth2StorageToken
+)
+
 from main.fs.errors import (
     FileNotFoundError, DirectoryNotFoundError
 )
@@ -257,28 +261,24 @@ class MulticloudWriter(MulticloudBase, FileLikeBase):
 
 
 class MulticloudManager(MulticloudBase):
-    def __init__(self, ns, clouds, meta=None, chunk_size=CHUNK_SIZE,
+    def __init__(self, clouds, chunk_size=CHUNK_SIZE,
                  replicas=REPLICAS):
         super().__init__(clouds)
         assert len(clouds) >= replicas, \
             'not enough clouds (%s) for %s replicas' % (len(clouds), replicas)
-        if meta is None:
-            from main.fs.metadata.redis import RedisMetastore
-            meta = RedisMetastore(ns)
-        self.meta = meta
         self.chunk_size = chunk_size
         self.replicas = replicas
 
-    def download(self, path):
+    def download(self, file):
         """
         Download from multiple clouds.
 
         Uses Metastore backend to resolve path to a series of chunks. Returns a
         MulticloudReader that can read these chunks in order.
         """
-        return MulticloudReader(self.clouds, path, self.meta)
+        return MulticloudReader(self.clouds, file)
 
-    def upload(self, path, file, replicas=None):
+    def upload(self, file, f, replicas=None):
         """
         Upload to multiple clouds.
 
@@ -286,13 +286,12 @@ class MulticloudManager(MulticloudBase):
         to multiple cloud providers. Stores chunk information into the
         Metastore backend.
         """
-        with MulticloudWriter(self.clouds, path, self.meta,
-                              chunk_size=self.chunk_size,
+        with MulticloudWriter(self.clouds, file, chunk_size=self.chunk_size,
                               replicas=self.replicas) as out:
-            for chunk in chunker(file, chunk_size=self.chunk_size):
+            for chunk in chunker(f, chunk_size=self.chunk_size):
                 out.write(chunk)
 
-    def delete(self, path):
+    def delete(self, file):
         """
         Delete from multiple clouds.
 
