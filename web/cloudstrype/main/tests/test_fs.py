@@ -64,8 +64,8 @@ class FilesystemTestCase(TestCase):
     def test_move(self):
         user = User.objects.create(email='foo@bar.org')
         fs = MulticloudFilesystem(user)
-        dir1 = fs.mkdir('/foo')
-        dir2 = fs.mkdir('/bar')
+        fs.mkdir('/foo')
+        fs.mkdir('/bar')
         fs.move('/foo', '/bar')
 
         self.assertFalse(fs.exists('/foo'))
@@ -75,8 +75,8 @@ class FilesystemTestCase(TestCase):
     def test_copy(self):
         user = User.objects.create(email='foo@bar.org')
         fs = MulticloudFilesystem(user)
-        dir1 = fs.mkdir('/foo')
-        dir2 = fs.mkdir('/bar')
+        fs.mkdir('/foo')
+        fs.mkdir('/bar')
         fs.copy('/foo', '/bar')
 
         self.assertTrue(fs.exists('/foo'))

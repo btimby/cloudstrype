@@ -256,7 +256,10 @@ class MulticloudFilesystem(MulticloudBase):
         Uses Metastore backend to resolve path to a series of chunks. Returns a
         MulticloudReader that can read these chunks in order.
         """
-        file = File.objects.get(path=path, user=self.user)
+        try:
+            file = File.objects.get(path=path, user=self.user)
+        except File.DoesNotExist:
+            raise FileNotFoundError(path)
         return MulticloudReader(self.user, self.clouds, file)
 
     @transaction.atomic
@@ -290,8 +293,11 @@ class MulticloudFilesystem(MulticloudBase):
         Uses Metastore backend to resolve path to a series of chunks. Deletes
         the chunks from cloud providers and Metastore backend.
         """
+        try:
+            file = File.objects.get(path=path, user=self.user)
+        except File.DoesNotExist:
+            raise FileNotFoundError(path)
         # We do not care about order...
-        file = File.objects.get(path=path, user=self.user)
         for chunk in Chunk.objects.filter(filechunk__file=file):
             for storage in chunk.storage.all():
                 cloud = self.get_cloud(storage.storage)
@@ -347,8 +353,8 @@ class MulticloudFilesystem(MulticloudBase):
             File.objects.create(md5=src.md5, path=pathjoin(dst, src.name),
                                 user=self.user)
         # Then clone it's chunks:
-        for chunk in Chunk.objects.filter(
-            filechunk__file=file).order_by('filechunk__serial'):
+        for chunk in Chunk.objects.filter(filechunk__file=file).order_by(
+                                          'filechunk__serial'):
             file.add_chunk(chunk)
         return file
 
