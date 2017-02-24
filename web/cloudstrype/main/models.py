@@ -253,7 +253,7 @@ class OAuth2StorageToken(UidModelMixin, models.Model):
     used = models.IntegerField(default=0)
     # Provider-specific attribute storage, such as chunk storage location
     # directory ID.
-    attrs = models.JSONField()
+    attrs = JSONField(null=True, blank=True)
 
     def __str__(self):
         return 'OAuth2 Storage Token: %s for %s' % (self.user.email,
@@ -427,4 +427,4 @@ class ChunkStorage(models.Model):
                               on_delete=models.CASCADE)
     storage = models.ForeignKey(OAuth2StorageToken, on_delete=models.CASCADE)
     # Provider-specific attribute storage, such as the chunk's file ID.
-    attrs = models.JSONField()
+    attrs = JSONField(null=True, blank=True)
