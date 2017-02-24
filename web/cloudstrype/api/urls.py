@@ -3,10 +3,18 @@ from django.conf.urls import (
     url, include
 )
 
-from api.views import router
+from rest_framework.urlpatterns import format_suffix_patterns
 
+from api.views import router, MeView
 
 urlpatterns = [
-    url(r'^', include(router.urls)),
-    url(r'^rest-auth/', include('rest_auth.urls'))
+    url(r'^v1/users/me', MeView.as_view()),
 ]
+
+urlpatterns = format_suffix_patterns(urlpatterns, allowed=['json', 'html'])
+
+urlpatterns += [
+    url(r'^v1/', include(router.urls)),
+    url(r'^rest-auth/', include('rest_auth.urls')),
+]
+

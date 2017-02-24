@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     'oauth2_provider',
     # Mainly for `reset_db` management command.
     'django_extensions',
+    'django_filters',
 
     # API.
     'rest_framework',
@@ -157,7 +158,13 @@ OAUTH2_PROVIDER = {
 }
 
 REST_FRAMEWORK = {
+    'DEFAULT_RENDERER_CLASSES': (
+        'rest_framework.renderers.BrowsableAPIRenderer',
+        'rest_framework.renderers.JSONRenderer',
+        'rest_framework.renderers.TemplateHTMLRenderer',
+    ),
     'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework.authentication.SessionAuthentication',
         'oauth2_provider.ext.rest_framework.OAuth2Authentication',
     ),
     'DEFAULT_PERMISSION_CLASSES': (

@@ -37,7 +37,7 @@ class OAuth2View(View):
         else:
             raise Http404()
 
-        redirect_uri = reverse('login_complete', args=[provider_name])
+        redirect_uri = reverse('main:login_complete', args=[provider_name])
         redirect_uri = request.build_absolute_uri(redirect_uri)
 
         provider = get_object_or_404(OAuth2Provider, provider=id)
