@@ -1,15 +1,16 @@
 from os.path import normpath, dirname
 from os.path import split as pathsplit
 
-from django.db import models
-from django.db.models import Max
-from django.db.models.query import QuerySet
 from django.contrib.auth.base_user import (
     AbstractBaseUser, BaseUserManager
 )
 from django.contrib.postgres.fields import (
     JSONField, ArrayField
 )
+from django.core.exceptions import ObjectDoesNotExist
+from django.db import models
+from django.db.models import Max
+from django.db.models.query import QuerySet
 from django.utils import timezone
 from hashids import Hashids
 
@@ -143,6 +144,25 @@ class User(AbstractBaseUser):
         "Is the user a member of staff?"
         return self.is_admin
 
+    def get_clients(self):
+        clients = []
+        for oauth_access in self.storage.all():
+            clients.append(oauth_access.get_client())
+        return clients
+
+    def get_option(self, name, default=None):
+        try:
+            return getattr(self.options, name)
+        except ObjectDoesNotExist:
+            return default
+
+
+class Option(models.Model):
+    user = models.OneToOneField(User, related_name='options',
+                                on_delete=models.CASCADE)
+    replicas = models.SmallIntegerField(null=True, blank=True)
+    attrs = JSONField()
+
 
 class OAuth2Provider(UidModelMixin, models.Model):
     """
@@ -249,8 +269,9 @@ class OAuth2StorageToken(UidModelMixin, models.Model):
         verbose_name = 'OAuth2 Storage Token'
         verbose_name_plural = 'OAuth2 Storage Tokens'
 
-    user = models.OneToOneField(User, on_delete=models.CASCADE)
-    token = models.ForeignKey(OAuth2AccessToken, on_delete=models.CASCADE)
+    user = models.ForeignKey(User, related_name='storage',
+                             on_delete=models.CASCADE)
+    token = models.OneToOneField(OAuth2AccessToken, on_delete=models.CASCADE)
     size = models.IntegerField(default=0)
     used = models.IntegerField(default=0)
     # Provider-specific attribute storage, such as chunk storage location
@@ -369,11 +390,8 @@ class FileQuerySet(UidQuerySet):
         path = kwargs.pop('path', None)
         if path:
             directory, kwargs['name'] = pathsplit(path)
-            try:
-                kwargs['directory'] = Directory.objects.get(
-                    path=directory, user=user)
-            except Directory.DoesNotExist:
-                raise Directory.DoesNotExist('Parent directory does not exist')
+            kwargs['directory'], _ = Directory.objects.get_or_create(
+                user=user, path=directory)
 
     def filter(self, *args, **kwargs):
         FileQuerySet._args(kwargs)
@@ -429,7 +447,7 @@ class File(UidModelMixin, models.Model):
         return fc
 
 
-class Chunk(models.Model):
+class Chunk(UidModelMixin, models.Model):
     """
     Chunk model.
 

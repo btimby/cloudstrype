@@ -29,9 +29,6 @@ class FileTestCase(TestCase):
         with self.assertRaises(ValueError):
             File.objects.create(path='/foo/bar')
 
-        with self.assertRaises(Directory.DoesNotExist):
-            File.objects.create(path='/foo/bar', user=user)
-
         dir1 = Directory.objects.create(path='/foo', user=user)
         File.objects.create(path='/foo/bar', user=user)
 

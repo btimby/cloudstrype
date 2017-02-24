@@ -8,6 +8,7 @@ django-filter
 oauthlib
 requests_oauthlib
 
+mock
 fabric
 psycopg2
 hashids

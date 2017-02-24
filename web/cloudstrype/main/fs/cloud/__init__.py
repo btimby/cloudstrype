@@ -105,12 +105,12 @@ class OAuth2APIClient(object):
     def download(self, chunk):
         assert isinstance(chunk, Chunk), 'must be chunk instance'
         r = self.request(self.DOWNLOAD_URL[0], self.DOWNLOAD_URL[1], chunk)
-        chunk.data = r.read()
+        return r.read()
 
-    def upload(self, chunk):
+    def upload(self, chunk, data):
         assert isinstance(chunk, Chunk), 'must be chunk instance'
         r = self.request(self.UPLOAD_URL[0], self.UPLOAD_URL[1], chunk,
-                         data=chunk.data)
+                         data=data)
         r.close()
 
     def delete(self, chunk):
@@ -132,22 +132,23 @@ class DropboxAPIClient(OAuth2APIClient):
     DELETE_URL = ('post', 'https://api.dropboxapi.com/2/files/delete')
 
     def request(self, method, url, chunk, headers={}, **kwargs):
-        headers['Dropbox-API-Arg'] = json.dumps({'path': '/%s' % chunk.id})
+        headers['Dropbox-API-Arg'] = json.dumps({'path': '/%s' % chunk.uid})
         return super().request(method, url, chunk, headers=headers, **kwargs)
 
-    def upload(self, chunk, **kwargs):
+    def upload(self, chunk, data, **kwargs):
         assert isinstance(chunk, Chunk), 'must be chunk instance'
         headers = {
             'Content-Type': 'application/octet-stream',
         }
         r = self.request(self.UPLOAD_URL[0], self.UPLOAD_URL[1], chunk,
-                         headers=headers, data=chunk.data)
+                         headers=headers, data=data)
         r.close()
 
-    def download(self, chunk, **kwargs):
+    def download(self, chunk, data, **kwargs):
         assert isinstance(chunk, Chunk), 'must be chunk instance'
-        r = self.request(self.DOWNLOAD_URL[0], self.DOWNLOAD_URL[1], chunk)
-        chunk.data = r.read()
+        r = self.request(self.DOWNLOAD_URL[0], self.DOWNLOAD_URL[1], chunk,
+                         **kwargs)
+        return r.read()
 
     def delete(self, chunk, **kwargs):
         assert isinstance(chunk, Chunk), 'must be chunk instance'
@@ -156,7 +157,7 @@ class DropboxAPIClient(OAuth2APIClient):
         }
         r = super().request(self.DELETE_URL[0], self.DELETE_URL[1], chunk,
                             headers=headers,
-                            data=json.dumps({'path': '/%s' % chunk.id}))
+                            data=json.dumps({'path': '/%s' % chunk.uid}))
         r.close()
 
 
@@ -183,7 +184,7 @@ class OnedriveAPIClient(OAuth2APIClient):
         ('delete', 'https://api.onedrive.com/v1.0/drive/root:/{path}')
 
     def request(self, method, url, chunk, headers={}, **kwargs):
-        url = url.format(path=chunk.id)
+        url = url.format(path=chunk.uid)
         return super().request(method, url, chunk, headers=headers, **kwargs)
 
 
@@ -207,10 +208,10 @@ class BoxAPIClient(OAuth2APIClient):
         url = url.format(file_id=chunk.clouds[self.id]['file_id'])
         return super().request(method, url, chunk, headers=headers, **kwargs)
 
-    def upload(self, chunk):
+    def upload(self, chunk, data, **kwargs):
         assert isinstance(chunk, Chunk), 'must be chunk instance'
         data = {
-            'attributes': json.dumps({'name': chunk.id, 'parent': {'id': 0}}),
+            'attributes': json.dumps({'name': chunk.uid, 'parent': {'id': 0}}),
             'file': BytesIO(chunk.data),
         }
         tries = 0
@@ -218,7 +219,7 @@ class BoxAPIClient(OAuth2APIClient):
             tries += 1
             try:
                 r = self.request(self.UPLOAD_URL[0], self.UPLOAD_URL[1], chunk,
-                                 data=data)
+                                 data=data, **kwargs)
                 break
             except HTTPError as e:
                 if tries < 3 and e.response.status == 409:
@@ -274,7 +275,7 @@ class SmartFileAPIClient(OAuth2APIClient):
     DELETE_URL = ('delete', 'https://app.smartfile.com/api/2/path/data/{path}')
 
     def request(self, method, url, chunk, headers={}, **kwargs):
-        url = url.format(path=chunk.id, dir='')
+        url = url.format(path=chunk.uid, dir='')
         return super().request(method, url, chunk, headers=headers, **kwargs)
 
 

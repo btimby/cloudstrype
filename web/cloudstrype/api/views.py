@@ -4,7 +4,7 @@ from rest_framework import (
 from main.models import (
     User, OAuth2Provider, OAuth2AccessToken
 )
-from main.fs import MulticloudManager
+from main.fs import MulticloudFilesystem
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -51,11 +51,8 @@ class CloudListView(generics.ListAPIView):
 class FileListView(views.APIView):
     permission_classes = [permissions.IsAuthenticated]
 
-    def get_manager(self, namespace):
-        tokens = OAuth2AccessToken.objects.filter(user=self.request.user)
-        tokens = [o for o in tokens if o.provider.is_storage()]
-        clouds = [o.get_client() for o in tokens]
-        return MulticloudManager(namespace, clouds)
+    def get_fs(self, namespace):
+        return MulticloudFilesystem(self.request.user)
 
     def get(self, request, path, format=None):
         return response.Response(['foo', 'bar'])
