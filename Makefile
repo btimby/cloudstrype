@@ -5,6 +5,11 @@ help:
 	@echo "Here are available targets:"
 	@egrep -o "^#: (.+)" [Mm]akefile | sed 's/#: /* /'
 
+#: deps - Install dependencies.
+.PHONY: deps
+deps:
+	pip install -r web/requirements.txt
+
 #: test - Runs tests.
 .PHONY: test
 test:

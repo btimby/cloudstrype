@@ -11,6 +11,7 @@ env:
 install:
   - pip install --timeout=30 -r web/requirements.txt
 before_script:
+  - make deps
   - make lint
   - psql -c 'create database cloudstrype' -U postgres
 script:
