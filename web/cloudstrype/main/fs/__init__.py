@@ -367,8 +367,6 @@ class MulticloudFilesystem(MulticloudBase):
 
     @transaction.atomic
     def copy(self, src, dst):
-        # TODO: simply clone the file or directory with a new parent. Files
-        # can share the same chunks! Directory copying is recursive.
         try:
             file = File.objects.get(path=src, user=self.user)
             return self._copy_file(file, dst)
