@@ -110,9 +110,6 @@ class OAuth2Provider(models.Model):
     provider = models.SmallIntegerField(null=False, choices=PROVIDERS.items())
     client_id = models.TextField(null=False)
     client_secret = models.TextField()
-    authorization_url = models.URLField(null=False, max_length=255)
-    access_token_url = models.URLField(null=False, max_length=255)
-    user_profile_url = models.URLField(null=False, max_length=255)
 
     @property
     def name(self):
@@ -147,6 +144,10 @@ class OAuth2AccessToken(models.Model):
     def __str__(self):
         return 'OAuth2 Access Token: %s for %s' % (self.user.email,
                                                    self.provider.name)
+
+    def get_client(self):
+        from main.fs.cloud import OAuth2APIClient
+        return OAuth2APIClient.get_client(self)
 
 
 class OAuth2LoginToken(models.Model):

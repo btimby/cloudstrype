@@ -33,11 +33,10 @@ class OAuth2Client(object):
             **kwargs)
 
     def authorization_url(self):
-        return self.oauthsession.authorization_url(
-            self.provider.authorization_url)
+        return self.oauthsession.authorization_url(self.AUTHORIZATION_URL)
 
     def fetch_token(self, request_uri):
-        token = self.oauthsession.fetch_token(self.provider.access_token_url,
+        token = self.oauthsession.fetch_token(self.ACCESS_TOKEN_URL,
             authorization_response=request_uri,
             client_secret=self.provider.client_secret)
         if 'expires_at' in token:
@@ -53,7 +52,7 @@ class OAuth2Client(object):
         )
 
     def get_profile(self):
-        profile = self.oauthsession.get(self.provider.user_profile_url).json()
+        profile = self.oauthsession.get(self.USER_PROFILE_URL).json()
 
         def _get(field_name):
             if isinstance(field_name, str):
@@ -72,6 +71,11 @@ class OAuth2Client(object):
 class DropboxClient(OAuth2Client):
     PROVIDER = OAuth2Provider.PROVIDER_DROPBOX
 
+    AUTHORIZATION_URL = 'https://www.dropbox.com/1/oauth2/authorize'
+    ACCESS_TOKEN_URL = 'https://api.dropbox.com/1/oauth2/token'
+    REFRESH_TOKEN_URL = None
+    USER_PROFILE_URL = 'https://api.dropbox.com/1/account/info'
+
 
 class OnedriveClient(OAuth2Client):
     SCOPES = [
@@ -83,6 +87,11 @@ class OnedriveClient(OAuth2Client):
         'email': ['emails', 'account'],
     }
 
+    AUTHORIZATION_URL = 'https://login.live.com/oauth20_authorize.srf'
+    ACCESS_TOKEN_URL = 'https://login.live.com/oauth20_token.srf'
+    REFRESH_TOKEN_URL = 'https://login.live.com/oauth20_token.srf'
+    USER_PROFILE_URL = 'https://apis.live.net/v5.0/me'
+
 
 class GDriveClient(OAuth2Client):
     SCOPES = [
@@ -90,9 +99,14 @@ class GDriveClient(OAuth2Client):
     ]
     PROVIDER = OAuth2Provider.PROVIDER_GDRIVE
 
+    AUTHORIZATION_URL = 'https://accounts.google.com/o/oauth2/v2/auth'
+    ACCESS_TOKEN_URL = 'https://www.googleapis.com/oauth2/v4/token'
+    REFRESH_TOKEN_URL = 'https://www.googleapis.com/oauth2/v4/token'
+    USER_PROFILE_URL = 'https://www.googleapis.com/oauth2/v1/userinfo'
+
     def authoriziation_url(self):
         return self.oauthsession.authorization_url(
-            self.provider.authorization_url, access_type='offline')
+            self.AUTHORIZATION_URL, access_type='offline')
 
 
 class BoxClient(OAuth2Client):
@@ -102,10 +116,25 @@ class BoxClient(OAuth2Client):
         'email': 'login',
     }
 
+    AUTHORIZATION_URL = 'https://account.box.com/api/oauth2/authorize'
+    ACCESS_TOKEN_URL = 'https://api.box.com/oauth2/token'
+    REFRESH_TOKEN_URL = 'https://api.box.com/oauth2/token'
+    USER_PROFILE_URL = 'https://api.box.com/2.0/users/me'
+
 
 class AmazonClient(OAuth2Client):
     PROVIDER = OAuth2Provider.PROVIDER_AMAZON
 
+    AUTHORIZATION_URL = ''
+    ACCESS_TOKEN_URL = ''
+    REFRESH_TOKEN_URL = ''
+    USER_PROFILE_URL = ''
+
 
 class SmartFileClient(OAuth2Client):
     PROVIDER = OAuth2Provider.PROVIDER_SMARTFILE
+
+    AUTHORIZATION_URL = ''
+    ACCESS_TOKEN_URL = ''
+    REFRESH_TOKEN_URL = ''
+    USER_PROFILE_URL = ''

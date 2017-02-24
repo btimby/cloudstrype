@@ -6,9 +6,11 @@ import random
 from io import BytesIO
 from hashlib import md5
 
-from main.fs.async.errors import (
+from main.fs.errors import (
     FileNotFoundError, DirectoryNotFoundError
 )
+from main.fs.cloud import OAuth2APIClient
+from main.fs.metadata.redis import RedisMetastore
 
 
 # Default 32K chunk size.
@@ -76,8 +78,8 @@ class MulticloudBase(object):
         assert isinstance(clouds, collections.Iterable), \
             'clouds must be iterable'
         for cloud in clouds:
-            assert isinstance(cloud, BaseProvider), \
-                'clouds must derive from BaseProvider'
+            assert isinstance(cloud, OAuth2APIClient), \
+                'clouds must derive from OAuth2APIClient'
         self.clouds = clouds
 
     def get_cloud(self, id):
@@ -267,10 +269,13 @@ class MulticloudWriter(MulticloudBase, FileLikeBase):
 
 
 class MulticloudManager(MulticloudBase):
-    def __init__(self, clouds, meta, chunk_size=CHUNK_SIZE, replicas=REPLICAS):
+    def __init__(self, clouds, meta=None, chunk_size=CHUNK_SIZE,
+                 replicas=REPLICAS):
         super().__init__(clouds)
         assert len(clouds) >= replicas, \
             'not enough clouds (%s) for %s replicas' % (len(clouds), replicas)
+        if meta is None:
+            meta = RedisMetastore()
         self.meta = meta
         self.chunk_size = chunk_size
         self.replicas = replicas
@@ -335,5 +340,8 @@ class MulticloudManager(MulticloudBase):
         """
         self.meta.put_dir(path)
 
+    def move(self, src, dst):
+        raise NotImplementedError()
 
-from main.fs.async.cloud.base import BaseProvider
+    def copy(self, src, dst):
+        raise NotImplementedError()

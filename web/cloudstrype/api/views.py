@@ -19,7 +19,7 @@ class UserSerializer(serializers.ModelSerializer):
 class MeView(generics.RetrieveAPIView):
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = UserSerializer
-    template_name = 'main/me.html'
+    template_name = 'api/me.html'
 
     def get_object(self):
         return self.request.user
