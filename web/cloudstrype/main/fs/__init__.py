@@ -3,13 +3,17 @@ import random
 import logging
 
 from io import BytesIO
+from os.path import join as pathjoin
 from hashlib import md5
 
 from django.conf import settings
 from django.db import transaction
 
 from main.models import (
-    Directory, File, Chunk, ChunkStorage
+    Directory, File, Chunk, ChunkStorage, DirectoryQuerySet
+)
+from main.fs.errors import (
+    DirectoryNotFoundError, FileNotFoundError, PathNotFoundError
 )
 
 
@@ -244,9 +248,6 @@ class MulticloudFilesystem(MulticloudBase):
         self.user = user
         self.chunk_size = chunk_size
         self.replicas = user.get_option('replicas', 1)
-        assert len(self.clouds) >= self.replicas, \
-            'not enough clouds (%s) for %s replicas' % (len(self.clouds),
-                                                        self.replicas)
 
     def download(self, path):
         """
@@ -267,6 +268,10 @@ class MulticloudFilesystem(MulticloudBase):
         to multiple cloud providers. Stores chunk information into the
         Metastore backend.
         """
+        assert len(self.clouds) >= self.replicas, \
+            'not enough clouds (%s) for %s replicas' % (len(self.clouds),
+                                                        self.replicas)
+
         file = File.objects.create(path=path, user=self.user)
         with MulticloudWriter(self.user, self.clouds, file,
                               chunk_size=self.chunk_size,
@@ -299,11 +304,71 @@ class MulticloudFilesystem(MulticloudBase):
     def rmdir(self, path):
         Directory.objects.get(path=path, user=self.user).delete()
 
-    def move(self, src, dst):
-        # TODO: simply modify the parent of a file or directory.
-        raise NotImplementedError()
+    def _move_file(self, file, dst):
+        try:
+            file.dir = Directory.objects.get(path=dst, user=self.user)
+        except Directory.DoesNotExist:
+            raise DirectoryNotFoundError(dst)
+        file.save()
+        return file
 
+    def _move_dir(self, dir, dst):
+        try:
+            dir.parent = Directory.objects.get(path=dst, user=self.user)
+        except Directory.DoesNotExist:
+            raise DirectoryNotFoundError(dst)
+        kwargs = {
+            'path': pathjoin(dst, dir.name),
+        }
+        DirectoryQuerySet._args(kwargs)
+        for name, value in kwargs.items():
+            setattr(dir, name, value)
+        dir.save()
+        return dir
+
+    @transaction.atomic
+    def move(self, src, dst):
+        try:
+            file = File.objects.get(path=src, user=self.user)
+            return self._move_file(file, dst)
+        except File.DoesNotExist:
+            pass
+        try:
+            dir = Directory.objects.get(path=src, user=self.user)
+            return self._move_dir(dir, dst)
+        except Directory.DoesNotExist:
+            pass
+        raise PathNotFoundError('src')
+
+    @transaction.atomic
+    def _copy_file(self, file, dst):
+        pass
+
+    @transaction.atomic
+    def _copy_dir(self, dir, dst):
+        pass
+
+    @transaction.atomic
     def copy(self, src, dst):
         # TODO: simply clone the file or directory with a new parent. Files
-        # can share the same chunks!
-        raise NotImplementedError()
+        # can share the same chunks! Directory copying is recursive.
+        try:
+            file = File.objects.get(path=src, user=self.user)
+            return self._copy_file(file, dst)
+        except File.DoesNotExist:
+            pass
+        try:
+            dir = Directory.objects.get(path=src, user=self.user)
+            return self._copy_dir(dir, dst)
+        except Directory.DoesNotExist:
+            pass
+        raise PathNotFoundError('src')
+
+    def isdir(self, path):
+        return Directory.objects.filter(path=path, user=self.user).exists()
+
+    def isfile(self, path):
+        return File.objects.filter(path=path, user=self.user).exists()
+
+    def exists(self, path):
+        return self.isdir(path) or self.isfile(path)

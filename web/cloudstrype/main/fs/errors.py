@@ -2,11 +2,15 @@ class BaseError(Exception):
     pass
 
 
-class FileNotFoundError(BaseError):
+class PathNotFoundError(BaseError):
     pass
 
 
-class DirectoryNotFoundError(BaseError):
+class FileNotFoundError(PathNotFoundError):
+    pass
+
+
+class DirectoryNotFoundError(PathNotFoundError):
     pass
 
 

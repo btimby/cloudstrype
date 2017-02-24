@@ -60,3 +60,13 @@ class FilesystemTestCase(TestCase):
                 self.assertEqual(TEST_FILE, f.read())
 
             fs.delete('/foo')
+
+    def test_move(self):
+        user = User.objects.create(email='foo@bar.org')
+        fs = MulticloudFilesystem(user)
+        dir1 = fs.mkdir('/foo')
+        dir2 = fs.mkdir('/bar')
+        fs.move('/foo', '/bar')
+
+        self.assertTrue(fs.exists('/bar/foo'))
+        self.assertTrue(fs.isdir('/bar/foo'))
