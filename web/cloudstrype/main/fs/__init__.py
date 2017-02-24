@@ -1,13 +1,13 @@
 import collections
-import json
 import random
 
 from io import BytesIO
-from hashlib import md5
+# from hashlib import md5
 
-from main.models import (
-    User, Directory, File, Chunk, FileChunk, ChunkStorage, OAuth2StorageToken
-)
+from main.models import Chunk
+# from main.models import (
+#     User, Directory, File, Chunk, FileChunk, ChunkStorage, OAuth2StorageToken
+# )
 
 from main.fs.errors import (
     FileNotFoundError, DirectoryNotFoundError
@@ -29,39 +29,6 @@ def chunker(f, chunk_size=CHUNK_SIZE):
             return
         assert len(chunk) <= chunk_size, 'chunk exceeds %s' % chunk_size
         yield chunk
-
-
-class Chunk(object):
-    """
-    Class that represents a chunk and the clouds it resides within.
-
-    Clouds is a list of cloud ids that contain this chunk. If the chunk does
-    not have data, it is acceptable to pass None. However, an id must be
-    provided in that case.
-
-    A chunk can be instantiated using from_string() which reverses the string
-    created by __str__(). In this case, the chunk is dataless.
-    """
-
-    def __init__(self, clouds, data, id=None):
-        assert isinstance(clouds, dict), 'clouds must be a dictionary'
-        self.clouds = clouds
-        if id is None:
-            id = md5(data).hexdigest()
-        self.id = id
-        self.data = data
-
-    def __str__(self):
-        data = {
-            'id': self.id,
-            'clouds': self.clouds,
-        }
-        return json.dumps(data)
-
-    @classmethod
-    def from_string(self, s):
-        data = json.loads(s)
-        return Chunk(data['clouds'], None, id=data['id'])
 
 
 class MulticloudBase(object):
@@ -208,11 +175,8 @@ class MulticloudWriter(MulticloudBase, FileLikeBase):
 
         clouds = _select_clouds()
         chunk = Chunk({cloud.id: None for cloud in clouds}, chunk)
-        futures = [
+        for cloud in clouds:
             cloud.upload(chunk)
-            for cloud in clouds
-        ]
-        execute_futures(futures)
         self.meta.put_file(self.path, chunks=[chunk])
 
     def write(self, data):
@@ -302,31 +266,28 @@ class MulticloudManager(MulticloudBase):
         the chunks from cloud providers and Metastore backend.
         """
         try:
-            chunks = self.meta.get_file(path)
+            chunks = self.meta.get_file(file)
         except FileNotFoundError as e:
             # Not a file, maybe a directory?
             try:
-                return self.meta.del_dir(path)
+                return self.meta.del_dir(file)
             except DirectoryNotFoundError:
                 # Neither, raise original...
                 raise e
         # File was found, now delete it.
-        futures = []
         for chunk in chunks:
-            for cloud_id in chunk.clouds:
-                cloud = self.get_cloud(cloud_id)
-                futures.append(cloud.delete(chunk_id))
-        execute_futures(futures)
-        self.meta.del_file(path)
+            for cloud in chunk.clouds:
+                cloud.delete(chunk)
+        self.meta.del_file(file)
 
-    def create(self, path):
+    def create(self, file):
         """
         Create a directory.
 
         Adds a directory to the Metastore backend. Creates parents if
         necessary.
         """
-        self.meta.put_dir(path)
+        self.meta.put_dir(file)
 
     def move(self, src, dst):
         raise NotImplementedError()
