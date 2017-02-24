@@ -1,10 +1,5 @@
-from django.shortcuts import render
-
 from rest_framework import (
-    routers, serializers, permissions, views, viewsets, generics, response
-)
-from oauth2_provider.ext.rest_framework import (
-    TokenHasReadWriteScope, TokenHasScope
+    serializers, permissions, views, generics, response
 )
 from main.models import (
     User, OAuth2Provider, OAuth2AccessToken
@@ -63,7 +58,6 @@ class FileListView(views.APIView):
         return MulticloudManager(namespace, clouds)
 
     def get(self, request, path, format=None):
-        manager = self.get_manager('')
         return response.Response(['foo', 'bar'])
 
     def post(self, request, path, format=None):

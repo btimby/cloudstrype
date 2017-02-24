@@ -1,6 +1,7 @@
-from os.path import normpath
+from os.path import normpath, dirname
 
 from django.db import models
+from django.db.models import Max
 from django.db.models.query import QuerySet
 from django.contrib.auth.base_user import (
     AbstractBaseUser, BaseUserManager
@@ -218,7 +219,7 @@ class OAuth2AccessToken(UidModelMixin, models.Model):
 
     def get_client(self):
         from main.fs.cloud import OAuth2APIClient
-        return OAuth2APIClient.get_client(self)
+        return OAuth2APIClient.get_client(self.provider, oauth_access=self)
 
 
 class OAuth2LoginToken(UidModelMixin, models.Model):
@@ -235,7 +236,7 @@ class OAuth2LoginToken(UidModelMixin, models.Model):
 
     def __str__(self):
         return 'OAuth2 Login Token: %s for %s' % (self.user.email,
-                                                   self.token.provider.name)
+                                                  self.token.provider.name)
 
 
 class OAuth2StorageToken(UidModelMixin, models.Model):
@@ -259,6 +260,9 @@ class OAuth2StorageToken(UidModelMixin, models.Model):
         return 'OAuth2 Storage Token: %s for %s' % (self.user.email,
                                                     self.token.provider.name)
 
+    def get_client(self):
+        return self.token.get_client()
+
 
 class DirectoryQuerySet(UidQuerySet):
     """
@@ -274,7 +278,7 @@ class DirectoryQuerySet(UidQuerySet):
         path = kwargs.pop('path', None)
         if path:
             parents = normpath(path).split('/')
-            name = parent.pop()
+            name = parents.pop()
             kwargs['name'] = name.lower()
             kwargs['display_name'] = name
             kwargs['display_path'] = path

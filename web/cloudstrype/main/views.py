@@ -5,7 +5,7 @@ import logging
 from django.contrib.auth import login, logout
 from django.db import transaction, IntegrityError
 from django.shortcuts import (
-    render, redirect, get_object_or_404
+    redirect, get_object_or_404
 )
 from django.http import HttpResponseBadRequest, Http404
 from django.views import View
