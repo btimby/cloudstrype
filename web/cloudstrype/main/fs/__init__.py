@@ -254,11 +254,14 @@ class MulticloudWriter(MulticloudBase, FileLikeBase):
 
 
 class MulticloudFilesystem(MulticloudBase):
-    def __init__(self, user, chunk_size=settings.CLOUDSTRYPE_CHUNK_SIZE):
+    def __init__(self, user, chunk_size=settings.CLOUDSTRYPE_CHUNK_SIZE,
+                 replicas=None):
         super().__init__(user.get_clients())
         self.user = user
         self.chunk_size = chunk_size
-        self.replicas = user.get_option('replicas', 1)
+        if replicas is None:
+            replicas = user.get_option('replicas', 1)
+        self.replicas = replicas
 
     def download(self, path):
         """

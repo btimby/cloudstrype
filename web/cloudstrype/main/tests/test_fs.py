@@ -1,4 +1,5 @@
 import mock
+import shutil
 
 from io import BytesIO
 
@@ -35,18 +36,19 @@ class MockClients(object):
     def __init__(self, user):
         self.user = user
 
-    def get_clients(self):
         provider = OAuth2Provider.objects.create(
             provider=OAuth2Provider.PROVIDER_DROPBOX)
 
-        clients = []
+        self.clients = []
         for i in range(4):
             access_token = OAuth2AccessToken.objects.create(
                 provider=provider, user=self.user)
             storage_token = OAuth2StorageToken.objects.create(
                 user=self.user, token=access_token)
-            clients.append(MockClient(storage_token))
-        return clients
+            self.clients.append(MockClient(storage_token))
+
+    def get_clients(self):
+        return self.clients
 
 
 class FilesystemTestCase(TestCase):
@@ -63,6 +65,30 @@ class FilesystemTestCase(TestCase):
 
             with fs.download('/foo') as f:
                 self.assertEqual(TEST_FILE, f.read())
+
+            with self.assertRaises(FileNotFoundError):
+                fs.download('/barfoo')
+
+            fs.delete('/foo')
+
+    def test_fs_replicas(self):
+        user = User.objects.create(email='foo@bar.org')
+        mock_clients = MockClients(user)
+        with mock.patch('main.models.User.get_clients',
+                        mock_clients.get_clients):
+            fs = MulticloudFilesystem(user, chunk_size=3, replicas=2)
+
+            with BytesIO(TEST_FILE) as f:
+                file = fs.upload('/foo', f)
+
+            mock_clients.clients[2].data.clear()
+
+            self.assertEqual('/foo', file.path)
+
+            with BytesIO() as o:
+                with fs.download('/foo') as f:
+                    shutil.copyfileobj(f, o)
+                    self.assertEqual(TEST_FILE, o.getvalue())
 
             with self.assertRaises(FileNotFoundError):
                 fs.download('/barfoo')
