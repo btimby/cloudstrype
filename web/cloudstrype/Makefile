@@ -8,7 +8,7 @@ test:
 
 .PHONY: coveralls
 coveralls:
-	coveralls
+	coveralls -v
 
 .PHONY: ci-test
 ci-test:

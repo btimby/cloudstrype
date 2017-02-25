@@ -1,4 +1,6 @@
 language: python
+env:
+  - DATABASE_URL=postgresql://postgres@localhost/cloudstrype
 services:
   - postgresql
 addons:
