@@ -13,5 +13,6 @@ fabric
 psycopg2
 hashids
 coverage
+coveralls
 flake8
 
