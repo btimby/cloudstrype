@@ -13,6 +13,14 @@ https://docs.djangoproject.com/en/1.10/ref/settings/
 # flake8: noqa
 
 import os
+import environ
+
+from os.path import join as pathjoin
+
+
+ROOT = environ.Path(__file__) - 4
+ENV = environ.Env()
+environ.Env.read_env(pathjoin(str(ROOT), '.env'))
 
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -22,10 +30,10 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # See https://docs.djangoproject.com/en/1.10/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'mot!1w1il6f2ub@89*3j&+)c(z9yvcfj!_le57ttqptr%_g4db'
+SECRET_KEY = ENV('SECRET_KEY', default='mot!1w1il6f2ub@89*3j&+)c(z9yvcfj!_le57ttqptr%_g4db')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = ENV('DEBUG', default=True)
 
 ALLOWED_HOSTS = []
 
@@ -88,6 +96,7 @@ TEMPLATES = [
                 'django.contrib.messages.context_processors.messages',
             ],
         },
+        'TEMPLATE_DEBUG': DEBUG,
     },
 ]
 
@@ -98,13 +107,7 @@ WSGI_APPLICATION = 'cloudstrype.wsgi.application'
 # https://docs.djangoproject.com/en/1.10/ref/settings/#databases
 
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql_psycopg2',
-        'NAME': 'cloudstrype',
-        'USER': 'cloudstrype',
-        'PASSWORD': 'password',
-        'HOST': 'localhost',
-    }
+    'default': ENV.db(default='postgresql://cloudstrype:password@localhost/cloudstrype')
 }
 
 
@@ -211,6 +214,10 @@ LOGGING = {
 }
 
 CLOUDSTRYPE_CHUNK_SIZE = 32 * 1024
+
+EMAIL_BACKEND = ENV('EMAIL_BACKEND', default='django.core.mail.backends.console.EmailBackend')
+MAILJET_API_KEY = ENV('MAILJET_API_KEY', default='')
+MAILJET_API_SECRET = ENV('MAILJET_API_SECRET', default='')
 
 os.environ['OAUTHLIB_RELAX_TOKEN_SCOPE'] = '1'
 
