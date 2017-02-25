@@ -1,7 +1,9 @@
 language: python
 env:
-  - DJANGO=1.10
-  - DATABASE_URL=postgresql://postgres@localhost/cloudstrype
+  global:
+    - DATABASE_URL=postgresql://postgres@localhost/cloudstrype
+  matrix:
+    - DJANGO=1.10
 services:
   - postgresql
 addons:
