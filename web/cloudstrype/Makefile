@@ -12,7 +12,7 @@ coveralls:
 
 .PHONY: ci-test
 ci-test:
-	coverage run --include=cloudstrype/* manage.py test
+	coverage run manage.py test
 
 .PHONY: run
 run:
