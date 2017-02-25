@@ -372,6 +372,7 @@ class Directory(UidModelMixin, models.Model):
     display_name = models.CharField(max_length=45)
     display_path = models.TextField()
     parents = ArrayField(models.CharField(max_length=45))
+    tags = ArrayField(models.CharField(max_length=36), null=True)
     attrs = JSONField(null=True, blank=True)
 
     objects = DirectoryManager()
@@ -431,6 +432,7 @@ class File(UidModelMixin, models.Model):
     md5 = models.CharField(max_length=32)
     sha1 = models.CharField(max_length=40)
     created = models.DateTimeField(null=False, default=timezone.now)
+    tags = ArrayField(models.CharField(max_length=36), null=True)
     attrs = JSONField(null=True, blank=True)
 
     objects = FileManager()
