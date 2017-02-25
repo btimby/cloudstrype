@@ -1,5 +1,6 @@
 language: python
 env:
+  - DJANGO=1.10
   - DATABASE_URL=postgresql://postgres@localhost/cloudstrype
 services:
   - postgresql
@@ -8,8 +9,6 @@ addons:
 python:
   - "3.5"
   - "3.6"
-env:
-  - DJANGO=1.10
 install:
   - pip install --timeout=30 -r web/requirements.txt
 before_script:
