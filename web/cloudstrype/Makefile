@@ -4,7 +4,7 @@ lint:
 
 .PHONY: test
 test:
-	coverage run --include=./* manage.py test
+	coverage run manage.py test
 
 .PHONY: coveralls
 coveralls:

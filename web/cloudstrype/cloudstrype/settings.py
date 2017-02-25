@@ -180,21 +180,10 @@ REST_FRAMEWORK = {
     ),
 }
 
-STATIC_ROOT = '/var/www/cloudstrype.io/static'
-
-AUTHENTICATION_BACKENDS = (
-    # Needed to login by username in Django admin, regardless of `allauth`
-    'django.contrib.auth.backends.ModelBackend',
-)
-
-ACCOUNT_USER_MODEL_USERNAME_FIELD = None
-ACCOUNT_EMAIL_REQUIRED = True
-ACCOUNT_USERNAME_REQUIRED = False
-ACCOUNT_AUTHENTICATION_METHOD = 'email'
+STATIC_ROOT = ENV('STATIC_ROOT', default='.static')
 
 SITE_ID = 1
 
-EMAIL_BACKEND = 'django.core.mail.backends.dummy.EmailBackend'
 LOGIN_REDIRECT_URL = '/'
 
 LOGGING = {
@@ -213,13 +202,18 @@ LOGGING = {
     },
 }
 
+# File chunk size, can be modified at any time, will only affect newly written
+# chunks.
 CLOUDSTRYPE_CHUNK_SIZE = 32 * 1024
 
+# In production, we will probably send mail through a 3rd party.
 EMAIL_BACKEND = ENV('EMAIL_BACKEND', default='django.core.mail.backends.console.EmailBackend')
 MAILJET_API_KEY = ENV('MAILJET_API_KEY', default='')
 MAILJET_API_SECRET = ENV('MAILJET_API_SECRET', default='')
 
+# Onedrive strips out a scope before redirecting back to us.
 os.environ['OAUTHLIB_RELAX_TOKEN_SCOPE'] = '1'
 
 if DEBUG:
+    # For testing locally, don't require SSL.
     os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
