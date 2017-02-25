@@ -4,6 +4,8 @@ django-oauth-toolkit
 django-rest-auth
 django-extensions
 django-filter
+django-mailjet
+django-environ
 
 oauthlib
 requests_oauthlib
