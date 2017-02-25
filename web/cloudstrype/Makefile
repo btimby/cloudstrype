@@ -4,7 +4,7 @@ lint:
 
 .PHONY: test
 test:
-	coverage run --include=cloudstrype/* manage.py test
+	coverage run --include=./* manage.py test
 
 .PHONY: ci-test
 ci-test:
