@@ -294,6 +294,7 @@ class MulticloudFilesystem(MulticloudBase):
                 out.write(chunk)
         return file
 
+    @transaction.atomic
     def delete(self, path):
         """
         Delete from multiple clouds.
@@ -323,6 +324,7 @@ class MulticloudFilesystem(MulticloudBase):
     def rmdir(self, path):
         Directory.objects.get(path=path, user=self.user).delete()
 
+    @transaction.atomic
     def _move_file(self, file, dst):
         if self.isdir(dst):
             raise DirectoryConflictError(dst)
@@ -334,6 +336,7 @@ class MulticloudFilesystem(MulticloudBase):
         file.save()
         return file
 
+    @transaction.atomic
     def _move_dir(self, dir, dst):
         if self.isfile(dst):
             raise DirectoryConflictError(dst)

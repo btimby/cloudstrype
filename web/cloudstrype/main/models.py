@@ -477,6 +477,8 @@ class FileChunk(models.Model):
     ordering is provided by `serial`.
     """
 
+    # TODO: Make a model or QuerySet that always orders by serial.
+
     class Meta:
         unique_together = ('file', 'serial')
 

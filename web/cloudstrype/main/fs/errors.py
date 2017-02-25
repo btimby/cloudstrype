@@ -13,7 +13,7 @@ class PathNotFoundError(PathError):
         if len(args) == 2:
             msg, path = args
         else:
-            msg, path = 'path "%s" does not exist', path
+            msg, path = 'path "%s" does not exist', args
         super().__init__(msg, path)
 
 
