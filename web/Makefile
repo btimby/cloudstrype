@@ -2,6 +2,10 @@
 test:
 	$(MAKE) -C cloudstrype test
 
+.PHONY: coveralls
+coveralls:
+	$(MAKE) -C cloudstrype coveralls
+
 .PHONY: travis-ci
 ci-test:
 	$(MAKE) -C cloudstrype ci-test

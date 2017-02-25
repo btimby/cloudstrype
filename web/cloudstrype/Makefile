@@ -6,6 +6,10 @@ lint:
 test:
 	coverage run --include=./* manage.py test
 
+.PHONY: coveralls
+coveralls:
+	coveralls
+
 .PHONY: ci-test
 ci-test:
 	DJANGO_SETTINGS_MODULE="cloudstrype.settings_travis_ci" coverage run --include=cloudstrype/* manage.py test

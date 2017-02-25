@@ -15,6 +15,10 @@ deps:
 test:
 	$(MAKE) -C web test
 
+#: coveralls - Submit coverage stats to coveralls
+coveralls:
+	$(MAKE) -C web coveralls
+
 #: ci-test - Runs CI in Travis.
 .PHONY: ci-test
 ci-test:
