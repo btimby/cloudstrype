@@ -9,8 +9,12 @@ class PathError(BaseError):
 
 
 class PathNotFoundError(PathError):
-    def __init__(self, path):
-        super().__init__('path "%s" does not exist', path)
+    def __init__(self, *args):
+        if len(args) == 2:
+            msg, path = args
+        else:
+            msg, path = 'path "%s" does not exist', path
+        super().__init__(msg, path)
 
 
 class FileNotFoundError(PathNotFoundError):

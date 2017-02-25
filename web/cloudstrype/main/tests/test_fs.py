@@ -6,7 +6,7 @@ from django.test import TestCase
 
 from main.fs import MulticloudFilesystem
 from main.fs.errors import (
-    DirectoryConflictError, FileConflictError
+    FileNotFoundError, DirectoryConflictError, FileConflictError
 )
 from main.models import (
     User, OAuth2Provider, OAuth2AccessToken, OAuth2StorageToken
@@ -63,6 +63,9 @@ class FilesystemTestCase(TestCase):
 
             with fs.download('/foo') as f:
                 self.assertEqual(TEST_FILE, f.read())
+
+            with self.assertRaises(FileNotFoundError):
+                fs.download('/barfoo')
 
             fs.delete('/foo')
 
