@@ -35,8 +35,7 @@ SECRET_KEY = ENV('SECRET_KEY', default='mot!1w1il6f2ub@89*3j&+)c(z9yvcfj!_le57tt
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = ENV('DEBUG', default=True)
 
-# TODO: get into .env
-ALLOWED_HOSTS = ['cloudstrype.io', 'www.cloudstrype.io', 'cloudstrype.com', 'www.cloudstrype.com']
+ALLOWED_HOSTS = ENV('ALLOWED_HOSTS', default='localhost').split(',')
 
 
 # Application definition

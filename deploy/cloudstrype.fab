@@ -1,0 +1,16 @@
+# Notes:
+#
+# - supervisord runs uwsgi, nginx does wsgi_pass to uwsgi.
+# - user cloudstrype, deploy with it's keys.
+#
+# Paths:
+#
+# root=/usr/share/nginx/cloudstrype
+#
+# Steps:
+#
+# - git pull master - or copy from Travis CI?
+# - copy .env file from local machine to root
+# - migrate
+# - copy config files from deploy/ for nginx, supervisord, uwsgi
+# - restart supervisord (or ask it to reload uwsgi)

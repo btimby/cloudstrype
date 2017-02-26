@@ -97,7 +97,7 @@ class MulticloudReader(MulticloudBase, FileLikeBase):
 
     def _read_chunk(self):
         try:
-            chunk = self.chunks.pop(0)
+            chunk = self.chunks.pop()
         except IndexError:
             raise EOFError('out of chunks')
         for storage in chunk.storage.all():
@@ -316,7 +316,11 @@ class MulticloudFilesystem(MulticloudBase):
         for chunk in Chunk.objects.filter(filechunk__file=file):
             for storage in chunk.storage.all():
                 cloud = self.get_cloud(storage.storage)
-                cloud.delete(chunk)
+                try:
+                    cloud.delete(chunk)
+                except Exception as e:
+                    LOGGER.exception(e)
+                    continue
         file.delete()
 
     def mkdir(self, path):
