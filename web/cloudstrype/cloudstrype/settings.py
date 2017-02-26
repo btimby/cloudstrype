@@ -35,7 +35,8 @@ SECRET_KEY = ENV('SECRET_KEY', default='mot!1w1il6f2ub@89*3j&+)c(z9yvcfj!_le57tt
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = ENV('DEBUG', default=True)
 
-ALLOWED_HOSTS = []
+# TODO: get into .env
+ALLOWED_HOSTS = ['cloudstrype.io', 'www.cloudstrype.io', 'cloudstrype.com', 'www.cloudstrype.com']
 
 
 # Application definition
@@ -96,7 +97,6 @@ TEMPLATES = [
                 'django.contrib.messages.context_processors.messages',
             ],
         },
-        'TEMPLATE_DEBUG': DEBUG,
     },
 ]
 
