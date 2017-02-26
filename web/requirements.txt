@@ -10,8 +10,8 @@ django-environ
 oauthlib
 requests_oauthlib
 
+uwsgi
 mock
-fabric
 psycopg2
 hashids
 coverage
