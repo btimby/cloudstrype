@@ -10,7 +10,6 @@ addons:
   postgresql: "9.4"
 python:
   - "3.5"
-  - "3.6"
 install:
   - pip install --timeout=30 -r web/requirements.txt
 before_script:
