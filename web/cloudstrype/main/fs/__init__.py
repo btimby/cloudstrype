@@ -4,6 +4,7 @@ import logging
 
 from io import BytesIO
 from os.path import join as pathjoin
+from os.path import split as pathsplit
 from hashlib import md5, sha1
 
 from django.conf import settings
@@ -329,15 +330,19 @@ class MulticloudFilesystem(MulticloudBase):
         return Directory.objects.create(path=path, user=self.user)
 
     def rmdir(self, path):
-        Directory.objects.get(path=path, user=self.user).delete()
+        try:
+            Directory.objects.get(path=path, user=self.user).delete()
+        except Directory.DoesNotExist:
+            raise DirectoryNotFoundError(path)
 
     @transaction.atomic
     def _move_file(self, file, dst):
         if self.isdir(dst):
             raise DirectoryConflictError(dst)
+        dst, file.name = pathsplit(dst)
         try:
-            file.directory, _ = \
-                Directory.objects.get_or_create(path=dst, user=self.user)
+            file.directory = \
+                Directory.objects.get(path=dst, user=self.user)
         except Directory.DoesNotExist:
             raise DirectoryNotFoundError(dst)
         file.save()
@@ -348,8 +353,8 @@ class MulticloudFilesystem(MulticloudBase):
         if self.isfile(dst):
             raise DirectoryConflictError(dst)
         try:
-            dir.parent, _ = \
-                Directory.objects.get_or_create(path=dst, user=self.user)
+            dir.parent = \
+                Directory.objects.get(path=dst, user=self.user)
         except Directory.DoesNotExist:
             raise DirectoryNotFoundError(dst)
         kwargs = {
@@ -373,36 +378,38 @@ class MulticloudFilesystem(MulticloudBase):
             return self._move_dir(dir, dst)
         except Directory.DoesNotExist:
             pass
-        raise PathNotFoundError('src')
+        raise PathNotFoundError(src)
 
     @transaction.atomic
-    def _copy_file(self, src, dst):
-        dstpath = pathjoin(dst, src.name)
-        if self.isdir(dstpath):
-            raise DirectoryConflictError(dstpath)
-        # Clone file first.
-        file = \
-            File.objects.create(md5=src.md5, path=dstpath, user=self.user)
-        # Then clone it's chunks:
-        for chunk in Chunk.objects.filter(filechunk__file=file).order_by(
-                                          'filechunk__serial'):
-            file.add_chunk(chunk)
-        return file
-
-    @transaction.atomic
-    def _copy_dir(self, src, dst):
+    def _copy_file(self, srcfile, dst):
+        if self.isdir(dst):
+            dst = pathjoin(dst, srcfile.name)
         if self.isfile(dst):
             raise FileConflictError(dst)
+        # Clone file first.
+        dstfile = \
+            File.objects.create(md5=srcfile.md5, path=dst, user=self.user)
+        # Then clone it's chunks:
+        for chunk in Chunk.objects.filter(filechunk__file=srcfile).order_by(
+                                          'filechunk__serial'):
+            dstfile.add_chunk(chunk)
+        return dstfile
+
+    @transaction.atomic
+    def _copy_dir(self, srcdir, dst):
+        if self.isfile(dst):
+            raise FileConflictError(dst)
+        if self.isdir(dst):
+            dst = pathjoin(dst, srcdir.name)
         # Clone dir first.
-        dir = Directory.objects.create(path=pathjoin(dst, src.name),
-                                       user=self.user)
+        dstdir = Directory.objects.create(path=dst, user=self.user)
         # Then copy children recursively.
-        dirs, files = self.listdir(dir.path, dir=dir)
+        dirs, files = self.listdir(srcdir.path, dir=srcdir)
         for subdir in dirs:
-            self._copy_dir(subdir, dir.path)
+            self._copy_dir(subdir, dstdir.path)
         for subfile in files:
-            self._copy_file(subfile, dir.path)
-        return dir
+            self._copy_file(subfile, dstdir.path)
+        return dstdir
 
     @transaction.atomic
     def copy(self, src, dst):

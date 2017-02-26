@@ -7,7 +7,8 @@ from django.test import TestCase
 
 from main.fs import MulticloudFilesystem
 from main.fs.errors import (
-    FileNotFoundError, DirectoryConflictError, FileConflictError
+    PathNotFoundError, FileNotFoundError, DirectoryNotFoundError,
+    DirectoryConflictError, FileConflictError
 )
 from main.models import (
     User, OAuth2Provider, OAuth2AccessToken, OAuth2StorageToken
@@ -71,6 +72,9 @@ class FilesystemTestCase(TestCase):
 
             fs.delete('/foo')
 
+            with self.assertRaises(FileNotFoundError):
+                fs.delete('/foo')
+
     def test_fs_replicas(self):
         user = User.objects.create(email='foo@bar.org')
         mock_clients = MockClients(user)
@@ -100,6 +104,9 @@ class FilesystemTestCase(TestCase):
         fs = MulticloudFilesystem(user)
         dir = fs.mkdir('/foo')
         self.assertEqual('/foo', dir.path)
+        fs.rmdir('/foo')
+        with self.assertRaises(DirectoryNotFoundError):
+            fs.rmdir('/foo')
 
     def test_move(self):
         user = User.objects.create(email='foo@bar.org')
@@ -124,9 +131,8 @@ class FilesystemTestCase(TestCase):
             # Dst directories are created automatically.
             fs.move('/foo', '/bar')
 
-            self.assertTrue(fs.exists('/bar/foo'))
-            self.assertTrue(fs.isdir('/bar'))
-            self.assertTrue(fs.isfile('/bar/foo'))
+            self.assertTrue(fs.exists('/bar'))
+            self.assertTrue(fs.isfile('/bar'))
             self.assertFalse(fs.exists('/foo'))
 
     def test_move_fail(self):
@@ -134,6 +140,9 @@ class FilesystemTestCase(TestCase):
         with mock.patch('main.models.User.get_clients',
                         MockClients(user).get_clients):
             fs = MulticloudFilesystem(user)
+
+            with self.assertRaises(PathNotFoundError):
+                fs.move('/foo', '/bar')
 
             with BytesIO(TEST_FILE) as f:
                 fs.upload('/foo', f)
@@ -145,6 +154,9 @@ class FilesystemTestCase(TestCase):
 
             with self.assertRaises(DirectoryConflictError):
                 fs.move('/foo', '/bar')
+
+            with self.assertRaises(DirectoryConflictError):
+                fs.move('/bar', '/foo')
 
     def test_copy(self):
         user = User.objects.create(email='foo@bar.org')
@@ -170,10 +182,11 @@ class FilesystemTestCase(TestCase):
             # Dst directories are created automatically.
             fs.copy('/foo', '/bar')
 
-            self.assertTrue(fs.exists('/bar/foo'))
-            self.assertTrue(fs.isdir('/bar'))
-            self.assertTrue(fs.isfile('/bar/foo'))
-            self.assertTrue(fs.exists('/foo'))
+            self.assertTrue(fs.isfile('/bar'))
+            self.assertTrue(fs.isfile('/foo'))
+
+            with self.assertRaises(FileConflictError):
+                fs.copy('/foo', '/bar')
 
     def test_copy_fail(self):
         user = User.objects.create(email='foo@bar.org')
@@ -188,6 +201,3 @@ class FilesystemTestCase(TestCase):
                 fs.mkdir('/foo')
 
             fs.mkdir('/bar/foo')
-
-            with self.assertRaises(DirectoryConflictError):
-                fs.copy('/foo', '/bar')

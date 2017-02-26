@@ -35,8 +35,3 @@ class DirectoryConflictError(PathError):
 class FileConflictError(PathError):
     def __init__(self, path):
         super().__init__('path "%s" exists as file', path)
-
-
-class DirectoryNotEmptyError(PathError):
-    def __init__(self, path):
-        super().__init__('directory "%s" not empty', path)
