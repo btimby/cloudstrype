@@ -109,7 +109,8 @@ class OAuth2APIClient(object):
         Perform HTTP request for OAuth.
         """
         headers['Authorization'] = 'Bearer %s' % self.oauthsession.access_token
-        return self.oauthsession.request(method, url, headers=headers, **kwargs)
+        return self.oauthsession.request(
+            method, url, headers=headers, **kwargs)
 
     def download(self, chunk, **kwargs):
         assert isinstance(chunk, Chunk), 'must be chunk instance'
@@ -205,7 +206,8 @@ class BoxAPIClient(OAuth2APIClient):
     DELETE_URL = ('delete', 'https://api.box.com/2.0/files/{file_id}')
 
     def request(self, method, url, chunk, headers={}, **kwargs):
-        chunk_storage = chunk.storage.get(storage__token__provider__provider=self.PROVIDER)
+        chunk_storage = chunk.storage.get(
+            storage__token__provider__provider=self.PROVIDER)
         url = url.format(file_id=chunk_storage.attrs['file_id'])
         return super().request(method, url, chunk, headers=headers, **kwargs)
 
@@ -259,7 +261,8 @@ class GDriveAPIClient(OAuth2APIClient):
         ('DELETE', 'https://www.googleapis.com/drive/v2/files/{file_id}')
 
     def request(self, method, url, chunk, headers={}, **kwargs):
-        chunk_storage = chunk.storage.get(storage__token__provider__provider=self.PROVIDER)
+        chunk_storage = chunk.storage.get(
+            storage__token__provider__provider=self.PROVIDER)
         url = url.format(file_id=chunk_storage.attrs['file_id'])
         return super().request(method, url, chunk, headers=headers, **kwargs)
 
