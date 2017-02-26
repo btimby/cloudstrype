@@ -59,6 +59,9 @@ class DropboxAPIClientTestCase(OAuth2APIClientTestCase):
 
         self.client.delete(self.chunk)
 
+    def test_authorization_url(self):
+        self.assertTrue(self.client.authorization_url())
+
 
 class OnedriveAPIClientTestCase(OAuth2APIClientTestCase):
     PROVIDER = OAuth2Provider.PROVIDER_ONEDRIVE
@@ -91,6 +94,9 @@ class OnedriveAPIClientTestCase(OAuth2APIClientTestCase):
             body=TEST_CHUNK_BODY)
 
         self.client.delete(self.chunk)
+
+    def test_authorization_url(self):
+        self.assertTrue(self.client.authorization_url())
 
 
 class BoxAPIClientTestCase(OAuth2APIClientTestCase):
@@ -137,6 +143,9 @@ class BoxAPIClientTestCase(OAuth2APIClientTestCase):
 
         self.client.delete(self.chunk)
 
+    def test_authorization_url(self):
+        self.assertTrue(self.client.authorization_url())
+
 
 class GDriveAPIClientTestCase(OAuth2APIClientTestCase):
     PROVIDER = OAuth2Provider.PROVIDER_GDRIVE
@@ -181,3 +190,6 @@ class GDriveAPIClientTestCase(OAuth2APIClientTestCase):
             body=TEST_CHUNK_BODY)
 
         self.client.delete(self.chunk)
+
+    def test_authorization_url(self):
+        self.assertTrue(self.client.authorization_url())

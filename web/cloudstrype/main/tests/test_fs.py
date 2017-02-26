@@ -108,6 +108,17 @@ class FilesystemTestCase(TestCase):
         with self.assertRaises(DirectoryNotFoundError):
             fs.rmdir('/foo')
 
+    def test_listdir(self):
+        user = User.objects.create(email='foo@bar.org')
+        fs = MulticloudFilesystem(user)
+        fs.mkdir('/foo')
+        fs.mkdir('/foo/bar')
+        fs.mkdir('/foo/baz')
+
+        listing = fs.listdir('/foo')
+        self.assertEqual(2, len(listing.dirs))
+        self.assertEqual(0, len(listing.files))
+
     def test_move(self):
         user = User.objects.create(email='foo@bar.org')
         fs = MulticloudFilesystem(user)
@@ -184,6 +195,11 @@ class FilesystemTestCase(TestCase):
 
             self.assertTrue(fs.isfile('/bar'))
             self.assertTrue(fs.isfile('/foo'))
+
+            with BytesIO() as o:
+                with fs.download('/bar') as f:
+                    shutil.copyfileobj(f, o)
+                    self.assertEqual(TEST_FILE, o.getvalue())
 
             with self.assertRaises(FileConflictError):
                 fs.copy('/foo', '/bar')

@@ -38,6 +38,10 @@ def chunker(f, chunk_size=CHUNK_SIZE):
         yield chunk
 
 
+DirectoryListing = collections.namedtuple('DirectoryListing',
+                                          ('dirs', 'files'))
+
+
 class MulticloudBase(object):
     """
     Base class for interacting with multiple clouds.
@@ -397,10 +401,10 @@ class MulticloudFilesystem(MulticloudBase):
 
     @transaction.atomic
     def _copy_dir(self, srcdir, dst):
-        if self.isfile(dst):
-            raise FileConflictError(dst)
         if self.isdir(dst):
             dst = pathjoin(dst, srcdir.name)
+        if self.isfile(dst):
+            raise FileConflictError(dst)
         # Clone dir first.
         dstdir = Directory.objects.create(path=dst, user=self.user)
         # Then copy children recursively.
@@ -431,7 +435,7 @@ class MulticloudFilesystem(MulticloudBase):
                 dir = Directory.objects.get(path=path, user=self.user)
             except Directory.DoesNotExist:
                 raise DirectoryNotFoundError(path)
-        return (
+        return DirectoryListing(
             Directory.objects.filter(parent=dir, user=self.user),
             File.objects.filter(directory=dir, user=self.user),
         )
