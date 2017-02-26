@@ -1,2 +1,3 @@
-[report]
+[run]
 include=./*
+omit=manage.py

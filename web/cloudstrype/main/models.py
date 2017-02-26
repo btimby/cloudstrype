@@ -1,4 +1,5 @@
 from os.path import normpath, dirname
+from os.path import join as pathjoin
 from os.path import split as pathsplit
 
 from django.contrib.auth.base_user import (
@@ -86,14 +87,12 @@ class UserManager(BaseUserManager):
         user.save(using=self._db)
         return user
 
-    def create_superuser(self, email, password):
+    def create_superuser(self, email, password, **kwargs):
         """
         Creates and saves a superuser with the given email and password.
         """
-        user = self.create_user(email, password=password)
-        user.is_admin = True
-        user.save(using=self._db)
-        return user
+        return self.create_user(email, password=password, is_admin=True,
+                                **kwargs)
 
 
 class User(AbstractBaseUser):
@@ -120,6 +119,8 @@ class User(AbstractBaseUser):
     def save(self, *args, **kwargs):
         if self.full_name:
             self.first_name = self.full_name.split(' ')[0]
+        if not self.uid:
+            self.uid = self.email
         return super().save(*args, **kwargs)
 
     def get_full_name(self):
@@ -129,7 +130,7 @@ class User(AbstractBaseUser):
         return self.first_name
 
     def __str__(self):
-        return self.email
+        return '<User: %s "%s">' % (self.email, self.full_name)
 
     def has_perm(self, perm, obj=None):
         "Does the user have a specific permission?"
@@ -377,6 +378,9 @@ class Directory(UidModelMixin, models.Model):
 
     objects = DirectoryManager()
 
+    def __str__(self):
+        return '<Directory: %s>' % self.path
+
     @property
     def path(self):
         return self.display_path
@@ -437,9 +441,12 @@ class File(UidModelMixin, models.Model):
 
     objects = FileManager()
 
+    def __str__(self):
+        return '<File: %s>' % self.path
+
     @property
     def path(self):
-        return '{}/{}'.format(self.directory.path, self.name)
+        return pathjoin(self.directory.path, self.name)
 
     def add_chunk(self, chunk):
         "Adds a chunk to a file, taking care to set the serial number."
@@ -469,6 +476,8 @@ class FileChunk(models.Model):
     A file consists of a series of chunks. This model ties chunks to a file,
     ordering is provided by `serial`.
     """
+
+    # TODO: Make a model or QuerySet that always orders by serial.
 
     class Meta:
         unique_together = ('file', 'serial')

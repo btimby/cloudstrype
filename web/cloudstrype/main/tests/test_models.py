@@ -1,3 +1,5 @@
+from django.db import transaction
+from django.db.utils import IntegrityError
 from django.test import TestCase
 
 
@@ -56,3 +58,18 @@ class FileTestCase(TestCase):
             self.assertEqual(i + 1, chunk.serial)
 
         file.delete()
+
+
+class UserTestCase(TestCase):
+    def test_create(self):
+        user = User.objects.create_user('foo@bar.org', full_name='Foo Bar')
+        self.assertEqual('Foo', user.first_name)
+
+        # http://stackoverflow.com/questions/21458387/transactionmanagementerror-you-cant-execute-queries-until-the-end-of-the-atom  # noqa
+        with transaction.atomic():
+            with self.assertRaises(IntegrityError):
+                User.objects.create_user('foo@bar.org')
+
+        superuser = User.objects.create_superuser('bar@foo.org', 'foobar',
+                                                  full_name='Bar Foo')
+        self.assertEqual('Bar', superuser.first_name)

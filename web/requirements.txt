@@ -17,4 +17,4 @@ hashids
 coverage
 coveralls
 flake8
-
+python-uptimerobot

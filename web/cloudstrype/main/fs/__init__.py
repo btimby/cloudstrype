@@ -13,7 +13,8 @@ from main.models import (
     Directory, File, Chunk, ChunkStorage, DirectoryQuerySet
 )
 from main.fs.errors import (
-    DirectoryNotFoundError, FileNotFoundError, PathNotFoundError
+    DirectoryNotFoundError, FileNotFoundError, PathNotFoundError,
+    DirectoryConflictError, FileConflictError
 )
 
 
@@ -293,6 +294,7 @@ class MulticloudFilesystem(MulticloudBase):
                 out.write(chunk)
         return file
 
+    @transaction.atomic
     def delete(self, path):
         """
         Delete from multiple clouds.
@@ -315,22 +317,32 @@ class MulticloudFilesystem(MulticloudBase):
         file.delete()
 
     def mkdir(self, path):
+        if self.isfile(path):
+            raise FileConflictError(path)
         return Directory.objects.create(path=path, user=self.user)
 
     def rmdir(self, path):
         Directory.objects.get(path=path, user=self.user).delete()
 
+    @transaction.atomic
     def _move_file(self, file, dst):
+        if self.isdir(dst):
+            raise DirectoryConflictError(dst)
         try:
-            file.dir = Directory.objects.get(path=dst, user=self.user)
+            file.directory, _ = \
+                Directory.objects.get_or_create(path=dst, user=self.user)
         except Directory.DoesNotExist:
             raise DirectoryNotFoundError(dst)
         file.save()
         return file
 
+    @transaction.atomic
     def _move_dir(self, dir, dst):
+        if self.isfile(dst):
+            raise DirectoryConflictError(dst)
         try:
-            dir.parent = Directory.objects.get(path=dst, user=self.user)
+            dir.parent, _ = \
+                Directory.objects.get_or_create(path=dst, user=self.user)
         except Directory.DoesNotExist:
             raise DirectoryNotFoundError(dst)
         kwargs = {
@@ -358,10 +370,12 @@ class MulticloudFilesystem(MulticloudBase):
 
     @transaction.atomic
     def _copy_file(self, src, dst):
+        dstpath = pathjoin(dst, src.name)
+        if self.isdir(dstpath):
+            raise DirectoryConflictError(dstpath)
         # Clone file first.
         file = \
-            File.objects.create(md5=src.md5, path=pathjoin(dst, src.name),
-                                user=self.user)
+            File.objects.create(md5=src.md5, path=dstpath, user=self.user)
         # Then clone it's chunks:
         for chunk in Chunk.objects.filter(filechunk__file=file).order_by(
                                           'filechunk__serial'):
@@ -370,6 +384,8 @@ class MulticloudFilesystem(MulticloudBase):
 
     @transaction.atomic
     def _copy_dir(self, src, dst):
+        if self.isfile(dst):
+            raise FileConflictError(dst)
         # Clone dir first.
         dir = Directory.objects.create(path=pathjoin(dst, src.name),
                                        user=self.user)

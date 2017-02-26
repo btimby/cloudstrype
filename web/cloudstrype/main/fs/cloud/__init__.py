@@ -25,6 +25,15 @@ class OAuth2APIClient(object):
     }
     PROVIDER = None
 
+    AUTHORIZATION_URL = None
+    ACCESS_TOKEN_URL = None
+    REFRESH_TOKEN_URL = None
+    USER_PROFILE_URL = None
+
+    DOWNLOAD_URL = None
+    UPLOAD_URL = None
+    DELETE_URL = None
+
     @classmethod
     def get_client(cls, provider, oauth_access=None, **kwargs):
         provider_cls = cls
@@ -102,20 +111,22 @@ class OAuth2APIClient(object):
         headers['Authorization'] = 'Bearer %s' % self.token
         return super().request(method, url, headers=headers, **kwargs)
 
-    def download(self, chunk):
+    def download(self, chunk, data, **kwargs):
         assert isinstance(chunk, Chunk), 'must be chunk instance'
-        r = self.request(self.DOWNLOAD_URL[0], self.DOWNLOAD_URL[1], chunk)
+        r = self.request(self.DOWNLOAD_URL[0], self.DOWNLOAD_URL[1], chunk,
+                         **kwargs)
         return r.read()
 
-    def upload(self, chunk, data):
+    def upload(self, chunk, data, **kwargs):
         assert isinstance(chunk, Chunk), 'must be chunk instance'
         r = self.request(self.UPLOAD_URL[0], self.UPLOAD_URL[1], chunk,
-                         data=data)
+                         data=data, **kwargs)
         r.close()
 
-    def delete(self, chunk):
+    def delete(self, chunk, **kwargs):
         assert isinstance(chunk, Chunk), 'must be chunk instance'
-        r = self.request(self.DELETE_URL[0], self.DELETE_URL[1], chunk)
+        r = self.request(self.DELETE_URL[0], self.DELETE_URL[1], chunk,
+                         **kwargs)
         r.close()
 
 
@@ -140,25 +151,14 @@ class DropboxAPIClient(OAuth2APIClient):
         headers = {
             'Content-Type': 'application/octet-stream',
         }
-        r = self.request(self.UPLOAD_URL[0], self.UPLOAD_URL[1], chunk,
-                         headers=headers, data=data)
-        r.close()
-
-    def download(self, chunk, data, **kwargs):
-        assert isinstance(chunk, Chunk), 'must be chunk instance'
-        r = self.request(self.DOWNLOAD_URL[0], self.DOWNLOAD_URL[1], chunk,
-                         **kwargs)
-        return r.read()
+        self.upload(chunk, headers=headers, data=data, **kwargs)
 
     def delete(self, chunk, **kwargs):
-        assert isinstance(chunk, Chunk), 'must be chunk instance'
         headers = {
             'Content-Type': 'application/json'
         }
-        r = super().request(self.DELETE_URL[0], self.DELETE_URL[1], chunk,
-                            headers=headers,
-                            data=json.dumps({'path': '/%s' % chunk.uid}))
-        r.close()
+        super().delete(chunk, headers=headers,
+                       data=json.dumps({'path': '/%s' % chunk.uid}), **kwargs)
 
 
 class OnedriveAPIClient(OAuth2APIClient):
