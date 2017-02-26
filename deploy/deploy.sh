@@ -2,7 +2,7 @@
 
 SSHUSER="deploy"
 SSHHOST="cloudstrype.io"
-SSHARGS="-i .ssh/deploy-id_rsa"
+SSHARGS="-i .ssh/deploy-id_rsa -oStrictHostKeyChecking=no"
 WEBROOT="/usr/share/nginx/cloudstrype/"
 
 CONFIG_NGINX="/etc/nginx/conf.d/cloudstrype.conf"
