@@ -147,12 +147,10 @@ class DropboxAPIClient(OAuth2APIClient):
         headers['Dropbox-API-Arg'] = json.dumps({'path': '/%s' % chunk.uid})
         return super().request(method, url, chunk, headers=headers, **kwargs)
 
-    def upload(self, chunk, data, **kwargs):
+    def upload(self, chunk, data, headers={}, **kwargs):
         assert isinstance(chunk, Chunk), 'must be chunk instance'
-        headers = {
-            'Content-Type': 'application/octet-stream',
-        }
-        self.upload(chunk, headers=headers, data=data, **kwargs)
+        headers['Content-Type'] = 'application/octet-stream'
+        return super().upload(chunk, headers=headers, data=data, **kwargs)
 
     def delete(self, chunk, **kwargs):
         headers = {
@@ -215,7 +213,7 @@ class BoxAPIClient(OAuth2APIClient):
         assert isinstance(chunk, Chunk), 'must be chunk instance'
         data = {
             'attributes': json.dumps({'name': chunk.uid, 'parent': {'id': 0}}),
-            'file': BytesIO(chunk.data),
+            'file': BytesIO(bytes(data, 'utf-8')),
         }
         tries = 0
         while True:
@@ -237,8 +235,13 @@ class BoxAPIClient(OAuth2APIClient):
                     continue
                 raise
         attrs = r.json()
-        chunk.clouds[self.id] = {'file_id': attrs['entries'][0]['id']}
-        r.close()
+        # Store the file_id provided by Box into the attribute store of
+        # ChunkStorage
+        chunk_storage = chunk.storage.get(
+            storage__token__provider__provider=self.PROVIDER)
+        chunk_storage.attrs['file_id'] = attrs['entries'][0]['id']
+        chunk_storage.save()
+        return r
 
 
 class GDriveAPIClient(OAuth2APIClient):

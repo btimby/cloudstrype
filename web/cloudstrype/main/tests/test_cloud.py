@@ -12,7 +12,7 @@ from main.fs.cloud import (
     DropboxAPIClient, OnedriveAPIClient, BoxAPIClient, GDriveAPIClient
 )
 
-TEST_CHUNK_BODY = 'Fake chunk body'
+TEST_CHUNK_BODY = 'Test chunk body'
 
 
 class OAuth2APIClientTestCase(TestCase):
@@ -43,6 +43,22 @@ class DropboxAPIClientTestCase(OAuth2APIClientTestCase):
 
         self.assertEqual(TEST_CHUNK_BODY, self.client.download(self.chunk))
 
+    @httpretty.activate
+    def test_upload(self):
+        httpretty.register_uri(
+            httpretty.POST, DropboxAPIClient.UPLOAD_URL[1],
+            body='')
+
+        self.client.upload(self.chunk, TEST_CHUNK_BODY)
+
+    @httpretty.activate
+    def test_delete(self):
+        httpretty.register_uri(
+            httpretty.POST, DropboxAPIClient.DELETE_URL[1],
+            body=TEST_CHUNK_BODY)
+
+        self.client.delete(self.chunk)
+
 
 class OnedriveAPIClientTestCase(OAuth2APIClientTestCase):
     PROVIDER = OAuth2Provider.PROVIDER_ONEDRIVE
@@ -57,6 +73,24 @@ class OnedriveAPIClientTestCase(OAuth2APIClientTestCase):
             body=TEST_CHUNK_BODY)
 
         self.assertEqual(TEST_CHUNK_BODY, self.client.download(self.chunk))
+
+    @httpretty.activate
+    def test_upload(self):
+        httpretty.register_uri(
+            httpretty.PUT,
+            OnedriveAPIClient.DOWNLOAD_URL[1].format(path=self.chunk.uid),
+            body='')
+
+        self.client.upload(self.chunk, TEST_CHUNK_BODY)
+
+    @httpretty.activate
+    def test_delete(self):
+        httpretty.register_uri(
+            httpretty.DELETE,
+            OnedriveAPIClient.DELETE_URL[1].format(path=self.chunk.uid),
+            body=TEST_CHUNK_BODY)
+
+        self.client.delete(self.chunk)
 
 
 class BoxAPIClientTestCase(OAuth2APIClientTestCase):
@@ -81,6 +115,28 @@ class BoxAPIClientTestCase(OAuth2APIClientTestCase):
 
         self.assertEqual(TEST_CHUNK_BODY, self.client.download(self.chunk))
 
+    @httpretty.activate
+    def test_upload(self):
+        # Box requires the file id in the URL, the file_id is assigned by Box,
+        # and therefore is stored in ChunkStorage.attrs.
+        httpretty.register_uri(
+            httpretty.POST,
+            BoxAPIClient.UPLOAD_URL[1].format(file_id='abc123'),
+            body='{"entries": [{"id":1}]}', content_type='application/json')
+
+        self.client.upload(self.chunk, TEST_CHUNK_BODY)
+
+    @httpretty.activate
+    def test_delete(self):
+        # Box requires the file id in the URL, the file_id is assigned by Box,
+        # and therefore is stored in ChunkStorage.attrs.
+        httpretty.register_uri(
+            httpretty.DELETE,
+            BoxAPIClient.DELETE_URL[1].format(file_id='abc123'),
+            body=TEST_CHUNK_BODY)
+
+        self.client.delete(self.chunk)
+
 
 class GDriveAPIClientTestCase(OAuth2APIClientTestCase):
     PROVIDER = OAuth2Provider.PROVIDER_GDRIVE
@@ -103,3 +159,25 @@ class GDriveAPIClientTestCase(OAuth2APIClientTestCase):
             body=TEST_CHUNK_BODY)
 
         self.assertEqual(TEST_CHUNK_BODY, self.client.download(self.chunk))
+
+    @httpretty.activate
+    def test_upload(self):
+        # GDrive requires the file id in the URL, the file_id is assigned by
+        # Google, and therefore is stored in ChunkStorage.attrs.
+        httpretty.register_uri(
+            httpretty.POST,
+            GDriveAPIClient.UPLOAD_URL[1].format(file_id='abc123'),
+            body='')
+
+        self.client.upload(self.chunk, TEST_CHUNK_BODY)
+
+    @httpretty.activate
+    def test_delete(self):
+        # GDrive requires the file id in the URL, the file_id is assigned by
+        # Google, and therefore is stored in ChunkStorage.attrs.
+        httpretty.register_uri(
+            httpretty.DELETE,
+            GDriveAPIClient.DELETE_URL[1].format(file_id='abc123'),
+            body=TEST_CHUNK_BODY)
+
+        self.client.delete(self.chunk)
