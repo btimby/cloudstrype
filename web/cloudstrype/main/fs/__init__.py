@@ -22,7 +22,7 @@ from main.fs.errors import (
 CHUNK_SIZE = 32 * 1024
 REPLICAS = 2
 LOGGER = logging.getLogger(__name__)
-LOGGER.addHandler(logging.StreamHandler())
+LOGGER.addHandler(logging.NullHandler())
 
 
 def chunker(f, chunk_size=CHUNK_SIZE):

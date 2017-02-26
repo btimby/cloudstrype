@@ -17,4 +17,5 @@ hashids
 coverage
 coveralls
 flake8
+httpretty
 python-uptimerobot

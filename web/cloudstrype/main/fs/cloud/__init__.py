@@ -45,7 +45,7 @@ class OAuth2APIClient(object):
                 break
         else:
             raise ValueError('Invalid provider')
-        return provider_cls(provider, oauth_access=None, **kwargs)
+        return provider_cls(provider, oauth_access=oauth_access, **kwargs)
 
     def __init__(self, provider, oauth_access=None, redirect_uri=None,
                  **kwargs):
@@ -108,14 +108,14 @@ class OAuth2APIClient(object):
         """
         Perform HTTP request for OAuth.
         """
-        headers['Authorization'] = 'Bearer %s' % self.token
-        return super().request(method, url, headers=headers, **kwargs)
+        headers['Authorization'] = 'Bearer %s' % self.oauthsession.access_token
+        return self.oauthsession.request(method, url, headers=headers, **kwargs)
 
-    def download(self, chunk, data, **kwargs):
+    def download(self, chunk, **kwargs):
         assert isinstance(chunk, Chunk), 'must be chunk instance'
         r = self.request(self.DOWNLOAD_URL[0], self.DOWNLOAD_URL[1], chunk,
                          **kwargs)
-        return r.read()
+        return r.text
 
     def upload(self, chunk, data, **kwargs):
         assert isinstance(chunk, Chunk), 'must be chunk instance'
@@ -205,7 +205,8 @@ class BoxAPIClient(OAuth2APIClient):
     DELETE_URL = ('delete', 'https://api.box.com/2.0/files/{file_id}')
 
     def request(self, method, url, chunk, headers={}, **kwargs):
-        url = url.format(file_id=chunk.clouds[self.id]['file_id'])
+        chunk_storage = chunk.storage.get(storage__token__provider__provider=self.PROVIDER)
+        url = url.format(file_id=chunk_storage.attrs['file_id'])
         return super().request(method, url, chunk, headers=headers, **kwargs)
 
     def upload(self, chunk, data, **kwargs):
@@ -256,6 +257,11 @@ class GDriveAPIClient(OAuth2APIClient):
         ('POST', 'https://www.googleapis.com/upload/drive/v2/files')
     DELETE_URL = \
         ('DELETE', 'https://www.googleapis.com/drive/v2/files/{file_id}')
+
+    def request(self, method, url, chunk, headers={}, **kwargs):
+        chunk_storage = chunk.storage.get(storage__token__provider__provider=self.PROVIDER)
+        url = url.format(file_id=chunk_storage.attrs['file_id'])
+        return super().request(method, url, chunk, headers=headers, **kwargs)
 
     def authoriziation_url(self):
         return self.oauthsession.authorization_url(
