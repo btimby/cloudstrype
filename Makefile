@@ -50,7 +50,7 @@ deploy:
 
 #: deploy.tar.gz - Creates tarball with secret contents.
 deploy.tar.gz: deploy/.ssh/deploy-id_rsa deploy/.ssh/deploy-id_rsa.pub
-	tar czf deploy.tar.gz deploy/.ssh
+	tar czf deploy.tar.gz deploy/.ssh deploy/.env
 
 #: deploy.tar.gz.enc - Encrypts secret tarball for Travis deploy.
 deploy.tar.gz.enc: deploy.tar.gz
