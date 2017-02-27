@@ -11,11 +11,6 @@ oauthlib
 requests_oauthlib
 
 uwsgi
-mock
 psycopg2
 hashids
-coverage
-coveralls
-flake8
-httpretty
 python-uptimerobot

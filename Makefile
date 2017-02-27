@@ -8,7 +8,7 @@ help:
 #: deps - Install dependencies.
 .PHONY: deps
 deps:
-	pip install -r web/requirements.txt
+	pip install -r web/requirements/dev.txt
 
 #: test - Runs tests.
 .PHONY: test
@@ -33,10 +33,6 @@ lint:
 .PHONY: venv
 venv:
 	python3 -m virtualenv venv
-
-#: deps - Installs dependencies.
-deps: web/requirements.txt
-	pip install -r web/requirements.txt
 
 #: run - Runs the application
 .PHONY: run
