@@ -5,7 +5,7 @@ SSHHOST="cloudstrype.io"
 SSHARGS="-i .ssh/deploy-id_rsa -oStrictHostKeyChecking=no"
 WEBROOT="/usr/share/nginx/cloudstrype/"
 
-SSHCMD="$SSHCMD"
+SSHCMD="ssh ${SSHARGS} ${SSHUSER}@${SSHHOST}"
 
 CONFIG_NGINX="/etc/nginx/conf.d/cloudstrype.conf"
 CONFIG_SUPERVISORD="/etc/supervisord.d/cloudstrype.ini"
@@ -13,7 +13,7 @@ CONFIG_SUPERVISORD="/etc/supervisord.d/cloudstrype.ini"
 # This script is run from inside deploy/, so we have to use .. to refer to
 # local paths.
 
-rsync -avr --del -e "ssh ${SSHARGS}" --exclude-from=rsync.excludes ../ ${SSHUSER}@${SSHHOST}:${WEBROOT}
+rsync -avr -e "ssh ${SSHARGS}" --exclude-from=rsync.excludes ../ ${SSHUSER}@${SSHHOST}:${WEBROOT}
 
 # Build virtualenv
 ${SSHCMD} "cd ${WEBROOT} && virtualenv-3.5 venv && venv/bin/pip install -r web/requirements/base.txt"
