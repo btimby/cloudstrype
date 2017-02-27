@@ -11,7 +11,7 @@ addons:
 python:
   - "3.5"
 install:
-  - pip install --timeout=30 -r web/requirements.txt
+  - make deps
 before_script:
   - make deps
   - make lint
