@@ -1,22 +1,5 @@
 #!/bin/bash -xe
 
-# Count how many times deploy.sh has been executed. Travis executes deploy
-# after each build in the matrix. .travis.yml defines DEPLOY_LIMIT, which
-# should be equal to the number of times deploy will be executed. Therefore
-# when we reach that number, we should deploy, but until then, just keep
-# counting.
-
-source deploy/deploy_count.sh
-DEPLOY_COUNT=$((DEPLOY_COUNT+1))
-echo "DEPLOY_COUNT=$DEPLOY_COUNT" > deploy/deploy_count.sh
-
-if [ "$DEPLOY_COUNT" -lt "$DEPLOY_LIMIT" ]; then
-    echo "Build number $DEPLOY_COUNT, waiting for $DEPLOY_LIMIT... exiting."
-    exit 0;
-fi
-
-# OK, this is our last build/deploy, so go ahead and perform the deploy.
-
 SSHUSER="deploy"
 SSHHOST="cloudstrype.io"
 SSHARGS="-i .ssh/deploy-id_rsa -oStrictHostKeyChecking=no"
