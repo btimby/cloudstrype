@@ -16,7 +16,7 @@ CONFIG_SUPERVISORD="/etc/supervisord.d/cloudstrype.ini"
 rsync -avr --del -e "ssh ${SSHARGS}" --exclude-from=rsync.excludes ../ ${SSHUSER}@${SSHHOST}:${WEBROOT}
 
 # Build virtualenv
-${SSHCMD} "cd ${WEBROOT} && python3 -m virtualenv venv && venv/bin/pip3 install -r web/requirements.txt"
+${SSHCMD} "cd ${WEBROOT} && virtualenv-3.5 venv && venv/bin/pip3 install -r web/requirements.txt"
 
 # Migrate database
 ${SSHCMD} "cd ${WEBROOT}/web/cloudstrype && ../../venv/bin/python3 manage.py migrate"
