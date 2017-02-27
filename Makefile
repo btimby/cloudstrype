@@ -51,5 +51,8 @@ deploy.tar.gz: deploy/.ssh/deploy-id_rsa deploy/.ssh/deploy-id_rsa.pub
 #: deploy.tar.gz.enc - Encrypts secret tarball for Travis deploy.
 deploy.tar.gz.enc: deploy.tar.gz
 	travis encrypt-file -f deploy.tar.gz
-	rm -f deploy.tar.gz
 
+#: clean - clean up build files.
+.PHONY: clean
+clean:
+	rm -rf deploy.tar.gz venv
