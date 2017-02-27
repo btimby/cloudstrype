@@ -21,7 +21,7 @@ from os.path import join as pathjoin
 ROOT = environ.Path(__file__) - 4
 ENV = environ.Env()
 environ.Env.read_env(pathjoin(str(ROOT), '.env'))
-environ.Env.read_env(pathjoin(str(ROOT), '.version-env'))
+environ.Env.read_env(pathjoin(str(ROOT), '.env-version'))
 
 CLOUDSTRYPE_VERSION = ENV('CLOUDSTRYPE_VERSION', default='dev')
 
