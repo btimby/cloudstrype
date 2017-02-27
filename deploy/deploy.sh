@@ -19,21 +19,20 @@ rsync -avr --del -e "ssh ${SSHARGS}" --exclude-from=rsync.excludes ../ ${SSHUSER
 ${SSHCMD} "cd ${WEBROOT} && virtualenv-3.5 venv && venv/bin/pip install -r web/requirements/base.txt"
 
 # Configure Django.
-${SSHCMD} "sudo cp ${WEBROOT}/deploy/.env ."
+${SSHCMD} "cp ${WEBROOT}deploy/.env .env"
 
 # Migrate database
-${SSHCMD} "cd ${WEBROOT}/web/cloudstrype && ../../venv/bin/python manage.py migrate"
+${SSHCMD} "cd ${WEBROOT}web/cloudstrype && ../../venv/bin/python manage.py migrate"
 
 # Collect static files
-${SSHCMD} "cd ${WEBROOT}/web/cloudstrype && ../../venv/bin/python manage.py collectstatic --noinput"
+${SSHCMD} "cd ${WEBROOT}web/cloudstrype && ../../venv/bin/python manage.py collectstatic --noinput"
 
 # Configure services.
-${SSHCMD} "sudo cp ${WEBROOT}/deploy/nginx-cloudstrype.conf ${CONFIG_NGINX}"
-${SSHCMD} "sudo cp ${WEBROOT}/deploy/supervisord-uwsgi.ini ${CONFIG_SUPERVISORD}"
+${SSHCMD} "sudo cp ${WEBROOT}deploy/nginx-cloudstrype.conf ${CONFIG_NGINX}"
+${SSHCMD} "sudo cp ${WEBROOT}deploy/supervisord-uwsgi.ini ${CONFIG_SUPERVISORD}"
 
 # Restart serices
-${SSHCMD} "sudo nginx -t -c /etc/nginx/nginx.conf"
-if [ $? -ne "0" ]; then
+if ! ${SSHCMD} "sudo nginx -t -c /etc/nginx/nginx.conf"; then
     echo "ERROR: nginx config file has errors, aborting restart."
     exit 1;
 fi
