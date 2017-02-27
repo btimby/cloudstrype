@@ -22,10 +22,10 @@ ${SSHCMD} "cd ${WEBROOT} && virtualenv-3.5 venv && venv/bin/pip install -r web/r
 ${SSHCMD} "cp ${WEBROOT}deploy/.env ${WEBROOT}.env"
 
 # Migrate database
-${SSHCMD} "cd ${WEBROOT}web/cloudstrype && ../../venv/bin/python manage.py migrate"
+${SSHCMD} "cd ${WEBROOT}web/cloudstrype && ${WEBROOT}venv/bin/python manage.py migrate"
 
 # Collect static files
-${SSHCMD} "cd ${WEBROOT}web/cloudstrype && ../../venv/bin/python manage.py collectstatic --noinput"
+${SSHCMD} "cd ${WEBROOT}web/cloudstrype && ${WEBROOT}venv/bin/python manage.py collectstatic --noinput"
 
 # Configure services.
 ${SSHCMD} "sudo cp ${WEBROOT}deploy/nginx-cloudstrype.conf ${CONFIG_NGINX}"
