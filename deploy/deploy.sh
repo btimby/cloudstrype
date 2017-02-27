@@ -19,7 +19,7 @@ rsync -avr --del -e "ssh ${SSHARGS}" --exclude-from=rsync.excludes ../ ${SSHUSER
 ${SSHCMD} "cd ${WEBROOT} && virtualenv-3.5 venv && venv/bin/pip install -r web/requirements/base.txt"
 
 # Configure Django.
-${SSHCMD} "cp ${WEBROOT}deploy/.env .env"
+${SSHCMD} "cp ${WEBROOT}deploy/.env ${WEBROOT}.env"
 
 # Migrate database
 ${SSHCMD} "cd ${WEBROOT}web/cloudstrype && ../../venv/bin/python manage.py migrate"
