@@ -16,17 +16,18 @@ CONFIG_SUPERVISORD="/etc/supervisord.d/cloudstrype.ini"
 rsync -avr --del -e "ssh ${SSHARGS}" --exclude-from=rsync.excludes ../ ${SSHUSER}@${SSHHOST}:${WEBROOT}
 
 # Build virtualenv
-${SSHCMD} "cd ${WEBROOT} && virtualenv-3.5 venv && venv/bin/pip3 install -r web/requirements/base.txt"
+${SSHCMD} "cd ${WEBROOT} && virtualenv-3.5 venv && venv/bin/pip install -r web/requirements/base.txt"
 
 # Migrate database
-${SSHCMD} "cd ${WEBROOT}/web/cloudstrype && ../../venv/bin/python3 manage.py migrate"
+${SSHCMD} "cd ${WEBROOT}/web/cloudstrype && ../../venv/bin/python manage.py migrate"
 
 # Collect static files
-${SSHCMD} "cd ${WEBROOT}/web/cloudstrype && ../../venv/bin/python3 manage.py collectstatic --noinput"
+${SSHCMD} "cd ${WEBROOT}/web/cloudstrype && ../../venv/bin/python manage.py collectstatic --noinput"
 
 # Copy config files.
-${SSHCMD} "sudo mv ${WEBROOT}/deploy/nginx-cloudstrype.conf ${CONFIG_NGINX}"
-${SSHCMD} "sudo mv ${WEBROOT}/deploy/supervisord-uwsgi.ini ${CONFIG_SUPERVISORD}"
+${SSHCMD} "sudo cp ${WEBROOT}/deploy/nginx-cloudstrype.conf ${CONFIG_NGINX}"
+${SSHCMD} "sudo cp ${WEBROOT}/deploy/supervisord-uwsgi.ini ${CONFIG_SUPERVISORD}"
+${SSHCMD} "sudo cp ${WEBROOT}/deploy/.env ."
 
 # Restart serices
 ${SSHCMD} "sudo nginx -t -c /etc/nginx/nginx.conf"
