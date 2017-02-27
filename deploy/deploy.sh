@@ -13,7 +13,7 @@ CONFIG_SUPERVISORD="/etc/supervisord.d/cloudstrype.ini"
 # This script is run from inside deploy/, so we have to use .. to refer to
 # local paths.
 
-rsync -avr -e "ssh ${SSHARGS}" --exclude-from=rsync.excludes ../ ${SSHUSER}@${SSHHOST}:${WEBROOT}
+rsync -avr --del -e "ssh ${SSHARGS}" --exclude-from=rsync.excludes ../ ${SSHUSER}@${SSHHOST}:${WEBROOT}
 
 # Build virtualenv
 ${SSHCMD} "cd ${WEBROOT} && virtualenv-3.5 venv && venv/bin/pip install -r web/requirements/base.txt"
