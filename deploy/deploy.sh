@@ -20,6 +20,7 @@ ${SSHCMD} "cd ${WEBROOT} && virtualenv-3.5 venv && venv/bin/pip install -r web/r
 
 # Configure Django.
 ${SSHCMD} "cp ${WEBROOT}deploy/.env ${WEBROOT}.env"
+${SSHCMD} "echo \"CLOUDSTRYPE_VERSION=${TRAVIS_COMMIT}\" > ${WEBROOT}.env-version"
 
 # Migrate database
 ${SSHCMD} "cd ${WEBROOT}web/cloudstrype && ${WEBROOT}venv/bin/python manage.py migrate"
