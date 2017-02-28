@@ -4,7 +4,7 @@
 Cloudstrype.io
 ==============
 
-Personal multi-cloud storage.
+**Personal multi-cloud storage.**
 
 Cloudstrype allows you to add many free (or paid) storage clouds to your account.
 Once added the clouds are used together for form one large storage cloud that you
@@ -58,8 +58,7 @@ of charge. Below is a list of great projects you should check out.
 Development
 -----------
 
-Git Hooks
----------
+**Git Hooks**
 
 Author uses and highly recommends flake8. You can easily install the webhook using
 the folowing command:
