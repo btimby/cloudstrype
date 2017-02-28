@@ -1,3 +1,4 @@
+{% load raven %}
 <!DOCTYPE html>
 <html lang="en">
 
@@ -187,7 +188,7 @@
     <script src="https://cdn.ravenjs.com/3.12.0/raven.min.js"></script>
     <script type="text/javascript">
     //<![CDATA[
-    Raven.config('https://27bf17d2a54c4e158495a2f08ed16a14@sentry.io/143375').install()
+    Raven.config('{% sentry_public_dsn 'https' %}').install()
     //]]>
     </script>
 
