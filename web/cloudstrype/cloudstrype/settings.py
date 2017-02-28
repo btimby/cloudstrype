@@ -58,6 +58,7 @@ INSTALLED_APPS = [
     # Mainly for `reset_db` management command.
     'django_extensions',
     'django_filters',
+    'raven.contrib.django.raven_compat',
 
     # API.
     'rest_framework',
@@ -221,3 +222,8 @@ os.environ['OAUTHLIB_RELAX_TOKEN_SCOPE'] = '1'
 if DEBUG:
     # For testing locally, don't require SSL.
     os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+
+RAVEN_CONFIG = {
+    'dsn': ENV('RAVEN_CONFIG_DSN', default=None),
+    'release': CLOUDSTRYPE_VERSION,
+}
