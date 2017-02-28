@@ -1,0 +1,52 @@
+{% extends "ui/index.html" %}
+
+{% block css %}
+{{ block.super }}
+    <link href="/static/css/login.css" rel="stylesheet">
+{% endblock %}
+
+{% block main %}
+        <!-- Call to Action Well -->
+        <div class="row">
+            <div class="col-lg-12">
+                <div class="well text-center">
+                    Choose your login provider below.
+                </div>
+            </div>
+            <!-- /.col-lg-12 -->
+        </div>
+        <!-- /.row -->
+
+        <!-- Content Row -->
+        <div class="wrapper">
+            <form class="form-signin">       
+                <h2 class="form-signin-heading">Please login</h2>
+                <ul class="form-signin-logos">
+                    <li><img src="/static/img/logos/google-drive-64x64.png"/></li>
+                    <li><img src="/static/img/logos/onedrive-64x64.png"/></li>
+                    <li><img src="/static/img/logos/smartfile-64x64.png"/></li>
+                </ul>
+                <ul class="form-signin-logos">
+                    <li><img src="/static/img/logos/dropbox-64x64.png"/></li>
+                    <li><img src="/static/img/logos/amazon-s3-64x64.png"/></li>
+                    <li><img src="/static/img/logos/box-64x64.png"/></li>
+                </ul>
+                <div id="form-signin-checkbox"><label class="checkbox">
+                    <input type="checkbox" value="remember-me" id="rememberMe" name="rememberMe"> Remember me
+                </label></div>
+                <button class="btn btn-lg btn-primary btn-block" type="submit">Login</button>
+                <div id="form-signin-forgot">
+                    <a href="/start/">Signup</a>&nbsp;|&nbsp;
+                    <a href="/recover/">Forgotten your provider?</a>
+                </div>
+            </form>
+        </div>
+        <!-- /.row -->
+
+        <hr/>
+{% endblock %}
+
+{% block footscript %}
+{{ block.super }}
+    <script src="/static/js/login.js"></script>
+{% endblock %}

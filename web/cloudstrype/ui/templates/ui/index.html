@@ -18,7 +18,7 @@
 
     <!-- Custom CSS -->
     {% block css %}
-    <link href="/static/css/small-business.css" rel="stylesheet">
+    <link href="/static/css/index.css" rel="stylesheet">
     {% endblock %}
 
     <!-- HTML5 Shim and Respond.js IE8 support of HTML5 elements and media queries -->
@@ -51,7 +51,10 @@
             <div class="collapse navbar-collapse" id="bs-example-navbar-collapse-1">
                 <ul class="nav navbar-nav">
                     <li>
-                        <a href="/login/">Get Started</a>
+                        <a href="/login/">Login</a>
+                    </li>
+                    <li>
+                        <a href="/start/">Get Started</a>
                     </li>
                     <li>
                         <a href="/products/">Products</a>
@@ -103,7 +106,7 @@
             <div class="col-md-4">
                 <h2>Free</h2>
                 <p>Outgrown your free cloud storage account? Upgrade for free with CloudStrype.io.</p>
-                <p>It costs nothing to use CloudStrype.io or the <a href="/login/">supported clouds</a>.</p>
+                <p>It costs nothing to use CloudStrype.io or the <a href="/start/">supported clouds</a>.</p>
                 <a class="btn btn-default" href="/start/">More Info</a>
             </div>
             <!-- /.col-md-4 -->
@@ -129,7 +132,7 @@
         <footer>
             <div class="row">
                 <div class="col-lg-12">
-                    <p>CloudStrype version: <a href="https://github.com/btimby/cloudstrype/{% if CLOUDSTRYPE_VERSION != 'development' %}commit/{{ CLOUDSTRYPE_VERSION }}{% endif %}" target="_new">{{ CLOUDSTRYPE_VERSION|truncatechars:10 }}</a>&nbsp;|&nbsp;
+                    <p>CloudStrype version: <a href="https://github.com/btimby/cloudstrype/{% if CLOUDSTRYPE_VERSION != 'development' %}tree/{{ CLOUDSTRYPE_VERSION }}{% endif %}" target="_new">{{ CLOUDSTRYPE_VERSION|truncatechars:10 }}</a>&nbsp;|&nbsp;
                     <a href="https://status.cloudstrype.io/" target="_new">System status</a>&nbsp;|&nbsp;
                     Copyright &copy; CloudStrype Technologies 2017</p>
                 </div>

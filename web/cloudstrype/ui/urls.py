@@ -7,6 +7,7 @@ from django.views.generic import TemplateView
 urlpatterns = [
     url(r'^$', TemplateView.as_view(template_name='ui/index.html')),
     url(r'^start/$', TemplateView.as_view(template_name='ui/start.html')),
+    url(r'^login/$', TemplateView.as_view(template_name='ui/login.html')),
 ]
 
 if settings.DEBUG:
