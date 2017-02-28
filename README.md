@@ -60,12 +60,12 @@ Development
 
 **Git Hooks**
 
-Author uses and highly recommends flake8. You can easily install the webhook using
+Author uses and highly recommends flake8 and jshint. You can easily install the webhook
 the folowing command:
 
-    flake8 --install-hook
+    cp git.hooks.pre-commit.py .git/hooks/pre-commit
 
-And then configure it to prevent committing lint failures.
+And then configure flake8 to prevent committing lint failures.
 
     git config --local --bool flake8.strict true
 
