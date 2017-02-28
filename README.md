@@ -5,3 +5,19 @@ Cloudstrype.io
 --------------
 
 Multicloud storage cloud.
+
+Development
+-----------
+
+Git Hooks
+=========
+
+Author uses and highly recommends flake8. You can easily install the webhook using
+the folowing command:
+
+    flake8 --install-hook
+
+And then configure it to prevent committing lint failures.
+
+    git config --local --bool flake8.strict true
+
