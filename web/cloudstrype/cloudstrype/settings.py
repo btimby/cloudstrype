@@ -58,6 +58,8 @@ INSTALLED_APPS = [
     # Mainly for `reset_db` management command.
     'django_extensions',
     'django_filters',
+
+    # Error logging
     'raven.contrib.django.raven_compat',
 
     # API.
@@ -83,6 +85,8 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+
+    'raven.contrib.django.middleware.SentryMiddleware',
 ]
 
 ROOT_URLCONF = 'cloudstrype.urls'
@@ -218,12 +222,12 @@ LOGGING = {
             'level': ENV('DJANGO_LOG_LEVEL', default='INFO'),
         },
         'raven': {
-            'level': 'DEBUG',
+            'level': 'WARNING',
             'handlers': ['console'],
             'propagate': False,
         },
         'sentry.errors': {
-            'level': 'DEBUG',
+            'level': 'WARNING',
             'handlers': ['console'],
             'propagate': False,
         },
@@ -236,8 +240,10 @@ CLOUDSTRYPE_CHUNK_SIZE = 32 * 1024
 
 # In production, we will probably send mail through a 3rd party.
 EMAIL_BACKEND = ENV('EMAIL_BACKEND', default='django.core.mail.backends.console.EmailBackend')
-MAILJET_API_KEY = ENV('MAILJET_API_KEY', default='')
-MAILJET_API_SECRET = ENV('MAILJET_API_SECRET', default='')
+EMAIL_FROM = ('Cloudstrype', 'service@cloudstrype.com')
+
+MAILJET_API_KEY = ENV('MAILJET_API_KEY', default=None)
+MAILJET_API_SECRET = ENV('MAILJET_API_SECRET', default=None)
 
 # Onedrive strips out a scope before redirecting back to us.
 os.environ['OAUTHLIB_RELAX_TOKEN_SCOPE'] = '1'
