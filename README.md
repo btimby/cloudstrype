@@ -63,13 +63,13 @@ Development
 Author uses and highly recommends flake8 and jshint. You can easily install the webhook
 the folowing command:
 
-    cp git.hooks.pre-commit.py .git/hooks/pre-commit
+    cp git.hooks.pre-commit .git/hooks/pre-commit
 
 You will need to ensure you have jshint installed:
 
     npm install -g jshint
 
-And then configure flake8 to prevent committing lint failures.
+And then configure flake8 to prevent committing lint failures:
 
     git config --local --bool flake8.strict true
 
