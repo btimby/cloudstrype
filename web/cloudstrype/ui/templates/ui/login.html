@@ -19,7 +19,8 @@
 
         <!-- Content Row -->
         <div class="wrapper">
-            <form class="form-signin">       
+            <form class="form-signin">
+                <input type="hidden" name="provider"/>
                 <h2 class="form-signin-heading">Please login</h2>
                 <ul class="form-signin-logos">
                     <li><img src="/static/img/logos/google-drive-64x64.png"/></li>
@@ -42,8 +43,6 @@
             </form>
         </div>
         <!-- /.row -->
-
-        <hr/>
 {% endblock %}
 
 {% block footscript %}

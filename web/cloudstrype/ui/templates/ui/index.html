@@ -81,7 +81,7 @@
             <div class="col-md-4">
                 <h1>CloudStrype.io</h1>
                 <p>Ever wish you could combine all your free cloud storage accounts into <b>ONE LARGE FREE CLOUD STORAGE ACCOUNT</b>? Now you can. Cloudstrype.io spreads (a.k.a. stripes) your files across many free clouds and gives you access from one convenient location.</p>
-                <a class="btn btn-primary btn-lg" href="/start/">Get started!</a>
+                <a class="btn btn-primary btn-lg" href="/start/">Get started</a>
                 <a class="btn btn-primary btn-lg" href="/login/">Login</a>
             </div>
             <!-- /.col-md-4 -->
@@ -128,13 +128,21 @@
         <!-- /.row -->
 {% endblock %}
 {% block footer %}
+
+        <hr>
+
         <!-- Footer -->
         <footer>
             <div class="row">
                 <div class="col-lg-12">
-                    <p>CloudStrype version: <a href="https://github.com/btimby/cloudstrype/{% if CLOUDSTRYPE_VERSION != 'development' %}tree/{{ CLOUDSTRYPE_VERSION }}{% endif %}" target="_new">{{ CLOUDSTRYPE_VERSION|truncatechars:10 }}</a>&nbsp;|&nbsp;
-                    <a href="https://status.cloudstrype.io/" target="_new">System status</a>&nbsp;|&nbsp;
-                    Copyright &copy; CloudStrype Technologies 2017</p>
+                    <p>
+                        &copy; 2017 Cloudstrype Technologies&nbsp;&nbsp;&nbsp;
+                        <a href="https://github.com/btimby/cloudstrype/{% if CLOUDSTRYPE_VERSION != 'development' %}tree/{{ CLOUDSTRYPE_VERSION }}{% endif %}" target="_new" title="Github commit">
+                            {{ CLOUDSTRYPE_VERSION|slice:":7" }}
+                        </a>&nbsp;&nbsp;&nbsp;
+                        <a href="/api/" title="API Documentation">API</a>&nbsp;&nbsp;&nbsp;
+                        <a href="https://status.cloudstrype.io/" target="_new" title="Monitoring">System status</a>&nbsp;&nbsp;&nbsp;
+                    </p>
                 </div>
             </div>
         </footer>
