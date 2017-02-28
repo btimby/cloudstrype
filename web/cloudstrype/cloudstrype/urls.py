@@ -15,9 +15,6 @@ urlpatterns = [
 
     # Application urls
     url(r'^api/', include('api.urls', namespace='api')),
-    url(r'^static/', include('ui.urls', namespace='ui')),
     url(r'^main/', include('main.urls', namespace='main')),
-
-    # Top-level urls
-    url(r'^$', RedirectView.as_view(url='/static/html/index.html')),
+    url(r'^', include('ui.urls', namespace='ui')),
 ]

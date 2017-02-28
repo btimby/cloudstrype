@@ -210,8 +210,8 @@ class OAuth2Provider(UidModelMixin, models.Model):
         return 'OAuth2 Provider: %s' % self.name
 
     def get_client(self, redirect_uri, **kwargs):
-        from main.auth.oauth import OAuth2Client
-        return OAuth2Client.get_client(self, redirect_uri, **kwargs)
+        from main.fs.cloud import OAuth2APIClient
+        return OAuth2APIClient.get_client(self, redirect_uri=redirect_uri)
 
     @property
     def is_storage(self):
