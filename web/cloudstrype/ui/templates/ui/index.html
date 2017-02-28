@@ -12,14 +12,14 @@
     <title>CloudStrype.io - Multicloud storage</title>
 
     <!-- Bootstrap Core CSS -->
-    {% block headscript %}
+{% block headscript %}
     <link href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.3.7/css/bootstrap.min.css" rel="stylesheet">
-    {% endblock %}
+{% endblock %}
 
     <!-- Custom CSS -->
-    {% block css %}
+{% block css %}
     <link href="/static/css/index.css" rel="stylesheet">
-    {% endblock %}
+{% endblock %}
 
     <!-- HTML5 Shim and Respond.js IE8 support of HTML5 elements and media queries -->
     <!-- WARNING: Respond.js doesn't work if you view the page via file:// -->
@@ -137,9 +137,7 @@
                 <div class="col-lg-12">
                     <p>
                         &copy; 2017 Cloudstrype Technologies&nbsp;&nbsp;&nbsp;
-                        <a href="https://github.com/btimby/cloudstrype/{% if CLOUDSTRYPE_VERSION != 'development' %}tree/{{ CLOUDSTRYPE_VERSION }}{% endif %}" target="_new" title="Github commit">
-                            {{ CLOUDSTRYPE_VERSION|slice:":7" }}
-                        </a>&nbsp;&nbsp;&nbsp;
+                        <a href="https://github.com/btimby/cloudstrype/{% if CLOUDSTRYPE_VERSION != 'development' %}tree/{{ CLOUDSTRYPE_VERSION }}{% endif %}" target="_new" title="{{ CLOUDSTRYPE_VERSION }}">Github</a>&nbsp;&nbsp;&nbsp;
                         <a href="/api/" title="API Documentation">API</a>&nbsp;&nbsp;&nbsp;
                         <a href="https://status.cloudstrype.io/" target="_new" title="Monitoring">System status</a>&nbsp;&nbsp;&nbsp;
                     </p>
