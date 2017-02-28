@@ -9,7 +9,7 @@ from django.contrib.postgres.fields import (
     JSONField, ArrayField
 )
 from django.core.exceptions import ObjectDoesNotExist
-from django.db import models
+from django.db import models, transaction
 from django.db.models import Max
 from django.db.models.query import QuerySet
 from django.utils import timezone
@@ -448,6 +448,7 @@ class File(UidModelMixin, models.Model):
     def path(self):
         return pathjoin(self.directory.path, self.name)
 
+    @transaction.atomic
     def add_chunk(self, chunk):
         "Adds a chunk to a file, taking care to set the serial number."
         fc = FileChunk(file=self, chunk=chunk)
