@@ -193,7 +193,7 @@ LOGIN_REDIRECT_URL = '/'
 
 LOGGING = {
     'version': 1,
-    'disable_existing_loggers': True,
+    'disable_existing_loggers': False,
     'formatters': {
         'verbose': {
             'format': '%(levelname)s %(asctime)s %(module)s '
@@ -202,24 +202,20 @@ LOGGING = {
     },
     'handlers': {
         'console': {
-            'level': 'DEBUG',
+            'level': 'WARNING',
             'class': 'logging.StreamHandler',
             'formatter': 'verbose',
         },
         'sentry': {
             'level': 'ERROR',
             'class': 'raven.contrib.django.raven_compat.handlers.SentryHandler',
-            'tags': {'custom-tag': 'x'},
+            'tags': {'release': CLOUDSTRYPE_VERSION},
         },
     },
     'loggers': {
-        'root': {
-            'level': 'ERROR',
-            'handlers': ['sentry'],
-        },
         'django': {
-            'handlers': ['console'],
-            'level': os.getenv('DJANGO_LOG_LEVEL', 'INFO'),
+            'handlers': ['console', 'sentry'],
+            'level': ENV('DJANGO_LOG_LEVEL', default='INFO'),
         },
         'raven': {
             'level': 'DEBUG',
