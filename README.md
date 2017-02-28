@@ -30,6 +30,7 @@ of charge. Below is a list of great projects you should check out.
 - Travis CI
 - Coveralls
 - Github
+- Sentry.io
 - Python
 - PostgreSQL
 - Django
