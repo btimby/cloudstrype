@@ -245,10 +245,10 @@ class BoxAPIClient(OAuth2APIClient):
 
 
 class GDriveAPIClient(OAuth2APIClient):
+    PROVIDER = OAuth2Provider.PROVIDER_GDRIVE
     SCOPES = [
         'profile', 'email', 'https://www.googleapis.com/auth/drive',
     ]
-    PROVIDER = OAuth2Provider.PROVIDER_GDRIVE
 
     AUTHORIZATION_URL = 'https://accounts.google.com/o/oauth2/v2/auth'
     ACCESS_TOKEN_URL = 'https://www.googleapis.com/oauth2/v4/token'
@@ -293,7 +293,16 @@ class SmartFileAPIClient(OAuth2APIClient):
 
 class AmazonClient(OAuth2APIClient):
     PROVIDER = OAuth2Provider.PROVIDER_AMAZON
+    PROFILE_FIELDS = {
+        'uid': ['Profile', 'CustomerId'],
+        'email': ['Profile', 'PrimaryEmail'],
+        'name': ['Profile', 'Name'],
+    }
+    SCOPES = [
+        'profile',
+    ]
 
-    AUTHORIZATION_URL = ''
-    ACCESS_TOKEN_URL = ''
-    USER_PROFILE_URL = ''
+    AUTHORIZATION_URL = 'http://www.amazon.com/ap/oa'
+    ACCESS_TOKEN_URL = 'https://api.amazon.com/auth/o2/token'
+    REFRESH_TOKEN_URL = None
+    USER_PROFILE_URL = 'https://www.amazon.com/ap/user/profile'
