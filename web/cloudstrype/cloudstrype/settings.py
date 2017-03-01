@@ -213,12 +213,11 @@ LOGGING = {
         'sentry': {
             'level': 'ERROR',
             'class': 'raven.contrib.django.raven_compat.handlers.SentryHandler',
-            'tags': {'release': CLOUDSTRYPE_VERSION},
         },
     },
     'loggers': {
         'django': {
-            'handlers': ['console', 'sentry'],
+            'handlers': ['console'],
             'level': ENV('DJANGO_LOG_LEVEL', default='INFO'),
         },
         'raven': {
