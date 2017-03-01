@@ -316,7 +316,7 @@ class AmazonClient(OAuth2APIClient):
         'profile',
     ]
 
-    AUTHORIZATION_URL = 'http://www.amazon.com/ap/oa'
+    AUTHORIZATION_URL = 'https://www.amazon.com/ap/oa'
     ACCESS_TOKEN_URL = 'https://api.amazon.com/auth/o2/token'
     REFRESH_TOKEN_URL = None
     USER_PROFILE_URL = 'https://www.amazon.com/ap/user/profile'
