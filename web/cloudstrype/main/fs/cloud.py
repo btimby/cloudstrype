@@ -22,6 +22,7 @@ class OAuth2APIClient(object):
     PROFILE_FIELDS = {
         'uid': 'uid',
         'email': 'email',
+        'name': 'name',
     }
     PROVIDER = None
 
@@ -102,7 +103,8 @@ class OAuth2APIClient(object):
 
         uid_field = self.PROFILE_FIELDS['uid']
         email_field = self.PROFILE_FIELDS['email']
-        return _get(uid_field), _get(email_field)
+        name_field = self.PROFILE_FIELDS['name']
+        return _get(uid_field), _get(email_field), _get(name_field)
 
     def request(self, method, url, chunk, headers={}, **kwargs):
         """
@@ -133,6 +135,11 @@ class OAuth2APIClient(object):
 
 class DropboxAPIClient(OAuth2APIClient):
     PROVIDER = OAuth2Provider.PROVIDER_DROPBOX
+    PROFILE_FIELDS = {
+        'uid': 'uid',
+        'email': 'email',
+        'name': 'display_name',
+    }
 
     AUTHORIZATION_URL = 'https://www.dropbox.com/1/oauth2/authorize'
     ACCESS_TOKEN_URL = 'https://api.dropbox.com/1/oauth2/token'
@@ -168,6 +175,7 @@ class OnedriveAPIClient(OAuth2APIClient):
     PROFILE_FIELDS = {
         'uid': 'id',
         'email': ['emails', 'account'],
+        'name': 'name',
     }
 
     AUTHORIZATION_URL = 'https://login.live.com/oauth20_authorize.srf'
@@ -192,6 +200,7 @@ class BoxAPIClient(OAuth2APIClient):
     PROFILE_FIELDS = {
         'uid': 'id',
         'email': 'login',
+        'name': 'name',
     }
 
     AUTHORIZATION_URL = 'https://account.box.com/api/oauth2/authorize'
@@ -249,6 +258,11 @@ class GDriveAPIClient(OAuth2APIClient):
     SCOPES = [
         'profile', 'email', 'https://www.googleapis.com/auth/drive',
     ]
+    PROFILE_FIELDS = {
+        'uid': 'id',
+        'email': 'email',
+        'name': 'name',
+    }
 
     AUTHORIZATION_URL = 'https://accounts.google.com/o/oauth2/v2/auth'
     ACCESS_TOKEN_URL = 'https://www.googleapis.com/oauth2/v4/token'

@@ -6,7 +6,8 @@ from main.models import (
 
 
 class UserAdmin(admin.ModelAdmin):
-    pass
+    readonly_fields = ('uid',)
+    exclude = ('first_name',)
 
 
 class OAuth2ProviderAdmin(admin.ModelAdmin):

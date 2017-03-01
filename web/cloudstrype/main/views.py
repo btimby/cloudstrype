@@ -112,7 +112,7 @@ class LoginComplete(OAuth2View):
             return HttpResponseBadRequest('Missing state')
 
         client.oauthsession.token = {'access_token': access_token}
-        uid, email = client.get_profile()
+        uid, email, name = client.get_profile()
 
         action = 'expand' if 'expand' in state else None
 
@@ -125,7 +125,8 @@ class LoginComplete(OAuth2View):
                 action = 'login'
             except User.DoesNotExist:
                 try:
-                    user = User.objects.create_user(uid=uid, email=email)
+                    user = User.objects.create_user(uid=uid, email=email,
+                                                    full_name=name)
                 except IntegrityError:
                     return HttpResponseBadRequest('User already registered')
                 action = 'signup'
