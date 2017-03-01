@@ -89,8 +89,8 @@ class OAuth2APIClient(object):
             token['access_token'], token.get('refresh_token'), expires
         )
 
-    def get_profile(self):
-        profile = self.oauthsession.get(self.USER_PROFILE_URL).json()
+    def get_profile(self, **kwargs):
+        profile = self.oauthsession.get(self.USER_PROFILE_URL, **kwargs).json()
 
         def _get(field_name):
             if isinstance(field_name, str):
@@ -318,5 +318,9 @@ class AmazonClient(OAuth2APIClient):
 
     AUTHORIZATION_URL = 'https://www.amazon.com/ap/oa'
     ACCESS_TOKEN_URL = 'https://api.amazon.com/auth/o2/token'
-    REFRESH_TOKEN_URL = None
+    REFRESH_TOKEN_URL = 'https://api.amazon.com/auth/o2/token'
     USER_PROFILE_URL = 'https://www.amazon.com/ap/user/profile'
+
+    def get_profile(self, **kwargs):
+        # Amazon wants the access_token in the querystring... Odd...
+        return super().get_profile(params=self.oauthsession.token)

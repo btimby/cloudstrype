@@ -81,6 +81,8 @@ class UserManager(BaseUserManager):
             raise ValueError('Users must have an email address')
 
         password = kwargs.pop('password', None)
+        if 'full_name' in kwargs:
+            kwargs['full_name'] = kwargs['full_name'].title()
         user = self.model(email=self.normalize_email(email), **kwargs)
 
         user.set_password(password)
