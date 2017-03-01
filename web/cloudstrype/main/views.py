@@ -142,14 +142,15 @@ class LoginComplete(OAuth2View):
         # signing up.
         if action == 'signup':
             OAuth2LoginToken.objects.create(user=user, token=token)
-            # TODO: we need a different token_generator.
             email_token = default_token_generator.make_token(user)
             email_url = request.build_absolute_uri(reverse(
                 'main:email_confirm', args=(user.uid, email_token)))
             send_mail('signup', 'Cloudstrype - Thanks for signing up', email,
                       email_url=email_url, request=request)
 
-        login(request, user)
+        if user.is_active:
+            login(request, user)
+
         return redirect(reverse('ui:home'))
 
 
@@ -158,7 +159,10 @@ class Logout(RedirectView):
     Log the user out then redirect them.
     """
 
-    url = '/'
+    @property
+    def url(self):
+        "Replace property. Can't reverse during import."
+        return reverse('main:home')
 
     def get(self, request):
         "Log user out, let base class redirect."
@@ -167,14 +171,19 @@ class Logout(RedirectView):
 
 
 class EmailConfirm(RedirectView):
-    url = '/'
+    """
+    Handle email confirmation link.
+    """
+
+    @property
+    def url(self):
+        "Replace property. Can't reverse during import."
+        return reverse('ui:start')
 
     def get(self, request, uid, token):
         user = get_user_model().objects.get(uid=uid)
-        # TODO: we need a different token_generator.
-        # Set last_login to None, since it was None when the user was created.
-        # Otherwise the hash won't validate.
-        user.last_login = None
         if default_token_generator.check_token(user, token):
+            user.is_active = True
+            user.save()
             return super().get(request)
         raise Http404()

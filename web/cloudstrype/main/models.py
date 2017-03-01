@@ -92,7 +92,7 @@ class UserManager(BaseUserManager):
         Creates and saves a superuser with the given email and password.
         """
         return self.create_user(email, password=password, is_admin=True,
-                                **kwargs)
+                                is_active=True, **kwargs)
 
 
 class User(AbstractBaseUser):
@@ -111,7 +111,7 @@ class User(AbstractBaseUser):
                               max_length=255, verbose_name='email address')
     full_name = models.CharField(max_length=64)
     first_name = models.CharField(max_length=64)
-    is_active = models.BooleanField(default=True)
+    is_active = models.BooleanField(default=False)
     is_admin = models.BooleanField(default=False)
 
     objects = UserManager()

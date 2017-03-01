@@ -4,7 +4,9 @@ django-oauth-toolkit
 django-rest-auth
 django-extensions
 django-filter
-django-mailjet
+# Broken, use fork:
+#django-mailjet
+git+https://github.com/btimby/django-mailjet.git
 django-environ
 
 oauthlib

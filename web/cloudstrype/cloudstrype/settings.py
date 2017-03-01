@@ -237,7 +237,7 @@ CLOUDSTRYPE_CHUNK_SIZE = 32 * 1024
 
 # In production, we send mail through a 3rd party. Otherwise use locmem.
 EMAIL_BACKEND = ENV('EMAIL_BACKEND', default='django.core.mail.backends.console.EmailBackend')
-EMAIL_FROM = ('Cloudstrype', 'service@cloudstrype.com')
+EMAIL_FROM = ('Cloudstrype', 'service@cloudstrype.io')
 
 MAILJET_API_KEY = ENV('MAILJET_API_KEY', default=None)
 MAILJET_API_SECRET = ENV('MAILJET_API_SECRET', default=None)
