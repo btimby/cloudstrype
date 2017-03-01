@@ -1,0 +1,4 @@
+Thanks for signing up with Cloudstrype. Click the link below to confirm your
+email address.
+
+{{ email_url }}

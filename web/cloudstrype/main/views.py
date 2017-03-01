@@ -2,7 +2,8 @@ import string
 import random
 import logging
 
-from django.contrib.auth import login, logout
+from django.contrib.auth import login, logout, get_user_model
+from django.contrib.auth.tokens import default_token_generator
 from django.db import transaction, IntegrityError
 from django.shortcuts import (
     redirect, get_object_or_404
@@ -12,6 +13,7 @@ from django.views import View
 from django.views.generic import RedirectView
 from django.urls import reverse
 
+from main.email import send_mail
 from main.models import (
     OAuth2Provider, User, OAuth2AccessToken, OAuth2LoginToken
 )
@@ -140,6 +142,12 @@ class LoginComplete(OAuth2View):
         # signing up.
         if action == 'signup':
             OAuth2LoginToken.objects.create(user=user, token=token)
+            # TODO: we need a different token_generator.
+            email_token = default_token_generator.make_token(user)
+            email_url = request.build_absolute_uri(reverse(
+                'main:email_confirm', args=(user.uid, email_token)))
+            send_mail('signup', 'Cloudstrype - Thanks for signing up', email,
+                      email_url=email_url, request=request)
 
         login(request, user)
         return redirect(reverse('ui:home'))
@@ -156,3 +164,17 @@ class Logout(RedirectView):
         "Log user out, let base class redirect."
         logout(request)
         return super().get(request)
+
+
+class EmailConfirm(RedirectView):
+    url = '/'
+
+    def get(self, request, uid, token):
+        user = get_user_model().objects.get(uid=uid)
+        # TODO: we need a different token_generator.
+        # Set last_login to None, since it was None when the user was created.
+        # Otherwise the hash won't validate.
+        user.last_login = None
+        if default_token_generator.check_token(user, token):
+            return super().get(request)
+        raise Http404()

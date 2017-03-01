@@ -4,7 +4,7 @@ from django.template import TemplateDoesNotExist
 from django.template.loader import get_template, select_template
 
 
-def send_mail(subject, email_name, recipients, **kwargs):
+def send_mail(email_name, subject, recipients, request=None, **kwargs):
     """
     Send email.
 
@@ -35,10 +35,10 @@ def send_mail(subject, email_name, recipients, **kwargs):
 
     # Produce our message body(s) from our templates using supplied context
     # (if any).
-    message = text_template.render(context=kwargs)
+    message = text_template.render(context=kwargs, request=request)
 
     if html_template:
-        html_message = html_template.render(context=kwargs)
+        html_message = html_template.render(context=kwargs, request=request)
     else:
         html_message = None
 
