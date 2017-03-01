@@ -68,12 +68,12 @@ class OAuth2View(View):
 
         try:
             # Retrieve the state saved in step 1.
-            client.oauthsession._state = \
+            client.oauthsession._state = state = \
                 request.session.pop('oauth2_state_%s' % provider_name)
         except KeyError:
             raise Http400()
 
-        return client.fetch_token(request.build_absolute_uri())
+        return client.fetch_token(request.build_absolute_uri()), state
 
     def step_three(self, request):
         raise NotImplementedError('There is no step three!')
@@ -104,15 +104,15 @@ class LoginComplete(OAuth2View):
         client = self.get_oauth2_client(request, provider_name)
 
         try:
-            access_token, refresh_token, expires = self.step_two(request,
-                                                                 provider_name)
+            (access_token, refresh_token, expires), state = self.step_two(
+                request, provider_name)
         except Http400:
             return HttpResponseBadRequest('Missing state')
 
         client.oauthsession.token = {'access_token': access_token}
         uid, email = client.get_profile()
 
-        action = 'expand' if 'expand' in client.oauthsession._state else None
+        action = 'expand' if 'expand' in state else None
 
         if action == 'expand':
             user = request.user
@@ -142,7 +142,7 @@ class LoginComplete(OAuth2View):
             OAuth2LoginToken.objects.create(user=user, token=token)
 
         login(request, user)
-        return redirect('/static/html/main.html')
+        return redirect(reverse('ui:home'))
 
 
 class Logout(RedirectView):
