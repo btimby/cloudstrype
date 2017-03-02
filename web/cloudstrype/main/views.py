@@ -1,5 +1,3 @@
-import string
-import random
 import logging
 
 from django.contrib.auth import login, logout, get_user_model
@@ -13,9 +11,9 @@ from django.views import View
 from django.views.generic import RedirectView
 from django.urls import reverse
 
-from main.email import send_mail
 from main.models import (
-    OAuth2Provider, User, OAuth2AccessToken, OAuth2LoginToken
+    OAuth2Provider, User, OAuth2AccessToken, OAuth2LoginToken,
+    OAuth2StorageToken
 )
 
 
@@ -44,12 +42,7 @@ class OAuth2View(View):
 
         provider = get_object_or_404(OAuth2Provider, provider=id)
 
-        state = request.GET.get('state', None)
-        if state:
-            state = '%s:%s' % (
-                ''.join(random.sample(string.printable, 10)), state)
-
-        return provider.get_client(redirect_uri, state=state)
+        return provider.get_client(redirect_uri)
 
     def step_one(self, request, provider_name):
         """
@@ -59,6 +52,10 @@ class OAuth2View(View):
 
         url, state = client.authorization_url()
         request.session['oauth2_state_%s' % provider_name] = state
+
+        if 'action' in request.GET:
+            request.session['oauth2_action_%s' % provider_name] = \
+                request.GET['action']
 
         return redirect(url)
 
@@ -112,9 +109,9 @@ class LoginComplete(OAuth2View):
             return HttpResponseBadRequest('Missing state')
 
         client.oauthsession.token = {'access_token': access_token}
-        uid, email, name = client.get_profile()
+        uid, email, name, size, used = client.get_profile()
 
-        action = 'expand' if 'expand' in state else None
+        action = request.session.pop('oauth2_action_%s' % provider_name)
 
         if action == 'expand':
             user = request.user
@@ -139,18 +136,16 @@ class LoginComplete(OAuth2View):
                 access_token=access_token, refresh_token=refresh_token,
                 expires=expires)
 
+        if action == 'expand':
+            OAuth2StorageToken.objects.create(user=user, token=token,
+                                              size=size, used=used)
+
         # We want to mark the token as the login token only if the user is
         # signing up.
-        if action == 'signup':
+        elif action == 'signup':
             OAuth2LoginToken.objects.create(user=user, token=token)
-            email_token = default_token_generator.make_token(user)
-            email_url = request.build_absolute_uri(reverse(
-                'main:email_confirm', args=(user.uid, email_token)))
-            send_mail('signup', 'Cloudstrype - Thanks for signing up', email,
-                      email_url=email_url, request=request)
 
-        if user.is_active:
-            login(request, user)
+        login(request, user)
 
         return redirect(reverse('ui:home'))
 

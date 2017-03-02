@@ -70,8 +70,19 @@ class OAuth2APIClient(object):
         self.oauth_access.access_token = token
         self.oauth_access.save()
 
-    def authorization_url(self):
-        return self.oauthsession.authorization_url(self.AUTHORIZATION_URL)
+    def _get_profile_field(self, profile, field_name):
+        field_name = self.PROFILE_FIELDS[field_name]
+        if isinstance(field_name, str):
+            return profile.get(field_name)
+        else:
+            value, field_name = profile, field_name[:]
+            while field_name:
+                value = value.get(field_name.pop(0))
+            return value
+
+    def authorization_url(self, **kwargs):
+        return self.oauthsession.authorization_url(self.AUTHORIZATION_URL,
+                                                   **kwargs)
 
     def fetch_token(self, request_uri):
         token = self.oauthsession.fetch_token(
@@ -91,20 +102,15 @@ class OAuth2APIClient(object):
 
     def get_profile(self, **kwargs):
         profile = self.oauthsession.get(self.USER_PROFILE_URL, **kwargs).json()
+        storage = self.oauthsession.get(self.USER_STORAGE_URL, **kwargs).json()
 
-        def _get(field_name):
-            if isinstance(field_name, str):
-                return profile.get(field_name)
-            else:
-                value, field_name = profile, field_name[:]
-                while field_name:
-                    value = value.get(field_name.pop(0))
-                return value
+        uid = self._get_profile_field(profile, 'uid')
+        email = self._get_profile_field(profile, 'email')
+        name = self._get_profile_field(profile, 'name')
+        size = self._get_profile_field(storage, 'size')
+        used = self._get_profile_field(storage, 'used')
 
-        uid_field = self.PROFILE_FIELDS['uid']
-        email_field = self.PROFILE_FIELDS['email']
-        name_field = self.PROFILE_FIELDS['name']
-        return _get(uid_field), _get(email_field), _get(name_field)
+        return (uid, email, name, size, used)
 
     def request(self, method, url, chunk, headers={}, **kwargs):
         """
@@ -139,12 +145,15 @@ class DropboxAPIClient(OAuth2APIClient):
         'uid': 'uid',
         'email': 'email',
         'name': 'display_name',
+        'size': ['allocation', 'allocated'],
+        'used': 'used',
     }
 
     AUTHORIZATION_URL = 'https://www.dropbox.com/1/oauth2/authorize'
     ACCESS_TOKEN_URL = 'https://api.dropbox.com/1/oauth2/token'
     REFRESH_TOKEN_URL = None
     USER_PROFILE_URL = 'https://api.dropbox.com/1/account/info'
+    USER_STORAGE_URL = 'https://api.dropboxapi.com/2/users/get_space_usage'
 
     DOWNLOAD_URL = ('post', 'https://content.dropboxapi.com/2/files/download')
     UPLOAD_URL = ('post', 'https://content.dropboxapi.com/2/files/upload')
@@ -176,12 +185,15 @@ class OnedriveAPIClient(OAuth2APIClient):
         'uid': 'id',
         'email': ['emails', 'account'],
         'name': 'name',
+        'size': ['quota', 'total'],
+        'used': ['quota', 'used'],
     }
 
     AUTHORIZATION_URL = 'https://login.live.com/oauth20_authorize.srf'
     ACCESS_TOKEN_URL = 'https://login.live.com/oauth20_token.srf'
     REFRESH_TOKEN_URL = 'https://login.live.com/oauth20_token.srf'
     USER_PROFILE_URL = 'https://apis.live.net/v5.0/me'
+    USER_STORAGE_URL = 'https://api.onedrive.com/v1.0/drive'
 
     DOWNLOAD_URL = \
         ('get', 'https://api.onedrive.com/v1.0/drive/root:/{path}:/content')
@@ -207,6 +219,7 @@ class BoxAPIClient(OAuth2APIClient):
     ACCESS_TOKEN_URL = 'https://api.box.com/oauth2/token'
     REFRESH_TOKEN_URL = 'https://api.box.com/oauth2/token'
     USER_PROFILE_URL = 'https://api.box.com/2.0/users/me'
+    USER_STORAGE_URL = None
 
     DOWNLOAD_URL = ('get', 'https://api.box.com/2.0/files/{file_id}/content')
     UPLOAD_URL = ('post', 'https://upload.box.com/api/2.0/files/content')
@@ -252,6 +265,17 @@ class BoxAPIClient(OAuth2APIClient):
         chunk_storage.save()
         return r
 
+    def get_profile(self, **kwargs):
+        profile = self.oauthsession.get(self.USER_PROFILE_URL, **kwargs).json()
+
+        uid = self._get_profile_field(profile, 'uid')
+        email = self._get_profile_field(profile, 'email'),
+        name = self._get_profile_field(profile, 'name')
+        size = self._get_profile_field(profile, 'size'),
+        used = self._get_profile_field(profile, 'used')
+
+        return (uid, email, name, size, used)
+
 
 class GDriveAPIClient(OAuth2APIClient):
     PROVIDER = OAuth2Provider.PROVIDER_GDRIVE
@@ -262,12 +286,15 @@ class GDriveAPIClient(OAuth2APIClient):
         'uid': 'id',
         'email': 'email',
         'name': 'name',
+        'size': 'quotaBytesTotal',
+        'used': 'quotaBytesUsed',
     }
 
     AUTHORIZATION_URL = 'https://accounts.google.com/o/oauth2/v2/auth'
     ACCESS_TOKEN_URL = 'https://www.googleapis.com/oauth2/v4/token'
     REFRESH_TOKEN_URL = 'https://www.googleapis.com/oauth2/v4/token'
     USER_PROFILE_URL = 'https://www.googleapis.com/oauth2/v1/userinfo'
+    USER_STORAGE_URL = 'https://www.googleapis.com/drive/v2/about'
 
     DOWNLOAD_URL = \
         ('GET',
