@@ -23,7 +23,7 @@ class OAuth2LoginTokenAdmin(admin.ModelAdmin):
 
 
 class OAuth2StorageTokenAdmin(admin.ModelAdmin):
-    pass
+    readonly_fields = ('attrs',)
 
 
 admin.site.register(User, UserAdmin)

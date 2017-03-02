@@ -221,6 +221,8 @@ class BoxAPIClient(OAuth2APIClient):
         'uid': 'id',
         'email': 'login',
         'name': 'name',
+        'size': 'space_amount',
+        'used': 'space_used',
     }
 
     AUTHORIZATION_URL = 'https://account.box.com/api/oauth2/authorize'
@@ -275,12 +277,13 @@ class BoxAPIClient(OAuth2APIClient):
         return r
 
     def get_profile(self, **kwargs):
-        profile = self.oauthsession.get(self.USER_PROFILE_URL, **kwargs).json()
+        profile = self.oauthsession.request(
+            *self.USER_PROFILE_URL, **kwargs).json()
 
         uid = self._get_profile_field(profile, 'uid')
-        email = self._get_profile_field(profile, 'email'),
+        email = self._get_profile_field(profile, 'email')
         name = self._get_profile_field(profile, 'name')
-        size = self._get_profile_field(profile, 'size'),
+        size = self._get_profile_field(profile, 'size')
         used = self._get_profile_field(profile, 'used')
 
         return (uid, email, name, size, used)
