@@ -111,7 +111,7 @@ class LoginComplete(OAuth2View):
         client.oauthsession.token = {'access_token': access_token}
         uid, email, name, size, used = client.get_profile()
 
-        action = request.session.pop('oauth2_action_%s' % provider_name)
+        action = request.session.pop('oauth2_action_%s' % provider_name, None)
 
         if action == 'expand':
             user = request.user
@@ -158,7 +158,7 @@ class Logout(RedirectView):
     @property
     def url(self):
         "Replace property. Can't reverse during import."
-        return reverse('main:home')
+        return reverse('ui:start')
 
     def get(self, request):
         "Log user out, let base class redirect."

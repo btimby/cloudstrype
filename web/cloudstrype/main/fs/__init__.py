@@ -105,7 +105,9 @@ class MulticloudReader(MulticloudBase, FileLikeBase):
             chunk = self.chunks.pop()
         except IndexError:
             raise EOFError('out of chunks')
-        for storage in chunk.storage.all():
+        # Try providers in random order.
+        for storage in sorted(chunk.storage.all(),
+                              key=lambda k: random.random()):
             cloud = self.get_cloud(storage.storage)
             try:
                 return cloud.download(chunk)
@@ -194,17 +196,14 @@ class MulticloudWriter(MulticloudBase, FileLikeBase):
         """
         Write a single chunk.
 
-        Writes chunk to multiple clouds in parallel.
+        Writes chunk to multiple clouds.
         """
-        def _select_clouds():
-            clouds = set()
-            while len(clouds) < self.replicas:
-                clouds.add(random.choice(self.clouds))
-            return clouds
-
-        clouds = _select_clouds()
+        # Upload to N random providers where N is desired replica count.
         chunk = Chunk.objects.create(md5=md5(data).hexdigest())
-        for cloud in clouds:
+        for i, cloud in enumerate(sorted(self.clouds,
+                                  key=lambda k: random.random())):
+            if i == self.replicas:
+                break
             chunk.storage.add(
                 ChunkStorage.objects.create(chunk=chunk,
                                             storage=cloud.oauth_storage))

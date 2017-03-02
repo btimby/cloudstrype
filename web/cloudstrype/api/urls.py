@@ -11,15 +11,29 @@ from api.views import (
 )
 
 urlpatterns = [
-    url(r'^v1/users/me', MeView.as_view()),
+    # Public access
+    # -------------
     url(r'^v1/public/clouds/', PublicCloudListView.as_view()),
+
+    # Authenticated access
+    # --------------------
+    # General
+    url(r'^v1/me/', MeView.as_view()),
     url(r'^v1/clouds/', CloudListView.as_view()),
+
+    # Directories
     url(r'^v1/dir/:uid:(.*)$', DirectoryUidView.as_view()),
     url(r'^v1/dir/:path:(/.*)$', DirectoryPathView.as_view()),
+
+    # File information
     url(r'^v1/file/:uid:(.*)$', FileUidView.as_view()),
     url(r'^v1/file/:path:(/.*)$', FilePathView.as_view()),
+
+    # File data upload and download (raw)
     url(r'^v1/data/:uid:(.*)$', DataUidView.as_view()),
     url(r'^v1/data/:path:(/.*)$', DataPathView.as_view()),
+
+    # File data (multipart) for browser uploads
     url(r'^v1/upload/:uid:(.*)$', UploadUidView.as_view()),
     url(r'^v1/upload/:path:(/.*)$', UploadPathView.as_view()),
 ]

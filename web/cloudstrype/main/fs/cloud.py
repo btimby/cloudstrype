@@ -239,24 +239,32 @@ class BoxAPIClient(OAuth2APIClient):
     UPLOAD_URL = ('post', 'https://upload.box.com/api/2.0/files/content')
     DELETE_URL = ('delete', 'https://api.box.com/2.0/files/{file_id}')
 
-    def request(self, method, url, chunk, headers={}, **kwargs):
+    def download(self, chunk, **kwargs):
+        "Overidden to add file_id to URL."
+        assert isinstance(chunk, Chunk), 'must be chunk instance'
         chunk_storage = chunk.storage.get(
             storage__token__provider__provider=self.PROVIDER)
+        method, url = self.DOWNLOAD_URL
         url = url.format(file_id=chunk_storage.attrs['file_id'])
-        return super().request(method, url, chunk, headers=headers, **kwargs)
+        r = self.request(method, url, chunk, **kwargs)
+        return r.text
 
     def upload(self, chunk, data, **kwargs):
         assert isinstance(chunk, Chunk), 'must be chunk instance'
-        data = {
-            'attributes': json.dumps({'name': chunk.uid, 'parent': {'id': 0}}),
-            'file': BytesIO(bytes(data, 'utf-8')),
+        kwargs['data'] = {
+            'attributes': json.dumps({
+                'name': chunk.uid, 'parent': {'id': "0"}
+            }),
+        }
+        kwargs['files'] = {
+            'file': (chunk.uid, BytesIO(data), 'text/plain'),
         }
         tries = 0
         while True:
             tries += 1
             try:
                 r = self.request(self.UPLOAD_URL[0], self.UPLOAD_URL[1], chunk,
-                                 data=data, **kwargs)
+                                 **kwargs)
                 break
             except HTTPError as e:
                 if tries < 3 and e.response.status == 409:
@@ -275,11 +283,22 @@ class BoxAPIClient(OAuth2APIClient):
         # ChunkStorage
         chunk_storage = chunk.storage.get(
             storage__token__provider__provider=self.PROVIDER)
-        chunk_storage.attrs['file_id'] = attrs['entries'][0]['id']
+        chunk_storage.attrs = {'file_id': attrs['entries'][0]['id']}
         chunk_storage.save()
         return r
 
+    def delete(self, chunk, **kwargs):
+        "Overidden to add file_id to URL."
+        assert isinstance(chunk, Chunk), 'must be chunk instance'
+        chunk_storage = chunk.storage.get(
+            storage__token__provider__provider=self.PROVIDER)
+        method, url = self.DOWNLOAD_URL
+        url = url.format(file_id=chunk_storage.attrs['file_id'])
+        r = self.request(method, url, chunk, **kwargs)
+        r.close()
+
     def get_profile(self, **kwargs):
+        "Overidden to fetch profile and storage in one request."
         profile = self.oauthsession.request(
             *self.USER_PROFILE_URL, **kwargs).json()
 
@@ -320,13 +339,28 @@ class GDriveAPIClient(OAuth2APIClient):
     DELETE_URL = \
         ('DELETE', 'https://www.googleapis.com/drive/v2/files/{file_id}')
 
-    def request(self, method, url, chunk, headers={}, **kwargs):
+    def download(self, chunk, **kwargs):
+        "Overidden to add file_id to URL."
+        assert isinstance(chunk, Chunk), 'must be chunk instance'
         chunk_storage = chunk.storage.get(
             storage__token__provider__provider=self.PROVIDER)
+        method, url = self.DOWNLOAD_URL
         url = url.format(file_id=chunk_storage.attrs['file_id'])
-        return super().request(method, url, chunk, headers=headers, **kwargs)
+        r = self.request(method, url, chunk, **kwargs)
+        return r.text
+
+    def delete(self, chunk, **kwargs):
+        "Overidden to add file_id to URL."
+        assert isinstance(chunk, Chunk), 'must be chunk instance'
+        chunk_storage = chunk.storage.get(
+            storage__token__provider__provider=self.PROVIDER)
+        method, url = self.DOWNLOAD_URL
+        url = url.format(file_id=chunk_storage.attrs['file_id'])
+        r = self.request(method, url, chunk, **kwargs)
+        r.close()
 
     def authoriziation_url(self):
+        "Overidden to add access_type=offline."
         return self.oauthsession.authorization_url(
             self.AUTHORIZATION_URL, access_type='offline')
 
@@ -365,5 +399,5 @@ class AmazonClient(OAuth2APIClient):
     USER_PROFILE_URL = 'https://www.amazon.com/ap/user/profile'
 
     def get_profile(self, **kwargs):
-        # Amazon wants the access_token in the querystring... Odd...
+        "Overidden to provide access_token via querystring."
         return super().get_profile(params=self.oauthsession.token)
