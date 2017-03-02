@@ -1,4 +1,4 @@
 [flake8]
 exclude =
     manage.py,
-    migrations
+    web/cloudstrype/*/migrations/*

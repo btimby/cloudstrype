@@ -5,11 +5,12 @@ from django.conf.urls import (
 from rest_framework.urlpatterns import format_suffix_patterns
 
 from api.views import (
-    MeView, CloudListView, FileListView
+    MeView, PublicCloudListView, CloudListView, FileListView
 )
 
 urlpatterns = [
     url(r'^v1/users/me', MeView.as_view()),
+    url(r'^v1/public/clouds/', PublicCloudListView.as_view()),
     url(r'^v1/clouds/', CloudListView.as_view()),
     url(r'^v1/files(/.*)$', FileListView.as_view()),
 ]

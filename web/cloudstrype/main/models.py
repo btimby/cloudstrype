@@ -107,20 +107,21 @@ class User(AbstractBaseUser):
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = []
 
-    uid = models.CharField(null=False, blank=False, unique=True,
-                           max_length=255)
+    uid = models.CharField(null=False, blank=False, editable=False,
+                           unique=True, max_length=255)
     email = models.EmailField(null=False, blank=False, unique=True,
                               max_length=255, verbose_name='email address')
     full_name = models.CharField(max_length=64)
-    first_name = models.CharField(max_length=64)
-    is_active = models.BooleanField(default=False)
+    first_name = models.CharField(max_length=64, editable=False)
+    last_name = models.CharField(max_length=64, editable=False)
+    is_active = models.BooleanField(default=True)
     is_admin = models.BooleanField(default=False)
 
     objects = UserManager()
 
     def save(self, *args, **kwargs):
         if self.full_name:
-            self.first_name = self.full_name.split(' ')[0]
+            self.first_name, _, self.last_name = self.full_name.partition(' ')
         if not self.uid:
             self.uid = self.email
         return super().save(*args, **kwargs)
@@ -275,8 +276,8 @@ class OAuth2StorageToken(UidModelMixin, models.Model):
     user = models.ForeignKey(User, related_name='storage',
                              on_delete=models.CASCADE)
     token = models.OneToOneField(OAuth2AccessToken, on_delete=models.CASCADE)
-    size = models.IntegerField(default=0)
-    used = models.IntegerField(default=0)
+    size = models.BigIntegerField(default=0)
+    used = models.BigIntegerField(default=0)
     # Provider-specific attribute storage, such as chunk storage location
     # directory ID.
     attrs = JSONField(null=True, blank=True)

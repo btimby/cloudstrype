@@ -1,16 +1,19 @@
+from django.db.models import Sum
+
 from rest_framework import (
     serializers, permissions, views, generics, response
 )
-from main.models import (
-    User, OAuth2Provider, OAuth2AccessToken
-)
+
 from main.fs import MulticloudFilesystem
+from main.models import (
+    User, OAuth2Provider, OAuth2AccessToken, OAuth2StorageToken
+)
 
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ('id', 'uid', 'email')
+        fields = ('uid', 'email', 'full_name', 'first_name', 'last_name')
 
 
 class OAuth2AccessTokenSerializer(serializers.ModelSerializer):
@@ -20,9 +23,30 @@ class OAuth2AccessTokenSerializer(serializers.ModelSerializer):
 
 
 class OAuth2ProviderSerializer(serializers.ModelSerializer):
+
+    size = serializers.SerializerMethodField()
+    used = serializers.SerializerMethodField()
+
     class Meta:
         model = OAuth2Provider
-        fields = ('name', )
+        fields = ('name', 'size', 'used')
+
+    def get_size(self, obj):
+        return OAuth2StorageToken.objects.filter(
+            token__provider=obj).aggregate(Sum('size'))['size__sum'] or 0
+
+    def get_used(self, obj):
+        return OAuth2StorageToken.objects.filter(
+            token__provider=obj).aggregate(Sum('used'))['used__sum'] or 0
+
+
+class OAuth2StorageTokenSerializer(serializers.ModelSerializer):
+
+    name = serializers.CharField(source='token.provider.name')
+
+    class Meta:
+        model = OAuth2StorageToken
+        fields = ('name', 'size', 'used')
 
 
 class MeView(generics.RetrieveAPIView):
@@ -37,15 +61,24 @@ class MeView(generics.RetrieveAPIView):
         return self.retrieve(request, *args, **kwargs)
 
 
-class CloudListView(generics.ListAPIView):
-    permission_classes = [permissions.IsAuthenticated]
-    queryset = OAuth2Provider.objects.all()
+class PublicCloudListView(generics.ListAPIView):
+    permission_classes = [permissions.AllowAny]
+    queryset = OAuth2StorageToken.objects.all()
     serializer_class = OAuth2ProviderSerializer
 
     def get_queryset(self):
-        queryset = OAuth2Provider.objects.filter(
-            tokens__user=self.request.user)
-        return (o for o in queryset if o.is_storage())
+        return OAuth2Provider.objects.all()
+
+
+class CloudListView(generics.ListAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+    queryset = OAuth2StorageToken.objects.all()
+    serializer_class = OAuth2StorageTokenSerializer
+
+    def get_queryset(self):
+        queryset = OAuth2StorageToken.objects.filter(
+            user=self.request.user)
+        return (o for o in queryset if o.token.provider.is_storage)
 
 
 class FileListView(views.APIView):
