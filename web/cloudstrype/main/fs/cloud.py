@@ -38,7 +38,8 @@ class OAuth2APIClient(object):
     DELETE_URL = None
 
     @classmethod
-    def get_client(cls, provider, oauth_access=None, **kwargs):
+    def get_client(cls, provider, oauth_access=None, oauth_storage=None,
+                   **kwargs):
         provider_cls = cls
         for item in globals().values():
             if isclass(item) and issubclass(item, cls) and \
@@ -48,12 +49,14 @@ class OAuth2APIClient(object):
                 break
         else:
             raise ValueError('Invalid provider')
-        return provider_cls(provider, oauth_access=oauth_access, **kwargs)
+        return provider_cls(provider, oauth_access=oauth_access,
+                            oauth_storage=oauth_storage, **kwargs)
 
-    def __init__(self, provider, oauth_access=None, redirect_uri=None,
-                 **kwargs):
+    def __init__(self, provider, oauth_access=None, oauth_storage=None,
+                 redirect_uri=None, **kwargs):
         self.provider = provider
         self.oauth_access = oauth_access
+        self.oauth_storage = oauth_storage
         if self.oauth_access:
             token = {
                 'access_token': self.oauth_access.access_token,

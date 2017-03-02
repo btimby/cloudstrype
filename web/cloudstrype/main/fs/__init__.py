@@ -39,7 +39,7 @@ def chunker(f, chunk_size=CHUNK_SIZE):
 
 
 DirectoryListing = collections.namedtuple('DirectoryListing',
-                                          ('dirs', 'files'))
+                                          ('dir', 'dirs', 'files'))
 
 
 class MulticloudBase(object):
@@ -52,9 +52,9 @@ class MulticloudBase(object):
             'clouds must be iterable'
         self.clouds = clouds
 
-    def get_cloud(self, oauth_access):
+    def get_cloud(self, oauth_storage):
         for cloud in self.clouds:
-            if cloud.oauth_access == oauth_access:
+            if cloud.oauth_storage == oauth_storage:
                 return cloud
         raise ValueError('invalid cloud oauth_access')
 
@@ -114,7 +114,12 @@ class MulticloudReader(MulticloudBase, FileLikeBase):
                 continue
         raise IOError('could not read chunk')
 
-    def read(self, size=-1):
+    def __iter__(self):
+        while self.chunks:
+            yield self._read_chunk()
+
+    # TODO: refactor this.
+    def read(self, size=-1):  # NOQA
         """
         Read series of chunks from multiple clouds.
         """
@@ -202,7 +207,7 @@ class MulticloudWriter(MulticloudBase, FileLikeBase):
         for cloud in clouds:
             chunk.storage.add(
                 ChunkStorage.objects.create(chunk=chunk,
-                                            storage=cloud.oauth_access))
+                                            storage=cloud.oauth_storage))
             cloud.upload(chunk, data)
         self.file.add_chunk(chunk)
 
@@ -252,9 +257,11 @@ class MulticloudWriter(MulticloudBase, FileLikeBase):
             return
         self._write_chunk(b''.join(self._buffer))
         # Update content related attributes.
-        File.objects.filter(pk=self.file.pk).update(
-            size=self._size, md5=self._md5.hexdigest(),
-            sha1=self._sha1.hexdigest())
+        self.file.size = self._size
+        self.file.md5 = self._md5.hexdigest()
+        self.file.sha1 = self._sha1.hexdigest()
+        # Flush to db.
+        self.file.save()
         super().close()
 
 
@@ -408,7 +415,7 @@ class MulticloudFilesystem(MulticloudBase):
         # Clone dir first.
         dstdir = Directory.objects.create(path=dst, user=self.user)
         # Then copy children recursively.
-        dirs, files = self.listdir(srcdir.path, dir=srcdir)
+        _, dirs, files = self.listdir(srcdir.path, dir=srcdir)
         for subdir in dirs:
             self._copy_dir(subdir, dstdir.path)
         for subfile in files:
@@ -436,9 +443,17 @@ class MulticloudFilesystem(MulticloudBase):
             except Directory.DoesNotExist:
                 raise DirectoryNotFoundError(path)
         return DirectoryListing(
-            Directory.objects.filter(parent=dir, user=self.user),
-            File.objects.filter(directory=dir, user=self.user),
+            dir, Directory.objects.filter(parent=dir, user=self.user),
+            File.objects.filter(directory=dir, user=self.user)
         )
+
+    def info(self, path, file=None):
+        if file is None:
+            try:
+                file = File.objects.get(path=path, user=self.user)
+            except File.DoesNotExist:
+                raise FileNotFoundError(path)
+        return file
 
     def isdir(self, path):
         return Directory.objects.filter(path=path, user=self.user).exists()

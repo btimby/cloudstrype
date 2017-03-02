@@ -19,8 +19,8 @@ TEST_FILE = b'Test file body.'
 
 
 class MockClient(object):
-    def __init__(self, oauth_access):
-        self.oauth_access = oauth_access
+    def __init__(self, oauth_storage):
+        self.oauth_storage = oauth_storage
         self.data = {}
 
     def upload(self, chunk, data):

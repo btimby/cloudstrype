@@ -16,6 +16,9 @@ from django.utils import timezone
 from hashids import Hashids
 
 
+HASHIDS = Hashids(min_length=24)
+
+
 class UidQuerySet(QuerySet):
     """
     QuerySet with uid capabilities.
@@ -27,7 +30,7 @@ class UidQuerySet(QuerySet):
     def _args(kwargs):
         uid = kwargs.pop('uid', None)
         if uid:
-            kwargs['id'] = Hashids().decode(uid)[0]
+            kwargs['id'] = HASHIDS.decode(uid)[0]
 
     def filter(self, *args, **kwargs):
         UidQuerySet._args(kwargs)
@@ -67,7 +70,7 @@ class UidModelMixin(object):
     @property
     def uid(self):
         "Return a random-looking id."
-        return Hashids(min_length=16).encode(self.id)
+        return HASHIDS.encode(self.id)
 
     objects = UidManager()
 
@@ -150,8 +153,8 @@ class User(AbstractBaseUser):
 
     def get_clients(self):
         clients = []
-        for oauth_access in self.storage.all():
-            clients.append(oauth_access.get_client())
+        for storage in OAuth2StorageToken.objects.filter(token__user=self):
+            clients.append(storage.get_client())
         return clients
 
     def get_option(self, name, default=None):
@@ -242,9 +245,10 @@ class OAuth2AccessToken(UidModelMixin, models.Model):
         return 'OAuth2 Access Token: %s for %s' % (self.user.email,
                                                    self.provider.name)
 
-    def get_client(self):
+    def get_client(self, **kwargs):
         from main.fs.cloud import OAuth2APIClient
-        return OAuth2APIClient.get_client(self.provider, oauth_access=self)
+        return OAuth2APIClient.get_client(self.provider, oauth_access=self,
+                                          **kwargs)
 
 
 class OAuth2LoginToken(UidModelMixin, models.Model):
@@ -287,7 +291,7 @@ class OAuth2StorageToken(UidModelMixin, models.Model):
                                                     self.token.provider.name)
 
     def get_client(self):
-        return self.token.get_client()
+        return self.token.get_client(oauth_storage=self)
 
 
 class DirectoryQuerySet(UidQuerySet):
@@ -386,7 +390,7 @@ class Directory(UidModelMixin, models.Model):
 
     @property
     def path(self):
-        return self.display_path
+        return '/%s' % self.display_path.lstrip('/')
 
 
 class FileQuerySet(UidQuerySet):
