@@ -29,7 +29,9 @@ class OAuth2APIClient(object):
     AUTHORIZATION_URL = None
     ACCESS_TOKEN_URL = None
     REFRESH_TOKEN_URL = None
+
     USER_PROFILE_URL = None
+    USER_STORAGE_URL = None
 
     DOWNLOAD_URL = None
     UPLOAD_URL = None
@@ -101,8 +103,10 @@ class OAuth2APIClient(object):
         )
 
     def get_profile(self, **kwargs):
-        profile = self.oauthsession.get(self.USER_PROFILE_URL, **kwargs).json()
-        storage = self.oauthsession.get(self.USER_STORAGE_URL, **kwargs).json()
+        profile = self.oauthsession.request(
+            *self.USER_PROFILE_URL, **kwargs).json()
+        storage = self.oauthsession.request(
+            *self.USER_STORAGE_URL, **kwargs).json()
 
         uid = self._get_profile_field(profile, 'uid')
         email = self._get_profile_field(profile, 'email')
@@ -142,9 +146,9 @@ class OAuth2APIClient(object):
 class DropboxAPIClient(OAuth2APIClient):
     PROVIDER = OAuth2Provider.PROVIDER_DROPBOX
     PROFILE_FIELDS = {
-        'uid': 'uid',
+        'uid': 'account_id',
         'email': 'email',
-        'name': 'display_name',
+        'name': ['name', 'display_name'],
         'size': ['allocation', 'allocated'],
         'used': 'used',
     }
@@ -152,8 +156,11 @@ class DropboxAPIClient(OAuth2APIClient):
     AUTHORIZATION_URL = 'https://www.dropbox.com/1/oauth2/authorize'
     ACCESS_TOKEN_URL = 'https://api.dropbox.com/1/oauth2/token'
     REFRESH_TOKEN_URL = None
-    USER_PROFILE_URL = 'https://api.dropbox.com/1/account/info'
-    USER_STORAGE_URL = 'https://api.dropboxapi.com/2/users/get_space_usage'
+
+    USER_PROFILE_URL = \
+        ('post', 'https://api.dropbox.com/2/users/get_current_account')
+    USER_STORAGE_URL = \
+        ('post', 'https://api.dropboxapi.com/2/users/get_space_usage')
 
     DOWNLOAD_URL = ('post', 'https://content.dropboxapi.com/2/files/download')
     UPLOAD_URL = ('post', 'https://content.dropboxapi.com/2/files/upload')
@@ -192,8 +199,9 @@ class OnedriveAPIClient(OAuth2APIClient):
     AUTHORIZATION_URL = 'https://login.live.com/oauth20_authorize.srf'
     ACCESS_TOKEN_URL = 'https://login.live.com/oauth20_token.srf'
     REFRESH_TOKEN_URL = 'https://login.live.com/oauth20_token.srf'
-    USER_PROFILE_URL = 'https://apis.live.net/v5.0/me'
-    USER_STORAGE_URL = 'https://api.onedrive.com/v1.0/drive'
+
+    USER_PROFILE_URL = ('get', 'https://apis.live.net/v5.0/me')
+    USER_STORAGE_URL = ('get', 'https://api.onedrive.com/v1.0/drive')
 
     DOWNLOAD_URL = \
         ('get', 'https://api.onedrive.com/v1.0/drive/root:/{path}:/content')
@@ -218,7 +226,8 @@ class BoxAPIClient(OAuth2APIClient):
     AUTHORIZATION_URL = 'https://account.box.com/api/oauth2/authorize'
     ACCESS_TOKEN_URL = 'https://api.box.com/oauth2/token'
     REFRESH_TOKEN_URL = 'https://api.box.com/oauth2/token'
-    USER_PROFILE_URL = 'https://api.box.com/2.0/users/me'
+
+    USER_PROFILE_URL = ('get', 'https://api.box.com/2.0/users/me')
     USER_STORAGE_URL = None
 
     DOWNLOAD_URL = ('get', 'https://api.box.com/2.0/files/{file_id}/content')
@@ -293,8 +302,9 @@ class GDriveAPIClient(OAuth2APIClient):
     AUTHORIZATION_URL = 'https://accounts.google.com/o/oauth2/v2/auth'
     ACCESS_TOKEN_URL = 'https://www.googleapis.com/oauth2/v4/token'
     REFRESH_TOKEN_URL = 'https://www.googleapis.com/oauth2/v4/token'
-    USER_PROFILE_URL = 'https://www.googleapis.com/oauth2/v1/userinfo'
-    USER_STORAGE_URL = 'https://www.googleapis.com/drive/v2/about'
+
+    USER_PROFILE_URL = ('get', 'https://www.googleapis.com/oauth2/v1/userinfo')
+    USER_STORAGE_URL = ('get', 'https://www.googleapis.com/drive/v2/about')
 
     DOWNLOAD_URL = \
         ('GET',
