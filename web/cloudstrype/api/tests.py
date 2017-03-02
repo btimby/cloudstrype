@@ -1,8 +1,8 @@
-from django.test import UnitTest
+from django.test import TestCase
 from django.test import Client
 
 
-class TestAPI(UnitTest):
+class TestAPI(TestCase):
     def setUp(self):
         self.client = Client()
 
