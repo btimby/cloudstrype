@@ -113,7 +113,7 @@ class MulticloudReader(MulticloudBase, FileLikeBase):
             except Exception as e:
                 LOGGER.exception(e)
                 continue
-        raise IOError('could not read chunk')
+        raise IOError('Failed to read chunk')
 
     def __iter__(self):
         while self.chunks:
@@ -208,10 +208,13 @@ class MulticloudWriter(MulticloudBase, FileLikeBase):
                                             storage=cloud.oauth_storage))
             try:
                 cloud.upload(chunk, data)
+                break
             except Exception as e:
                 LOGGER.exception(e)
                 continue
             chunks_uploaded += 1
+        else:
+            raise IOError('Failed to write chunk')
         self.file.add_chunk(chunk)
 
     def write(self, data):
