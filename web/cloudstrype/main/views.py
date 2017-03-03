@@ -108,12 +108,12 @@ class LoginComplete(OAuth2View):
         client.oauthsession.token = {'access_token': access_token}
         uid, email, name, size, used = client.get_profile()
 
-        if request.user:
+        if request.user.is_authenticated():
             user = request.user
         else:
             try:
                 # Try to fetch the user and log them in.
-                user = User.objects.filter(storage__provider_uid=uid)
+                user = User.objects.get(tokens__provider_uid=uid)
             except User.DoesNotExist:
                 try:
                     user = User.objects.create_user(email=email,
