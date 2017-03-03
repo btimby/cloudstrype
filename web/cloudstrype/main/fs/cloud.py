@@ -4,10 +4,11 @@ from datetime import datetime, timedelta
 from io import BytesIO
 from inspect import isclass
 
-from requests.exceptions import HTTPError
 from requests_oauthlib import OAuth2Session
+from oauthlib.oauth2 import TokenExpiredError
 
 from django.utils import timezone
+from django.utils.dateformat import format
 
 from main.fs import Chunk
 from main.models import OAuth2Provider
@@ -60,11 +61,14 @@ class OAuth2APIClient(object):
         if self.oauth_access:
             token = {
                 'access_token': self.oauth_access.access_token,
-                'refresh_token': self.oauth_access.refresh_token
+                'refresh_token': self.oauth_access.refresh_token,
             }
-            self.oauthsession = OAuth2Session(
-                token=token, auto_refresh_url=self.REFRESH_TOKEN_URL,
-                token_updater=self._refresh_token_callback, **kwargs)
+            if self.oauth_access.expires:
+                token['expires_at'] = format(self.oauth_access.expires, 'U')
+            # self.oauthsession = OAuth2Session(
+            #     token=token, auto_refresh_url=self.REFRESH_TOKEN_URL,
+            #     token_updater=self._refresh_token_callback, **kwargs)
+            self.oauthsession = OAuth2Session(token=token, **kwargs)
         else:
             self.oauthsession = OAuth2Session(
                 provider.client_id, redirect_uri=redirect_uri,
@@ -72,7 +76,17 @@ class OAuth2APIClient(object):
 
     def _refresh_token_callback(self, token):
         "Called by OAuth2Session when a token is refreshed."
-        self.oauth_access.access_token = token
+        if 'expires_at' in token:
+            expires = datetime.fromtimestamp(token['expires_at'],
+                                             timezone.utc)
+        elif 'expires_in' in token:
+            expires = datetime.now(timezone.utc) + \
+                      timedelta(seconds=token['expires_in'])
+        else:
+            expires = None
+        self.oauth_access.access_token = token['access_token']
+        self.oauth_access.refresh_token = token['refresh_token']
+        self.expires = expires
         self.oauth_access.save()
 
     def _get_profile_field(self, profile, field_name):
@@ -119,13 +133,29 @@ class OAuth2APIClient(object):
 
         return (uid, email, name, size, used)
 
+    # def request(self, method, url, chunk, headers={}, **kwargs):
+    #     """
+    #     Perform HTTP request for OAuth.
+    #     """
+    #     return self.oauthsession.request(method, url, headers=headers,
+    #                                      **kwargs)
     def request(self, method, url, chunk, headers={}, **kwargs):
         """
         Perform HTTP request for OAuth.
         """
-        headers['Authorization'] = 'Bearer %s' % self.oauthsession.access_token
-        return self.oauthsession.request(
-            method, url, headers=headers, **kwargs)
+        while True:
+            try:
+                return self.oauthsession.request(method, url, headers=headers,
+                                                 **kwargs)
+            except TokenExpiredError:
+                # Do our own, since requests_oaulib is broken.
+                token = self.oauthsession.refresh_token(
+                    self.REFRESH_TOKEN_URL,
+                    refresh_token=self.oauth_access.refresh_token,
+                    client_id=self.provider.client_id,
+                    client_secret=self.provider.client_secret)
+                self._refresh_token_callback(token)
+                continue
 
     def download(self, chunk, **kwargs):
         assert isinstance(chunk, Chunk), 'must be chunk instance'
@@ -144,6 +174,17 @@ class OAuth2APIClient(object):
         r = self.request(self.DELETE_URL[0], self.DELETE_URL[1], chunk,
                          **kwargs)
         r.close()
+
+    def initialize(self):
+        """
+        Allow the storage provider to initialize the account.
+
+        For some providers, this means creating a location in which to store
+        our files. Some providers require a parent ID to upload to, so at this
+        point we can store that in the attributes of the OAuth2StorageToken
+        instance.
+        """
+        pass
 
 
 class DropboxAPIClient(OAuth2APIClient):
@@ -170,7 +211,10 @@ class DropboxAPIClient(OAuth2APIClient):
     DELETE_URL = ('post', 'https://api.dropboxapi.com/2/files/delete')
 
     def request(self, method, url, chunk, headers={}, **kwargs):
-        headers['Dropbox-API-Arg'] = json.dumps({'path': '/%s' % chunk.uid})
+        headers['Dropbox-API-Arg'] = json.dumps({
+            'path': '/.cloudstrype/%s/%s' % (self.oauth_access.user.uid,
+                                             chunk.uid),
+        })
         return super().request(method, url, chunk, headers=headers, **kwargs)
 
     def upload(self, chunk, data, headers={}, **kwargs):
@@ -214,7 +258,9 @@ class OnedriveAPIClient(OAuth2APIClient):
         ('delete', 'https://api.onedrive.com/v1.0/drive/root:/{path}')
 
     def request(self, method, url, chunk, headers={}, **kwargs):
-        url = url.format(path=chunk.uid)
+        url = url.format(
+            path='.cloudstrype/%s/%s' % (self.oauth_access.user.uid,
+                                         chunk.uid))
         return super().request(method, url, chunk, headers=headers, **kwargs)
 
 
@@ -239,6 +285,26 @@ class BoxAPIClient(OAuth2APIClient):
     UPLOAD_URL = ('post', 'https://upload.box.com/api/2.0/files/content')
     DELETE_URL = ('delete', 'https://api.box.com/2.0/files/{file_id}')
 
+    CREATE_URL = 'https://api.box.com/2.0/folders'
+
+    def request(self, method, url, chunk, headers={}, **kwargs):
+        """
+        Perform HTTP request for OAuth.
+        """
+        while True:
+            try:
+                return self.oauthsession.request(method, url, headers=headers,
+                                                 **kwargs)
+            except TokenExpiredError:
+                # Do our own, since requests_oaulib is broken.
+                token = self.oauthsession.refresh_token(
+                    self.REFRESH_TOKEN_URL,
+                    refresh_token=self.oauth_access.refresh_token,
+                    client_id=self.provider.client_id,
+                    client_secret=self.provider.client_secret)
+                self._refresh_token_callback(token)
+                continue
+
     def download(self, chunk, **kwargs):
         "Overidden to add file_id to URL."
         assert isinstance(chunk, Chunk), 'must be chunk instance'
@@ -251,39 +317,23 @@ class BoxAPIClient(OAuth2APIClient):
 
     def upload(self, chunk, data, **kwargs):
         assert isinstance(chunk, Chunk), 'must be chunk instance'
+        parent_id = self.oauth_storage.attrs['root.id']
         kwargs['data'] = {
             'attributes': json.dumps({
-                'name': chunk.uid, 'parent': {'id': "0"}
+                'name': chunk.uid, 'parent': {'id': parent_id}
             }),
         }
         kwargs['files'] = {
             'file': (chunk.uid, BytesIO(data), 'text/plain'),
         }
-        tries = 0
-        while True:
-            tries += 1
-            try:
-                r = self.request(self.UPLOAD_URL[0], self.UPLOAD_URL[1], chunk,
-                                 **kwargs)
-                break
-            except HTTPError as e:
-                if tries < 3 and e.response.status == 409:
-                    # 409 means a file with that name exists...
-                    error = e.response.json()
-                    # Grab the id of the existing file...
-                    chunk.clouds.setdefault(self.id, {})['file_id'] = \
-                        error['context_info']['conflicts']['id']
-                    # And delete it...
-                    self.delete(chunk)
-                    # Then try again.
-                    continue
-                raise
+        r = self.request(self.UPLOAD_URL[0], self.UPLOAD_URL[1], chunk,
+                         **kwargs)
         attrs = r.json()
         # Store the file_id provided by Box into the attribute store of
         # ChunkStorage
         chunk_storage = chunk.storage.get(
             storage__token__provider__provider=self.PROVIDER)
-        chunk_storage.attrs = {'file_id': attrs['entries'][0]['id']}
+        chunk_storage.attrs = {'file.id': attrs['entries'][0]['id']}
         chunk_storage.save()
         return r
 
@@ -293,7 +343,7 @@ class BoxAPIClient(OAuth2APIClient):
         chunk_storage = chunk.storage.get(
             storage__token__provider__provider=self.PROVIDER)
         method, url = self.DELETE_URL
-        url = url.format(file_id=chunk_storage.attrs['file_id'])
+        url = url.format(file_id=chunk_storage.attrs['file.id'])
         r = self.request(method, url, chunk, **kwargs)
         r.close()
 
@@ -309,6 +359,34 @@ class BoxAPIClient(OAuth2APIClient):
         used = self._get_profile_field(profile, 'used')
 
         return (uid, email, name, size, used)
+
+    def initialize(self):
+        """
+        Overidden to create a storage location.
+
+        We create a storage directory for Cloudstrype, and store it's id so we
+        can upload to it later.
+        """
+        # "0" root directory, our first goes under that, sencond under first.
+        parent_id, kwargs = "0", {}
+        for name in ('.cloudstrype', self.oauth_access.user.uid):
+            kwargs['data'] = json.dumps({
+                'name': name,
+                'parent': {
+                    'id': parent_id,
+                },
+            })
+            # Create the directory:
+            r = self.oauthsession.post(self.CREATE_URL, **kwargs)
+            attrs = r.json()
+            if r.status_code == 409:
+                # The directory exists, so nab it's ID, and continue to child.
+                parent_id = attrs['context_info']['conflicts'][0]['id']
+            else:
+                # We created it, so nab the ID and continue to child.
+                parent_id = r.json()['id']
+        self.oauth_storage.attrs = {'root.id': parent_id}
+        self.oauth_storage.save()
 
 
 class GDriveAPIClient(OAuth2APIClient):
@@ -339,15 +417,46 @@ class GDriveAPIClient(OAuth2APIClient):
     DELETE_URL = \
         ('DELETE', 'https://www.googleapis.com/drive/v2/files/{file_id}')
 
+    CREATE_URL = 'https://www.googleapis.com/drive/v2/files'
+
     def download(self, chunk, **kwargs):
         "Overidden to add file_id to URL."
         assert isinstance(chunk, Chunk), 'must be chunk instance'
         chunk_storage = chunk.storage.get(
             storage__token__provider__provider=self.PROVIDER)
         method, url = self.DOWNLOAD_URL
-        url = url.format(file_id=chunk_storage.attrs['file_id'])
+        url = url.format(file_id=chunk_storage.attrs['file.id'])
         r = self.request(method, url, chunk, **kwargs)
         return r.content
+
+    def upload(self, chunk, data, **kwargs):
+        assert isinstance(chunk, Chunk), 'must be chunk instance'
+        try:
+            parent_id = self.oauth_storage.attrs.get('root.id')
+        except ValueError:
+            parent_id = None
+        attrs = {
+            'mimeType': 'text/plain',
+            'title': chunk.uid,
+            'description': 'Cloudstrype chunk',
+        }
+        if parent_id:
+            attrs['parents'] = [{'id': parent_id}]
+        kwargs['files'] = {
+            'data': ('metadata', json.dumps(attrs), 'application/json'),
+            'file': (chunk.uid, BytesIO(data), 'text/plain'),
+        }
+        method, url = self.UPLOAD_URL
+        url += '?uploadType=multipart'
+        r = self.request(method, url, chunk, **kwargs)
+        attrs = r.json()
+        # Store the file ID provided by Google into the attribute store of
+        # ChunkStorage
+        chunk_storage = chunk.storage.get(
+            storage__token__provider__provider=self.PROVIDER)
+        chunk_storage.attrs = {'file.id': attrs['id']}
+        chunk_storage.save()
+        r.close()
 
     def delete(self, chunk, **kwargs):
         "Overidden to add file_id to URL."
@@ -359,10 +468,62 @@ class GDriveAPIClient(OAuth2APIClient):
         r = self.request(method, url, chunk, **kwargs)
         r.close()
 
-    def authoriziation_url(self):
+    def authorization_url(self):
         "Overidden to add access_type=offline."
         return self.oauthsession.authorization_url(
             self.AUTHORIZATION_URL, access_type='offline')
+
+    def initialize(self):
+        """
+        Overidden to create a storage location.
+
+        We create a storage directory for Cloudstrype, and store it's id so we
+        can upload to it later.
+
+        Unlike the Box API (which also requires this nonsense) Google does not
+        report a conflict for items with the SAME NAME. I guess I am too
+        stoopid to understand why I would want two things with the same name.
+        Anyway, we have to do a round-trip to check existence first, otherwise
+        we will create duplicates, which would be even stoopider.
+
+        So, this means we make *FOUR* api calls to initialze our directory.
+        """
+        # Omit parent to put file in root. Provide first's ID to place second
+        # inside it.
+        parent_id, kwargs = None, {
+            'headers': {'Content-Type': 'application/json'}
+        }
+        for name in ('.cloudstrype', self.oauth_access.user.uid):
+            # Hey Google, fuck you for making me do this!
+            query = [
+                "title='%s'" % name,
+            ]
+            if parent_id:
+                query.append("'%s' in parents" % parent_id)
+            params = {
+                'q': ' and '.join(query),
+            }
+            r = self.oauthsession.get(self.CREATE_URL, params=params)
+            if r.status_code == 200:
+                parent_id = r.json()['items'][0]['id']
+                continue
+
+            # OK, with that extra round-trip out of the way, let's create the
+            # missing directory.
+            data = {
+                'mimeType': 'application/vnd.google-apps.folder',
+                'title': name,
+                'description': 'Cloudstrype storage',
+            }
+            if parent_id:
+                data['parents'] = [{'id': parent_id}]
+            # The body of the request should be our JSON object as string.
+            kwargs['data'] = json.dumps(data)
+            # Create the directory:
+            r = self.oauthsession.post(self.CREATE_URL, **kwargs)
+            parent_id = r.json()['id']
+        self.oauth_storage.attrs = {'root.id': parent_id}
+        self.oauth_storage.save()
 
 
 class SmartFileAPIClient(OAuth2APIClient):
