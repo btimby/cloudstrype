@@ -1,17 +1,17 @@
 import json
+import logging
 
-from datetime import datetime, timedelta
 from io import BytesIO
 from inspect import isclass
 
 from requests_oauthlib import OAuth2Session
 from oauthlib.oauth2 import TokenExpiredError
 
-from django.utils import timezone
-from django.utils.dateformat import format
-
 from main.fs import Chunk
 from main.models import OAuth2Provider
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 class OAuth2APIClient(object):
@@ -59,35 +59,23 @@ class OAuth2APIClient(object):
         self.oauth_access = oauth_access
         self.oauth_storage = oauth_storage
         if self.oauth_access:
-            token = {
-                'access_token': self.oauth_access.access_token,
-                'refresh_token': self.oauth_access.refresh_token,
-            }
-            if self.oauth_access.expires:
-                token['expires_at'] = format(self.oauth_access.expires, 'U')
             # self.oauthsession = OAuth2Session(
-            #     token=token, auto_refresh_url=self.REFRESH_TOKEN_URL,
-            #     token_updater=self._refresh_token_callback, **kwargs)
-            self.oauthsession = OAuth2Session(token=token, **kwargs)
+            #     token=self.oauth_access.to_dict(), auto_refresh_url=self.REFRESH_TOKEN_URL,  # NOQA
+            #     token_updater=self._save_refresh_token, **kwargs)
+            self.oauthsession = OAuth2Session(
+                token=self.oauth_access.to_dict(), **kwargs)
         else:
             self.oauthsession = OAuth2Session(
                 provider.client_id, redirect_uri=redirect_uri,
                 scope=self.SCOPES, **kwargs)
 
-    def _refresh_token_callback(self, token):
-        "Called by OAuth2Session when a token is refreshed."
-        if 'expires_at' in token:
-            expires = datetime.fromtimestamp(token['expires_at'],
-                                             timezone.utc)
-        elif 'expires_in' in token:
-            expires = datetime.now(timezone.utc) + \
-                      timedelta(seconds=token['expires_in'])
-        else:
-            expires = None
-        self.oauth_access.access_token = token['access_token']
-        self.oauth_access.refresh_token = token['refresh_token']
-        self.expires = expires
-        self.oauth_access.save()
+    def _save_refresh_token(self, token):
+        """
+        Save tokens.
+
+        Called by OAuthSession during refresh. Also used by fetch_token.
+        """
+        self.oauth_access.update(**token)
 
     def _get_profile_field(self, profile, field_name):
         field_name = self.PROFILE_FIELDS[field_name]
@@ -104,20 +92,9 @@ class OAuth2APIClient(object):
                                                    **kwargs)
 
     def fetch_token(self, request_uri):
-        token = self.oauthsession.fetch_token(
+        return self.oauthsession.fetch_token(
             self.ACCESS_TOKEN_URL, authorization_response=request_uri,
             client_secret=self.provider.client_secret)
-        if 'expires_at' in token:
-            expires = datetime.fromtimestamp(token['expires_at'],
-                                             timezone.utc)
-        elif 'expires_in' in token:
-            expires = datetime.now(timezone.utc) + \
-                      timedelta(seconds=token['expires_in'])
-        else:
-            expires = None
-        return (
-            token['access_token'], token.get('refresh_token'), expires
-        )
 
     def get_profile(self, **kwargs):
         profile = self.oauthsession.request(
@@ -148,13 +125,13 @@ class OAuth2APIClient(object):
                 return self.oauthsession.request(method, url, headers=headers,
                                                  **kwargs)
             except TokenExpiredError:
-                # Do our own, since requests_oaulib is broken.
+                # Do our own, since requests_oauthlib is broken.
                 token = self.oauthsession.refresh_token(
                     self.REFRESH_TOKEN_URL,
                     refresh_token=self.oauth_access.refresh_token,
                     client_id=self.provider.client_id,
                     client_secret=self.provider.client_secret)
-                self._refresh_token_callback(token)
+                self._save_refresh_token(token)
                 continue
 
     def download(self, chunk, **kwargs):
@@ -285,6 +262,7 @@ class BoxAPIClient(OAuth2APIClient):
     UPLOAD_URL = ('post', 'https://upload.box.com/api/2.0/files/content')
     DELETE_URL = ('delete', 'https://api.box.com/2.0/files/{file_id}')
 
+    OVERWRITE_URL = ('post', 'https://upload.box.com/api/2.0/files/content')
     CREATE_URL = 'https://api.box.com/2.0/folders'
 
     def request(self, method, url, chunk, headers={}, **kwargs):
@@ -302,7 +280,7 @@ class BoxAPIClient(OAuth2APIClient):
                     refresh_token=self.oauth_access.refresh_token,
                     client_id=self.provider.client_id,
                     client_secret=self.provider.client_secret)
-                self._refresh_token_callback(token)
+                self._save_refresh_token(token)
                 continue
 
     def download(self, chunk, **kwargs):
@@ -328,12 +306,25 @@ class BoxAPIClient(OAuth2APIClient):
         }
         r = self.request(self.UPLOAD_URL[0], self.UPLOAD_URL[1], chunk,
                          **kwargs)
+        if r.status_code == 409:
+            # The file exists, make a second POST to overwrite it.
+            method, url = self.OVERWRITE_URL
+            url = url.format(
+                file_id=r.json()['context_info']['conflicts']['id'])
+            del kwargs['data']
+            r = self.request(method, url, chunk, **kwargs)
+        if not 199 < r.status_code < 300:
+            raise Exception('%s: "%s"' % (r.status_code, r.text))
         attrs = r.json()
         # Store the file_id provided by Box into the attribute store of
         # ChunkStorage
         chunk_storage = chunk.storage.get(
             storage__token__provider__provider=self.PROVIDER)
-        chunk_storage.attrs = {'file.id': attrs['entries'][0]['id']}
+        try:
+            chunk_storage.attrs = {'file.id': attrs['entries'][0]['id']}
+        except KeyError as e:
+            LOGGER.error('key "%s" not in response "%s"', e.args[0], attrs)
+            raise
         chunk_storage.save()
         return r
 
@@ -443,13 +434,19 @@ class GDriveAPIClient(OAuth2APIClient):
         if parent_id:
             attrs['parents'] = [{'id': parent_id}]
         kwargs['files'] = {
-            'data': ('metadata', json.dumps(attrs), 'application/json'),
-            'file': (chunk.uid, BytesIO(data), 'text/plain'),
+            'data': (None, json.dumps(attrs), 'application/json'),
+            'file': (chunk.uid, BytesIO(data),
+                     'application/vnd.google-apps.file'),
         }
         method, url = self.UPLOAD_URL
         url += '?uploadType=multipart'
         r = self.request(method, url, chunk, **kwargs)
+        if not 199 < r.status_code < 300:
+            raise Exception('%s: "%s"' % (r.status_code, r.text))
         attrs = r.json()
+        if 'id' not in attrs:
+            LOGGER.error('key "id" not in response "%s"', attrs)
+            raise KeyError('id')
         # Store the file ID provided by Google into the attribute store of
         # ChunkStorage
         chunk_storage = chunk.storage.get(
