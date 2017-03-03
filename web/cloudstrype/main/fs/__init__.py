@@ -208,7 +208,6 @@ class MulticloudWriter(MulticloudBase, FileLikeBase):
                                             storage=cloud.oauth_storage))
             try:
                 cloud.upload(chunk, data)
-                break
             except Exception as e:
                 LOGGER.exception(e)
                 continue
