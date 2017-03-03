@@ -29,8 +29,8 @@ urlpatterns = [
     url(r'^v1/file/:path:(/.*)$', FilePathView.as_view()),
 
     # File data (multipart) for browser uploads
-    url(r'^v1/upload/:uid:(.*)$', DataUidView.as_view()),
-    url(r'^v1/upload/:path:(/.*)$', DataPathView.as_view()),
+    url(r'^v1/data/:uid:(.*)$', DataUidView.as_view()),
+    url(r'^v1/data/:path:(/.*)$', DataPathView.as_view()),
 ]
 
 urlpatterns = format_suffix_patterns(urlpatterns, allowed=['json', 'html'])
