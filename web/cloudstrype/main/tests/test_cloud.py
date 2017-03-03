@@ -26,10 +26,15 @@ class OAuth2APIClientTestCase(TestCase):
             user=self.user,
             provider=self.provider, access_token='test-access_token',
             refresh_token='test-refresh_token')
-        self.client = self.oauth_access.get_client()
+        self.oauth_storage = OAuth2StorageToken.objects.create(
+            user=self.user, token=self.oauth_access, attrs={'root.id': '0'})
+        self.client = self.oauth_storage.get_client()
         self.file = File.objects.create(path='/foo', user=self.user)
         self.chunk = Chunk.objects.create(md5=md5(b'foo').hexdigest())
         self.file.add_chunk(self.chunk)
+
+    def _get_path(self):
+        return '.cloudstrype/%s/%s' % (self.user.uid, self.chunk.uid)
 
 
 class DropboxAPIClientTestCase(OAuth2APIClientTestCase):
@@ -72,7 +77,7 @@ class OnedriveAPIClientTestCase(OAuth2APIClientTestCase):
         # path.
         httpretty.register_uri(
             httpretty.GET,
-            OnedriveAPIClient.DOWNLOAD_URL[1].format(path=self.chunk.uid),
+            OnedriveAPIClient.DOWNLOAD_URL[1].format(path=self._get_path()),
             body=TEST_CHUNK_BODY)
 
         self.assertEqual(TEST_CHUNK_BODY, self.client.download(self.chunk))
@@ -81,7 +86,7 @@ class OnedriveAPIClientTestCase(OAuth2APIClientTestCase):
     def test_upload(self):
         httpretty.register_uri(
             httpretty.PUT,
-            OnedriveAPIClient.DOWNLOAD_URL[1].format(path=self.chunk.uid),
+            OnedriveAPIClient.DOWNLOAD_URL[1].format(path=self._get_path()),
             body='')
 
         self.client.upload(self.chunk, TEST_CHUNK_BODY)
@@ -90,7 +95,7 @@ class OnedriveAPIClientTestCase(OAuth2APIClientTestCase):
     def test_delete(self):
         httpretty.register_uri(
             httpretty.DELETE,
-            OnedriveAPIClient.DELETE_URL[1].format(path=self.chunk.uid),
+            OnedriveAPIClient.DELETE_URL[1].format(path=self._get_path()),
             body=TEST_CHUNK_BODY)
 
         self.client.delete(self.chunk)
@@ -104,11 +109,9 @@ class BoxAPIClientTestCase(OAuth2APIClientTestCase):
 
     def setUp(self):
         super().setUp()
-        storage_token = OAuth2StorageToken.objects.create(
-            user=self.user, token=self.oauth_access)
         ChunkStorage.objects.create(
-            chunk=self.chunk, storage=storage_token,
-            attrs={'file_id': 'abc123'})
+            chunk=self.chunk, storage=self.oauth_storage,
+            attrs={'file.id': 'abc123'})
 
     @httpretty.activate
     def test_download(self):
@@ -152,11 +155,9 @@ class GDriveAPIClientTestCase(OAuth2APIClientTestCase):
 
     def setUp(self):
         super().setUp()
-        storage_token = OAuth2StorageToken.objects.create(
-            user=self.user, token=self.oauth_access)
         ChunkStorage.objects.create(
-            chunk=self.chunk, storage=storage_token,
-            attrs={'file_id': 'abc123'})
+            chunk=self.chunk, storage=self.oauth_storage,
+            attrs={'file.id': 'abc123'})
 
     @httpretty.activate
     def test_download(self):
@@ -176,7 +177,7 @@ class GDriveAPIClientTestCase(OAuth2APIClientTestCase):
         httpretty.register_uri(
             httpretty.POST,
             GDriveAPIClient.UPLOAD_URL[1].format(file_id='abc123'),
-            body='')
+            body='{"id":1234}')
 
         self.client.upload(self.chunk, TEST_CHUNK_BODY)
 
