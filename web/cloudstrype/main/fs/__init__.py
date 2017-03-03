@@ -23,7 +23,6 @@ from main.fs.errors import (
 CHUNK_SIZE = 32 * 1024
 REPLICAS = 2
 LOGGER = logging.getLogger(__name__)
-LOGGER.addHandler(logging.NullHandler())
 
 
 def chunker(f, chunk_size=CHUNK_SIZE):
@@ -200,14 +199,19 @@ class MulticloudWriter(MulticloudBase, FileLikeBase):
         """
         # Upload to N random providers where N is desired replica count.
         chunk = Chunk.objects.create(md5=md5(data).hexdigest())
-        for i, cloud in enumerate(sorted(self.clouds,
-                                  key=lambda k: random.random())):
-            if i == self.replicas:
+        chunks_uploaded = 0
+        for cloud in sorted(self.clouds, key=lambda k: random.random()):
+            if chunks_uploaded == self.replicas:
                 break
             chunk.storage.add(
                 ChunkStorage.objects.create(chunk=chunk,
                                             storage=cloud.oauth_storage))
-            cloud.upload(chunk, data)
+            try:
+                cloud.upload(chunk, data)
+            except Exception as e:
+                LOGGER.exception(e)
+                continue
+            chunks_uploaded += 1
         self.file.add_chunk(chunk)
 
     def write(self, data):
