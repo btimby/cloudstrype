@@ -311,7 +311,7 @@ class BoxAPIClient(OAuth2APIClient):
         chunk_storage = chunk.storage.get(
             storage__token__provider__provider=self.PROVIDER)
         method, url = self.DOWNLOAD_URL
-        url = url.format(file_id=chunk_storage.attrs['file_id'])
+        url = url.format(file_id=chunk_storage.attrs['file.id'])
         r = self.request(method, url, chunk, **kwargs)
         return r.content
 
@@ -464,7 +464,7 @@ class GDriveAPIClient(OAuth2APIClient):
         chunk_storage = chunk.storage.get(
             storage__token__provider__provider=self.PROVIDER)
         method, url = self.DELETE_URL
-        url = url.format(file_id=chunk_storage.attrs['file_id'])
+        url = url.format(file_id=chunk_storage.attrs['file.id'])
         r = self.request(method, url, chunk, **kwargs)
         r.close()
 
