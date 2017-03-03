@@ -100,12 +100,12 @@ class LoginComplete(OAuth2View):
         client = self.get_oauth2_client(request, provider_name)
 
         try:
-            (access_token, refresh_token, expires), state = self.step_two(
+            token, state = self.step_two(
                 request, provider_name)
         except Http400:
             return HttpResponseBadRequest('Missing state')
 
-        client.oauthsession.token = {'access_token': access_token}
+        client.oauthsession.token = token
         uid, email, name, size, used = client.get_profile()
 
         if request.user.is_authenticated():
@@ -124,19 +124,20 @@ class LoginComplete(OAuth2View):
 
         # If the token exists, update it. Otherwise create it.
         try:
-            token, _ = OAuth2AccessToken.objects.get_or_create(
+            oauth_access, _ = OAuth2AccessToken.objects.get_or_create(
                 provider=client.provider, user=user, provider_uid=uid)
         except IntegrityError:
             return HttpResponseBadRequest('Cloud already registered to user')
-        token.access_token = access_token
-        token.refresh_token = refresh_token
-        token.expires = expires
-        token.save()
+        oauth_access.update(**token)
+        oauth_access.save()
 
         if client.provider.is_storage:
-            token = OAuth2StorageToken.objects.create(user=user, token=token,
-                                                      size=size, used=used)
-            token.get_client().initialize()
+            oauth_storage, _ = OAuth2StorageToken.objects.get_or_create(
+                user=user, token=oauth_access)
+            oauth_storage.size = size
+            oauth_storage.used = used
+            oauth_storage.save()
+            oauth_storage.get_client().initialize()
 
         login(request, user)
 

@@ -8,9 +8,11 @@ from main.models import (
     User, File, OAuth2Provider, OAuth2AccessToken, OAuth2StorageToken,
     Chunk, ChunkStorage
 )
-from main.fs.cloud import (
-    DropboxAPIClient, OnedriveAPIClient, BoxAPIClient, GDriveAPIClient
-)
+from main.fs.clouds.dropbox import DropboxAPIClient
+from main.fs.clouds.onedrive import OnedriveAPIClient
+from main.fs.clouds.box import BoxAPIClient
+from main.fs.clouds.google import GDriveAPIClient
+
 
 TEST_CHUNK_BODY = b'Test chunk body'
 

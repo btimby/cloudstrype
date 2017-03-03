@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 from os.path import normpath, dirname
 from os.path import join as pathjoin
 from os.path import split as pathsplit
@@ -14,6 +15,7 @@ from django.db.models import Max
 from django.db.models.query import QuerySet
 from django.utils.translation import ugettext as _
 from django.utils import timezone
+from django.utils.dateformat import format
 from hashids import Hashids
 
 
@@ -219,7 +221,7 @@ class OAuth2Provider(UidModelMixin, models.Model):
         return 'OAuth2 Provider: %s' % self.name
 
     def get_client(self, redirect_uri, **kwargs):
-        from main.fs.cloud import OAuth2APIClient
+        from main.fs.clouds import OAuth2APIClient
         return OAuth2APIClient.get_client(self, redirect_uri=redirect_uri)
 
     @property
@@ -251,9 +253,39 @@ class OAuth2AccessToken(UidModelMixin, models.Model):
                                                    self.provider.name)
 
     def get_client(self, **kwargs):
-        from main.fs.cloud import OAuth2APIClient
+        from main.fs.clouds import OAuth2APIClient
         return OAuth2APIClient.get_client(self.provider, oauth_access=self,
                                           **kwargs)
+
+    def update(self, access_token, refresh_token=None, expires=None, **kwargs):
+        if 'expires_at' in kwargs:
+            expires = datetime.fromtimestamp(kwargs['expires_at'],
+                                             timezone.utc)
+        elif 'expires_in' in kwargs:
+            expires = datetime.now(timezone.utc) + \
+                      timedelta(seconds=kwargs['expires_in'])
+        else:
+            expires = kwargs.get('expires', None)
+        self.access_token = access_token
+        if refresh_token:
+            # This check is necessary because Google uses long-lived refresh
+            # tokens, in other words they don't issue a new one when you
+            # refresh. We need to retain the old one for re-use.
+            #
+            # See the final note of the following section:
+            # https://developers.google.com/identity/protocols/OAuth2WebServer#offline  # NOQA
+            self.refresh_token = refresh_token
+        self.expires = expires
+        self.save()
+
+    def to_dict(self):
+        token = {
+            'access_token': self.access_token,
+            'refresh_token': self.refresh_token,
+        }
+        if self.expires:
+            token['expires_at'] = format(self.expires, 'U')
+        return token
 
 
 class OAuth2StorageToken(UidModelMixin, models.Model):
