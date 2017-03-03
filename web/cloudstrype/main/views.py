@@ -12,8 +12,7 @@ from django.views.generic import RedirectView
 from django.urls import reverse
 
 from main.models import (
-    OAuth2Provider, User, OAuth2AccessToken, OAuth2LoginToken,
-    OAuth2StorageToken
+    OAuth2Provider, User, OAuth2AccessToken, OAuth2StorageToken,
 )
 
 
@@ -51,11 +50,8 @@ class OAuth2View(View):
         client = self.get_oauth2_client(request, provider_name)
 
         url, state = client.authorization_url()
+        # Store the generated state for validation in step two.
         request.session['oauth2_state_%s' % provider_name] = state
-
-        if 'action' in request.GET:
-            request.session['oauth2_action_%s' % provider_name] = \
-                request.GET['action']
 
         return redirect(url)
 
@@ -84,6 +80,7 @@ class Login(OAuth2View):
     """
 
     def get(self, request, provider_name):
+        request.session['oauth2_action_%s' % provider_name] = 'expand'
         return self.step_one(request, provider_name)
 
 
@@ -111,39 +108,34 @@ class LoginComplete(OAuth2View):
         client.oauthsession.token = {'access_token': access_token}
         uid, email, name, size, used = client.get_profile()
 
-        action = request.session.pop('oauth2_action_%s' % provider_name, None)
-
-        if action == 'expand':
+        if request.user:
             user = request.user
         else:
             try:
                 # Try to fetch the user and log them in.
-                user = User.objects.get(uid=uid)
-                action = 'login'
+                user = User.objects.filter(storage__provider_uid=uid)
             except User.DoesNotExist:
                 try:
-                    user = User.objects.create_user(uid=uid, email=email,
+                    user = User.objects.create_user(email=email,
                                                     full_name=name)
                 except IntegrityError:
-                    return HttpResponseBadRequest('User already registered')
-                action = 'signup'
+                    return HttpResponseBadRequest('User already registered '
+                                                  '-- login and try again.')
 
-        # We want to save the token if the user is signing up, or if they are
-        # expanding their storage.
-        if action in ('signup', 'expand'):
-            token = OAuth2AccessToken.objects.create(
-                provider=client.provider, user=user,
-                access_token=access_token, refresh_token=refresh_token,
-                expires=expires)
+        # If the token exists, update it. Otherwise create it.
+        try:
+            token, _ = OAuth2AccessToken.objects.get_or_create(
+                provider=client.provider, user=user, provider_uid=uid)
+        except IntegrityError:
+            return HttpResponseBadRequest('Cloud already registered to user')
+        token.access_token = access_token
+        token.refresh_token = refresh_token
+        token.expires = expires
+        token.save()
 
-        if action == 'expand':
+        if client.provider.is_storage:
             OAuth2StorageToken.objects.create(user=user, token=token,
                                               size=size, used=used)
-
-        # We want to mark the token as the login token only if the user is
-        # signing up.
-        elif action == 'signup':
-            OAuth2LoginToken.objects.create(user=user, token=token)
 
         login(request, user)
 

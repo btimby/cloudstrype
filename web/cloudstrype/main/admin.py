@@ -1,7 +1,7 @@
 from django.contrib import admin
 
 from main.models import (
-    OAuth2Provider, OAuth2AccessToken, OAuth2LoginToken, OAuth2StorageToken,
+    OAuth2Provider, OAuth2AccessToken, OAuth2StorageToken,
     User
 )
 
@@ -18,10 +18,6 @@ class OAuth2AccessTokenAdmin(admin.ModelAdmin):
     pass
 
 
-class OAuth2LoginTokenAdmin(admin.ModelAdmin):
-    pass
-
-
 class OAuth2StorageTokenAdmin(admin.ModelAdmin):
     readonly_fields = ('attrs',)
 
@@ -29,5 +25,4 @@ class OAuth2StorageTokenAdmin(admin.ModelAdmin):
 admin.site.register(User, UserAdmin)
 admin.site.register(OAuth2Provider, OAuth2ProviderAdmin)
 admin.site.register(OAuth2AccessToken, OAuth2AccessTokenAdmin)
-admin.site.register(OAuth2LoginToken, OAuth2LoginTokenAdmin)
 admin.site.register(OAuth2StorageToken, OAuth2StorageTokenAdmin)

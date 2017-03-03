@@ -10,8 +10,7 @@ from rest_framework import (
 from main.fs import MulticloudFilesystem
 from main.fs.errors import DirectoryNotFoundError, FileNotFoundError
 from main.models import (
-    User, OAuth2Provider, OAuth2AccessToken, OAuth2StorageToken, Directory,
-    File
+    User, OAuth2Provider, OAuth2StorageToken, Directory, File,
 )
 
 
@@ -21,10 +20,16 @@ class UserSerializer(serializers.ModelSerializer):
         fields = ('uid', 'email', 'full_name', 'first_name', 'last_name')
 
 
-class OAuth2AccessTokenSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = OAuth2AccessToken
-        fields = ('provider', )
+class MeView(generics.RetrieveAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = UserSerializer
+    template_name = 'api/me.html'
+
+    def get_object(self):
+        return self.request.user
+
+    def get(self, request, *args, **kwargs):
+        return self.retrieve(request, *args, **kwargs)
 
 
 class OAuth2ProviderSerializer(serializers.ModelSerializer):
@@ -45,27 +50,6 @@ class OAuth2ProviderSerializer(serializers.ModelSerializer):
             token__provider=obj).aggregate(Sum('used'))['used__sum'] or 0
 
 
-class OAuth2StorageTokenSerializer(serializers.ModelSerializer):
-
-    name = serializers.CharField(source='token.provider.name')
-
-    class Meta:
-        model = OAuth2StorageToken
-        fields = ('name', 'size', 'used')
-
-
-class MeView(generics.RetrieveAPIView):
-    permission_classes = [permissions.IsAuthenticated]
-    serializer_class = UserSerializer
-    template_name = 'api/me.html'
-
-    def get_object(self):
-        return self.request.user
-
-    def get(self, request, *args, **kwargs):
-        return self.retrieve(request, *args, **kwargs)
-
-
 class PublicCloudListView(generics.ListAPIView):
     permission_classes = [permissions.AllowAny]
     queryset = OAuth2StorageToken.objects.all()
@@ -73,6 +57,15 @@ class PublicCloudListView(generics.ListAPIView):
 
     def get_queryset(self):
         return OAuth2Provider.objects.all()
+
+
+class OAuth2StorageTokenSerializer(serializers.ModelSerializer):
+
+    name = serializers.CharField(source='token.provider.name')
+
+    class Meta:
+        model = OAuth2StorageToken
+        fields = ('name', 'size', 'used')
 
 
 class CloudListView(generics.ListAPIView):
@@ -105,11 +98,13 @@ class DirectoryListingSerializer(serializers.Serializer):
     files = FileSerializer(many=True)
 
 
-class DirectoryUidView(views.APIView):
-    permission_classes = [permissions.IsAuthenticated]
-
+class FSView(views.APIView):
     def get_fs(self):
         return MulticloudFilesystem(self.request.user)
+
+
+class DirectoryUidView(FSView):
+    permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, uid, format=None):
         try:
@@ -132,11 +127,8 @@ class DirectoryUidView(views.APIView):
             raise exceptions.NotFound()
 
 
-class DirectoryPathView(views.APIView):
+class DirectoryPathView(FSView):
     permission_classes = [permissions.IsAuthenticated]
-
-    def get_fs(self):
-        return MulticloudFilesystem(self.request.user)
 
     def get(self, request, path, format=None):
         try:
@@ -162,11 +154,8 @@ class DirectoryPathView(views.APIView):
             raise exceptions.NotFound()
 
 
-class FileUidView(views.APIView):
+class FileUidView(FSView):
     permission_classes = [permissions.IsAuthenticated]
-
-    def get_fs(self):
-        return MulticloudFilesystem(self.request.user)
 
     def get(self, request, uid, format=None):
         try:
@@ -177,11 +166,8 @@ class FileUidView(views.APIView):
             FileSerializer(self.get_fs().info(file.path, file=file)))
 
 
-class FilePathView(views.APIView):
+class FilePathView(FSView):
     permission_classes = [permissions.IsAuthenticated]
-
-    def get_fs(self):
-        return MulticloudFilesystem(self.request.user)
 
     def get(self, request, path, format=None):
         try:
@@ -191,6 +177,14 @@ class FilePathView(views.APIView):
 
 
 class UrlUidFilenameUploadParser(parsers.FileUploadParser):
+    """
+    Override `get_filename()` to support our URL path structure.
+
+    The default Parser expects a named arg filename in the URL pattern. However
+    to be consistent, we override it so that we can use the path or uid in the
+    url.
+    """
+
     def get_filename(self, stream, media_type, parser_context):
         try:
             request = parser_context['request']
@@ -205,12 +199,9 @@ class UrlUidFilenameUploadParser(parsers.FileUploadParser):
         return basename(id)
 
 
-class DataUidView(views.APIView):
+class DataUidView(FSView):
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = (UrlUidFilenameUploadParser,)
-
-    def get_fs(self):
-        return MulticloudFilesystem(self.request.user)
 
     def get(self, request, uid, format=None):
         try:
@@ -228,46 +219,15 @@ class DataUidView(views.APIView):
         return response.Response(FileSerializer(file).data)
 
 
-class DataPathView(views.APIView):
+class DataPathView(FSView):
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = (UrlUidFilenameUploadParser,)
-
-    def get_fs(self):
-        return MulticloudFilesystem(self.request.user)
 
     def get(self, request, path, format=None):
         try:
             return StreamingHttpResponse(self.get_fs().download(path))
         except FileNotFoundError:
             raise exceptions.NotFound(path)
-
-    def post(self, request, path, format=None):
-        file = self.get_fs().upload(path, f=request.data['file'])
-        return response.Response(FileSerializer(file).data)
-
-
-class UploadUidView(views.APIView):
-    permission_classes = [permissions.IsAuthenticated]
-    parser_classes = (UrlUidFilenameUploadParser,)
-
-    def get_fs(self):
-        return MulticloudFilesystem(self.request.user)
-
-    def post(self, request, uid, format=None):
-        try:
-            file = File.objects.get(uid=uid, user=request.user)
-        except File.DoesNotExist:
-            raise exceptions.NotFound(uid)
-        file = self.get_fs().upload(file.path, f=request.data['file'])
-        return response.Response(FileSerializer(file).data)
-
-
-class UploadPathView(views.APIView):
-    permission_classes = [permissions.IsAuthenticated]
-    parser_classes = (UrlUidFilenameUploadParser,)
-
-    def get_fs(self):
-        return MulticloudFilesystem(self.request.user)
 
     def post(self, request, path, format=None):
         file = self.get_fs().upload(path, f=request.data['file'])

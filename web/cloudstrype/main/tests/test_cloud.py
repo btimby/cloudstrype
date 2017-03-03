@@ -12,7 +12,7 @@ from main.fs.cloud import (
     DropboxAPIClient, OnedriveAPIClient, BoxAPIClient, GDriveAPIClient
 )
 
-TEST_CHUNK_BODY = 'Test chunk body'
+TEST_CHUNK_BODY = b'Test chunk body'
 
 
 class OAuth2APIClientTestCase(TestCase):

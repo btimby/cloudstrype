@@ -7,7 +7,6 @@ from rest_framework.urlpatterns import format_suffix_patterns
 from api.views import (
     MeView, PublicCloudListView, CloudListView, DirectoryUidView,
     DirectoryPathView, FileUidView, FilePathView, DataUidView, DataPathView,
-    UploadUidView, UploadPathView
 )
 
 urlpatterns = [
@@ -29,13 +28,9 @@ urlpatterns = [
     url(r'^v1/file/:uid:(.*)$', FileUidView.as_view()),
     url(r'^v1/file/:path:(/.*)$', FilePathView.as_view()),
 
-    # File data upload and download (raw)
-    url(r'^v1/data/:uid:(.*)$', DataUidView.as_view()),
-    url(r'^v1/data/:path:(/.*)$', DataPathView.as_view()),
-
     # File data (multipart) for browser uploads
-    url(r'^v1/upload/:uid:(.*)$', UploadUidView.as_view()),
-    url(r'^v1/upload/:path:(/.*)$', UploadPathView.as_view()),
+    url(r'^v1/upload/:uid:(.*)$', DataUidView.as_view()),
+    url(r'^v1/upload/:path:(/.*)$', DataPathView.as_view()),
 ]
 
 urlpatterns = format_suffix_patterns(urlpatterns, allowed=['json', 'html'])

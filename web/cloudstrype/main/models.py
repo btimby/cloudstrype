@@ -12,6 +12,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.db import models, transaction
 from django.db.models import Max
 from django.db.models.query import QuerySet
+from django.utils.translation import ugettext as _
 from django.utils import timezone
 from hashids import Hashids
 
@@ -100,7 +101,7 @@ class UserManager(BaseUserManager):
                                 is_active=True, **kwargs)
 
 
-class User(AbstractBaseUser):
+class User(UidModelMixin, AbstractBaseUser):
     """
     Custom user model.
 
@@ -110,8 +111,6 @@ class User(AbstractBaseUser):
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = []
 
-    uid = models.CharField(null=False, blank=False, editable=False,
-                           unique=True, max_length=255)
     email = models.EmailField(null=False, blank=False, unique=True,
                               max_length=255, verbose_name='email address')
     full_name = models.CharField(max_length=64)
@@ -125,8 +124,6 @@ class User(AbstractBaseUser):
     def save(self, *args, **kwargs):
         if self.full_name:
             self.first_name, _, self.last_name = self.full_name.partition(' ')
-        if not self.uid:
-            self.uid = self.email
         return super().save(*args, **kwargs)
 
     def get_full_name(self):
@@ -165,9 +162,15 @@ class User(AbstractBaseUser):
 
 
 class Option(models.Model):
+    RAID_TYPES = {
+        0: _('RAID 0: None'),
+        1: _('RAID 1: Mirroring'),
+        3: _('RAID 3: Striping w/ parity'),
+    }
+
     user = models.OneToOneField(User, related_name='options',
                                 on_delete=models.CASCADE)
-    replicas = models.SmallIntegerField(null=True, blank=True)
+    raid_type = models.SmallIntegerField(null=False, default=1)
     attrs = JSONField()
 
 
@@ -235,6 +238,8 @@ class OAuth2AccessToken(UidModelMixin, models.Model):
 
     provider = models.ForeignKey(OAuth2Provider, related_name='tokens',
                                  on_delete=models.CASCADE)
+    provider_uid = models.CharField(null=False, blank=False, editable=False,
+                                    max_length=255)
     user = models.ForeignKey(User, related_name='tokens',
                              on_delete=models.CASCADE)
     access_token = models.TextField()
@@ -251,23 +256,6 @@ class OAuth2AccessToken(UidModelMixin, models.Model):
                                           **kwargs)
 
 
-class OAuth2LoginToken(UidModelMixin, models.Model):
-    """
-    Track tokens used for login vs. storage.
-    """
-
-    class Meta:
-        verbose_name = 'OAuth2 Login Token'
-        verbose_name_plural = 'OAuth2 Login Tokens'
-
-    user = models.OneToOneField(User)
-    token = models.ForeignKey(OAuth2AccessToken, on_delete=models.CASCADE)
-
-    def __str__(self):
-        return 'OAuth2 Login Token: %s for %s' % (self.user.email,
-                                                  self.token.provider.name)
-
-
 class OAuth2StorageToken(UidModelMixin, models.Model):
     """
     Track tokens used for storage vs. login.
@@ -276,6 +264,7 @@ class OAuth2StorageToken(UidModelMixin, models.Model):
     class Meta:
         verbose_name = 'OAuth2 Storage Token'
         verbose_name_plural = 'OAuth2 Storage Tokens'
+        unique_together = ()
 
     user = models.ForeignKey(User, related_name='storage',
                              on_delete=models.CASCADE)
@@ -477,6 +466,14 @@ class Chunk(UidModelMixin, models.Model):
     md5 = models.CharField(max_length=32)
 
 
+class FileChunkManager(models.Manager):
+    def get_queryset(self):
+        """
+        Return QuerySet with default ordering.
+        """
+        return FileQuerySet(self.model, using=self._db).order_by('serial')
+
+
 class FileChunk(models.Model):
     """
     FileChunk model.
@@ -485,14 +482,15 @@ class FileChunk(models.Model):
     ordering is provided by `serial`.
     """
 
-    # TODO: Make a model or QuerySet that always orders by serial.
-
     class Meta:
         unique_together = ('file', 'serial')
 
     file = models.ForeignKey(File, on_delete=models.CASCADE)
     chunk = models.ForeignKey(Chunk, on_delete=models.PROTECT)
     serial = models.IntegerField(default=0)
+    raid_type = models.SmallIntegerField(null=False, default=1)
+
+    objects = FileChunkManager()
 
 
 class ChunkStorage(models.Model):

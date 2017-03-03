@@ -131,7 +131,7 @@ class OAuth2APIClient(object):
         assert isinstance(chunk, Chunk), 'must be chunk instance'
         r = self.request(self.DOWNLOAD_URL[0], self.DOWNLOAD_URL[1], chunk,
                          **kwargs)
-        return r.text
+        return r.content
 
     def upload(self, chunk, data, **kwargs):
         assert isinstance(chunk, Chunk), 'must be chunk instance'
@@ -247,7 +247,7 @@ class BoxAPIClient(OAuth2APIClient):
         method, url = self.DOWNLOAD_URL
         url = url.format(file_id=chunk_storage.attrs['file_id'])
         r = self.request(method, url, chunk, **kwargs)
-        return r.text
+        return r.content
 
     def upload(self, chunk, data, **kwargs):
         assert isinstance(chunk, Chunk), 'must be chunk instance'
@@ -292,7 +292,7 @@ class BoxAPIClient(OAuth2APIClient):
         assert isinstance(chunk, Chunk), 'must be chunk instance'
         chunk_storage = chunk.storage.get(
             storage__token__provider__provider=self.PROVIDER)
-        method, url = self.DOWNLOAD_URL
+        method, url = self.DELETE_URL
         url = url.format(file_id=chunk_storage.attrs['file_id'])
         r = self.request(method, url, chunk, **kwargs)
         r.close()
@@ -347,14 +347,14 @@ class GDriveAPIClient(OAuth2APIClient):
         method, url = self.DOWNLOAD_URL
         url = url.format(file_id=chunk_storage.attrs['file_id'])
         r = self.request(method, url, chunk, **kwargs)
-        return r.text
+        return r.content
 
     def delete(self, chunk, **kwargs):
         "Overidden to add file_id to URL."
         assert isinstance(chunk, Chunk), 'must be chunk instance'
         chunk_storage = chunk.storage.get(
             storage__token__provider__provider=self.PROVIDER)
-        method, url = self.DOWNLOAD_URL
+        method, url = self.DELETE_URL
         url = url.format(file_id=chunk_storage.attrs['file_id'])
         r = self.request(method, url, chunk, **kwargs)
         r.close()
