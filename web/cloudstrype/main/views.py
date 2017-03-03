@@ -134,8 +134,9 @@ class LoginComplete(OAuth2View):
         token.save()
 
         if client.provider.is_storage:
-            OAuth2StorageToken.objects.create(user=user, token=token,
-                                              size=size, used=used)
+            token = OAuth2StorageToken.objects.create(user=user, token=token,
+                                                      size=size, used=used)
+            token.get_client().initialize()
 
         login(request, user)
 
