@@ -6,7 +6,7 @@ from io import BytesIO
 from oauthlib.oauth2 import TokenExpiredError
 
 from main.fs import Chunk
-from main.fs.clouds import OAuth2APIClient
+from main.fs.clouds.base import OAuth2APIClient
 from main.models import OAuth2Provider
 
 
@@ -14,6 +14,23 @@ LOGGER = logging.getLogger(__name__)
 
 
 class BoxAPIClient(OAuth2APIClient):
+    """
+    OAuth2 API client for Box.
+
+    The Box API does not seem well-designed. It makes some common operations
+    quite difficult. They are also _very_ particular about OAuth access tokens.
+    I seem to get expired token errors every other day, while the other
+    providers just rotate (refresh) keys as expected.
+
+    It is possible this is due to my development machine, requests are being
+    cancelled as the web app restarts due to code changes etc, so it is not
+    the most stable environment, but Box is the only provider having token
+    problems so I am not sure.
+
+    For us, we can just have the user perform the OAuth2 3-legged auth flow
+    to refresh our key set, but what a PiTA.
+    """
+
     PROVIDER = OAuth2Provider.PROVIDER_BOX
     PROFILE_FIELDS = {
         'uid': 'id',

@@ -2,7 +2,7 @@ import json
 import logging
 
 from main.fs import Chunk
-from main.fs.clouds import OAuth2APIClient
+from main.fs.clouds.base import OAuth2APIClient
 from main.models import OAuth2Provider
 
 
@@ -10,6 +10,17 @@ LOGGER = logging.getLogger(__name__)
 
 
 class DropboxAPIClient(OAuth2APIClient):
+    """
+    OAuth2 API client for Dropbox.
+
+    Dropbox is a breeze. Their API works as advertised, I have yet to encounter
+    an error. Initially I had problems getting the correct MIME types for the
+    various endpoints, but this was documented and likely implementor error.
+
+    One thing to note is that we need to document the procedure for disabling
+    sync on the .cloudstrype directory.
+    """
+
     PROVIDER = OAuth2Provider.PROVIDER_DROPBOX
     PROFILE_FIELDS = {
         'uid': 'account_id',
@@ -50,37 +61,3 @@ class DropboxAPIClient(OAuth2APIClient):
         }
         super().delete(chunk, headers=headers,
                        data=json.dumps({'path': '/%s' % chunk.uid}), **kwargs)
-
-
-class OnedriveAPIClient(OAuth2APIClient):
-    SCOPES = [
-        'wl.basic', 'onedrive.readwrite', 'offline_access', 'wl.emails',
-    ]
-    PROVIDER = OAuth2Provider.PROVIDER_ONEDRIVE
-    PROFILE_FIELDS = {
-        'uid': 'id',
-        'email': ['emails', 'account'],
-        'name': 'name',
-        'size': ['quota', 'total'],
-        'used': ['quota', 'used'],
-    }
-
-    AUTHORIZATION_URL = 'https://login.live.com/oauth20_authorize.srf'
-    ACCESS_TOKEN_URL = 'https://login.live.com/oauth20_token.srf'
-    REFRESH_TOKEN_URL = 'https://login.live.com/oauth20_token.srf'
-
-    USER_PROFILE_URL = ('get', 'https://apis.live.net/v5.0/me')
-    USER_STORAGE_URL = ('get', 'https://api.onedrive.com/v1.0/drive')
-
-    DOWNLOAD_URL = \
-        ('get', 'https://api.onedrive.com/v1.0/drive/root:/{path}:/content')
-    UPLOAD_URL = \
-        ('put', 'https://api.onedrive.com/v1.0/drive/root:/{path}:/content')
-    DELETE_URL = \
-        ('delete', 'https://api.onedrive.com/v1.0/drive/root:/{path}')
-
-    def request(self, method, url, chunk, headers={}, **kwargs):
-        url = url.format(
-            path='.cloudstrype/%s/%s' % (self.oauth_access.user.uid,
-                                         chunk.uid))
-        return super().request(method, url, chunk, headers=headers, **kwargs)

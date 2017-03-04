@@ -1,10 +1,11 @@
 import json
 import logging
 
-from io import BytesIO
+from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
 
 from main.fs import Chunk
-from main.fs.clouds import OAuth2APIClient
+from main.fs.clouds.base import OAuth2APIClient
 from main.models import OAuth2Provider
 
 
@@ -12,6 +13,11 @@ LOGGER = logging.getLogger(__name__)
 
 
 class GDriveAPIClient(OAuth2APIClient):
+    """
+    OAuth2 API client for Google Drive.
+
+    Unholy fuck-shits is all I have to say.
+    """
     PROVIDER = OAuth2Provider.PROVIDER_GDRIVE
     SCOPES = [
         'profile', 'email', 'https://www.googleapis.com/auth/drive',
@@ -52,26 +58,52 @@ class GDriveAPIClient(OAuth2APIClient):
         return r.content
 
     def upload(self, chunk, data, **kwargs):
+        """
+        Overridden to perform uploads.
+
+        Google is the most problematic of the clouds. Their API is pretty
+        horrible to work with for the following reasons:
+
+        They are _very_ particular in the formatting of requests, and they
+        require atypical formatting, so not fun.
+
+        Something that works one day will stop working the next. In particular
+        what MIME types they accept. In fact most of my problems have been
+        related to MIME types.
+        """
         assert isinstance(chunk, Chunk), 'must be chunk instance'
         try:
             parent_id = self.oauth_storage.attrs.get('root.id')
         except ValueError:
             parent_id = None
         attrs = {
-            'mimeType': 'text/plain',
+            'mimeType': 'application/vnd.google-apps.unknown',
             'title': chunk.uid,
             'description': 'Cloudstrype chunk',
         }
         if parent_id:
             attrs['parents'] = [{'id': parent_id}]
-        kwargs['files'] = {
-            'data': (None, json.dumps(attrs), 'application/json'),
-            'file': (chunk.uid, BytesIO(data),
-                     'application/vnd.google-apps.file'),
-        }
+
+        # Google wants multipart/related, which requests does not do by default
+        # so we craft the multipart request body using MIME tools.
+        related = MIMEMultipart('related')
+        jsonpart = MIMEBase('application', 'json', charset='utf-8')
+        jsonpart.set_payload(json.dumps(attrs))
+        related.attach(jsonpart)
+        chunkpart = MIMEBase('text', 'plain')
+        chunkpart.set_payload(data)
+        related.attach(chunkpart)
+
+        # Get the body, discarding the headers, then get the headers as a dict
+        # allowing requests to handle the headers.
+        body = related.as_string().split('\n\n', 1)[1]
+        headers = dict(related.items())
+
         method, url = self.UPLOAD_URL
         url += '?uploadType=multipart'
-        r = self.request(method, url, chunk, **kwargs)
+        r = self.request(method, url, chunk, data=body, headers=headers,
+                         **kwargs)
+
         if not 199 < r.status_code < 300:
             raise Exception('%s: "%s"' % (r.status_code, r.text))
         attrs = r.json()
@@ -87,7 +119,13 @@ class GDriveAPIClient(OAuth2APIClient):
         r.close()
 
     def delete(self, chunk, **kwargs):
-        "Overidden to add file_id to URL."
+        """
+        Overidden to add file_id to URL.
+
+        When uploading we store the resulting file ID in a property of the
+        ChunkStorage instance. This allows us to download the file without
+        discovering it's ID from it's path.
+        """
         assert isinstance(chunk, Chunk), 'must be chunk instance'
         chunk_storage = chunk.storage.get(
             storage__token__provider__provider=self.PROVIDER)
@@ -97,7 +135,12 @@ class GDriveAPIClient(OAuth2APIClient):
         r.close()
 
     def authorization_url(self):
-        "Overidden to add access_type=offline."
+        """
+        Overidden to add access_type=offline.
+
+        Offline access results in a refresh token being issued. Google refresh
+        tokens are long-lived, so we don't rotate it when we perform a refresh.
+        """
         return self.oauthsession.authorization_url(
             self.AUTHORIZATION_URL, access_type='offline')
 

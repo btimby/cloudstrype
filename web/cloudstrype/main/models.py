@@ -221,8 +221,7 @@ class OAuth2Provider(UidModelMixin, models.Model):
         return 'OAuth2 Provider: %s' % self.name
 
     def get_client(self, redirect_uri, **kwargs):
-        from main.fs.clouds import OAuth2APIClient
-        return OAuth2APIClient.get_client(self, redirect_uri=redirect_uri)
+        return get_client(self, redirect_uri=redirect_uri)
 
     @property
     def is_storage(self):
@@ -253,9 +252,7 @@ class OAuth2AccessToken(UidModelMixin, models.Model):
                                                    self.provider.name)
 
     def get_client(self, **kwargs):
-        from main.fs.clouds import OAuth2APIClient
-        return OAuth2APIClient.get_client(self.provider, oauth_access=self,
-                                          **kwargs)
+        return get_client(self.provider, oauth_access=self, **kwargs)
 
     def update(self, access_token, refresh_token=None, expires=None, **kwargs):
         if 'expires_at' in kwargs:
@@ -540,3 +537,6 @@ class ChunkStorage(models.Model):
     storage = models.ForeignKey(OAuth2StorageToken, on_delete=models.CASCADE)
     # Provider-specific attribute storage, such as the chunk's file ID.
     attrs = JSONField(null=True, blank=True)
+
+
+from main.fs.clouds import get_client  # NOQA

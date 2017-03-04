@@ -1,6 +1,6 @@
 import logging
 
-from main.fs.clouds import OAuth2APIClient
+from main.fs.clouds.base import OAuth2APIClient
 from main.models import OAuth2Provider
 
 

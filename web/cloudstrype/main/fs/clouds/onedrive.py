@@ -1,6 +1,6 @@
 import logging
 
-from main.fs.clouds import OAuth2APIClient
+from main.fs.clouds.base import OAuth2APIClient
 from main.models import OAuth2Provider
 
 
@@ -8,6 +8,17 @@ LOGGER = logging.getLogger(__name__)
 
 
 class OnedriveAPIClient(OAuth2APIClient):
+    """
+    OAuth2 API client for OneDrive.
+
+    I feel icky saying this but OneDrive's API is the nicest to deal with; even
+    better than Dropbox. It works and is sane, I have yet to have problems
+    with it.
+
+    So, this is the second Microsoft product (right after SQL Server 2000) that
+    I like! Kudos M$.
+    """
+
     SCOPES = [
         'wl.basic', 'onedrive.readwrite', 'offline_access', 'wl.emails',
     ]
