@@ -51,7 +51,6 @@ class BoxAPIClient(OAuth2APIClient):
     UPLOAD_URL = ('post', 'https://upload.box.com/api/2.0/files/content')
     DELETE_URL = ('delete', 'https://api.box.com/2.0/files/{file_id}')
 
-    OVERWRITE_URL = ('post', 'https://upload.box.com/api/2.0/files/content')
     CREATE_URL = 'https://api.box.com/2.0/folders'
 
     def request(self, method, url, chunk, headers={}, **kwargs):
@@ -93,17 +92,24 @@ class BoxAPIClient(OAuth2APIClient):
         kwargs['files'] = {
             'file': (chunk.uid, BytesIO(data), 'text/plain'),
         }
-        r = self.request(self.UPLOAD_URL[0], self.UPLOAD_URL[1], chunk,
-                         **kwargs)
-        if r.status_code == 409:
-            # The file exists, make a second POST to overwrite it.
-            method, url = self.OVERWRITE_URL
-            url = url.format(
-                file_id=r.json()['context_info']['conflicts']['id'])
-            del kwargs['data']
-            r = self.request(method, url, chunk, **kwargs)
-        if not 199 < r.status_code < 300:
-            raise Exception('%s: "%s"' % (r.status_code, r.text))
+        tried_delete = False
+        while True:
+            r = self.request(self.UPLOAD_URL[0], self.UPLOAD_URL[1], chunk,
+                             **kwargs)
+            if not tried_delete and r.status_code == 409:
+                # If there is a conflict, delete the file and continue to try
+                # to upload again. tried_delete is used to ensure we only
+                # repeat this loop once before exiting with error or success.
+                method, url = self.DELETE_URL
+                url = url.format(
+                    file_id=r.json()['context_info']['conflicts']['id'])
+                r = self.request(method, url, chunk)
+                tried_delete = True
+                continue
+            if not 199 < r.status_code < 300:
+                raise Exception('%s: "%s"' % (r.status_code, r.text))
+            else:
+                break
         attrs = r.json()
         # Store the file_id provided by Box into the attribute store of
         # ChunkStorage

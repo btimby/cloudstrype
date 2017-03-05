@@ -34,7 +34,13 @@ class FileTestCase(TestCase):
         dir1 = Directory.objects.create(path='/foo', user=user)
         File.objects.create(path='/foo/bar', user=user)
 
+        self.assertEqual(2, Directory.objects.all().count())
+        self.assertEqual(1, File.objects.all().count())
+
         dir1.delete()
+
+        self.assertEqual(1, Directory.objects.all().count())
+        self.assertEqual(0, File.objects.all().count())
 
     def test_chunks(self):
         user = User.objects.create(email='foo@bar.org')

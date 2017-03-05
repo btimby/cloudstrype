@@ -200,12 +200,12 @@ class Option(models.Model):
 
     user = models.OneToOneField(User, related_name='options',
                                 on_delete=models.CASCADE)
-    raid_type = models.SmallIntegerField(null=False, default=1)
+    raid_level = models.SmallIntegerField(null=False, default=1)
     raid_replicas = models.SmallIntegerField(null=False, default=1)
     attrs = JSONField()
 
     def __str__(self):
-        return '<Option %s, %s, %s>' % (self.raid_type, self.raid_replicas,
+        return '<Option %s, %s, %s>' % (self.raid_level, self.raid_replicas,
                                         self.attrs)
 
 
@@ -384,11 +384,11 @@ class DirectoryManager(models.Manager):
         return DirectoryQuerySet(self.model, using=self._db)
 
     def create(self, *args, **kwargs):
+        if 'user' not in kwargs:
+            raise ValueError('User required for directory creation')
         path = kwargs.get('path', None)
         parent = dirname(path)
         if parent:
-            if 'user' not in kwargs:
-                raise ValueError('User required for directory creation')
             user = kwargs['user']
             kwargs['parent'], _ = Directory.objects.get_or_create(user=user,
                                                                   path=parent)
@@ -448,8 +448,6 @@ class FileQuerySet(UidQuerySet):
     def _args(kwargs):
         path = kwargs.pop('path', None)
         if path:
-            if 'user' not in kwargs:
-                raise ValueError('User required for directory creation')
             user = kwargs['user']
             directory, kwargs['name'] = pathsplit(path)
             kwargs['directory'], _ = Directory.objects.get_or_create(
@@ -470,6 +468,8 @@ class FileManager(models.Manager):
         return FileQuerySet(self.model, using=self._db)
 
     def create(self, *args, **kwargs):
+        if 'user' not in kwargs:
+            raise ValueError('User required for file creation')
         FileQuerySet._args(kwargs)
         return super().create(*args, **kwargs)
 
@@ -552,7 +552,7 @@ class FileChunk(models.Model):
     file = models.ForeignKey(File, on_delete=models.CASCADE)
     chunk = models.ForeignKey(Chunk, on_delete=models.PROTECT)
     serial = models.IntegerField(default=0)
-    raid_type = models.SmallIntegerField(null=False, default=1)
+    raid_level = models.SmallIntegerField(null=False, default=1)
 
     objects = FileChunkManager()
 

@@ -201,7 +201,9 @@ class MulticloudWriter(MulticloudBase, FileLikeBase):
         chunk = Chunk.objects.create(md5=md5(data).hexdigest())
         chunks_uploaded = 0
         for cloud in sorted(self.clouds, key=lambda k: random.random()):
-            if chunks_uploaded == self.replicas:
+            # We add one to replicas because replicas are the COPIES we write
+            # in addition to the base block.
+            if chunks_uploaded == self.replicas + 1:
                 break
             chunk.storage.add(
                 ChunkStorage.objects.create(chunk=chunk,
@@ -272,13 +274,18 @@ class MulticloudWriter(MulticloudBase, FileLikeBase):
 
 class MulticloudFilesystem(MulticloudBase):
     def __init__(self, user, chunk_size=settings.CLOUDSTRYPE_CHUNK_SIZE,
-                 replicas=None):
+                 replicas=0):
         super().__init__(user.get_clients())
         self.user = user
         self.chunk_size = chunk_size
-        if replicas is None:
-            replicas = user.get_option('replicas', 1)
-        self.replicas = replicas
+        self.level = user.get_option('raid_level', 0)
+        self.replicas = user.get_option('raid_replicas', replicas)
+        self._ensure_root()
+
+    def _ensure_root(self):
+        # Do this upfront so that fs operations can assume that a root
+        # directory exists.
+        root, _ = Directory.objects.get_or_create(user=self.user, path='/')
 
     def download(self, path):
         """
