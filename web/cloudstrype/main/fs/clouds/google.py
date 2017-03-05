@@ -16,7 +16,8 @@ class GDriveAPIClient(OAuth2APIClient):
     """
     OAuth2 API client for Google Drive.
 
-    Unholy fuck-shits is all I have to say.
+    Unholy fuck-shits is all I have to say. Look at how much code I had to
+    write... And all of it hard-fought.
     """
     PROVIDER = OAuth2Provider.PROVIDER_GDRIVE
     SCOPES = [

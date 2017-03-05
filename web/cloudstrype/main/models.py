@@ -123,6 +123,9 @@ class User(UidModelMixin, AbstractBaseUser):
 
     objects = UserManager()
 
+    def __str__(self):
+        return '<User: %s>' % self.email
+
     def save(self, *args, **kwargs):
         if self.full_name:
             self.first_name, _, self.last_name = self.full_name.partition(' ')
@@ -133,9 +136,6 @@ class User(UidModelMixin, AbstractBaseUser):
 
     def get_short_name(self):
         return self.first_name
-
-    def __str__(self):
-        return '<User: %s "%s">' % (self.email, self.full_name)
 
     def has_perm(self, perm, obj=None):
         "Does the user have a specific permission?"
@@ -165,15 +165,48 @@ class User(UidModelMixin, AbstractBaseUser):
 
 class Option(models.Model):
     RAID_TYPES = {
-        0: _('RAID 0: None'),
+        0: _('RAID 0: Striping'),
         1: _('RAID 1: Mirroring'),
         3: _('RAID 3: Striping w/ parity'),
+    }
+
+    RAID_DESCRIPTIONS = {
+        0: '''RAID level 0 breaks your files into chunks and writes the chunks
+              to various clouds. This yields the most usable space due to the
+              fact that no duplicates are stored. However, it is the least
+              reliable since if any single cloud is unavailable, most or all of
+              your files will be unavailable.''',
+
+        1: '''RAID level 1 breaks your files into chunks and writes copies of
+              each chunk to a different cloud. This yields less usable space
+              since at least half your space is used to store replicas. However
+              if any single cloud is unavailable your files remain accessible.
+
+              * Note that as you increase your cloud storage portfolio, you can
+              also increase the number of replicas stored. This increases
+              reliability while decreasing usable space.''',
+
+        3: '''RAID level 3 breaks your files into chunks and uses a mathmatical
+              trick to gain redundancy without storing the file multiple times.
+              RAID 3 uses 50% less space than storing a single replica, but
+              provides the same level of redundancy. 50% more space is required
+              than RAID 0 requires. This method yields the best trade-off
+              between space and reliability but is less reliable than RAID
+              level 1 with replica counts greater than 2.
+
+              * RAID level 3 is the recommended option when using more than one
+              cloud.''',
     }
 
     user = models.OneToOneField(User, related_name='options',
                                 on_delete=models.CASCADE)
     raid_type = models.SmallIntegerField(null=False, default=1)
+    raid_replicas = models.SmallIntegerField(null=False, default=1)
     attrs = JSONField()
+
+    def __str__(self):
+        return '<Option %s, %s, %s>' % (self.raid_type, self.raid_replicas,
+                                        self.attrs)
 
 
 class OAuth2Provider(UidModelMixin, models.Model):
@@ -213,12 +246,12 @@ class OAuth2Provider(UidModelMixin, models.Model):
     client_id = models.TextField(null=False)
     client_secret = models.TextField()
 
+    def __str__(self):
+        return '<OAuth2Provider: %s>' % self.name
+
     @property
     def name(self):
         return self.PROVIDERS[self.provider]
-
-    def __str__(self):
-        return 'OAuth2 Provider: %s' % self.name
 
     def get_client(self, redirect_uri, **kwargs):
         return get_client(self, redirect_uri=redirect_uri)
@@ -248,8 +281,8 @@ class OAuth2AccessToken(UidModelMixin, models.Model):
     expires = models.DateTimeField(null=True)
 
     def __str__(self):
-        return 'OAuth2 Access Token: %s for %s' % (self.user.email,
-                                                   self.provider.name)
+        return '<OAuth2AccessToken: %s@%s>' % (self.user.email,
+                                               self.provider.name)
 
     def get_client(self, **kwargs):
         return get_client(self.provider, oauth_access=self, **kwargs)
@@ -293,7 +326,6 @@ class OAuth2StorageToken(UidModelMixin, models.Model):
     class Meta:
         verbose_name = 'OAuth2 Storage Token'
         verbose_name_plural = 'OAuth2 Storage Tokens'
-        unique_together = ()
 
     user = models.ForeignKey(User, related_name='storage',
                              on_delete=models.CASCADE)
@@ -305,8 +337,8 @@ class OAuth2StorageToken(UidModelMixin, models.Model):
     attrs = JSONField(null=True, blank=True)
 
     def __str__(self):
-        return 'OAuth2 Storage Token: %s for %s' % (self.user.email,
-                                                    self.token.provider.name)
+        return '<OAuth2StorageToken: %s@%s>' % (self.user.email,
+                                                self.token.provider.name)
 
     def get_client(self):
         return self.token.get_client(oauth_storage=self)
@@ -494,6 +526,9 @@ class Chunk(UidModelMixin, models.Model):
                                   related_name='chunks')
     md5 = models.CharField(max_length=32)
 
+    def __str__(self):
+        return '<Chunk %s %s>' % (self.file.path, self.md5)
+
 
 class FileChunkManager(models.Manager):
     def get_queryset(self):
@@ -521,6 +556,9 @@ class FileChunk(models.Model):
 
     objects = FileChunkManager()
 
+    def __str__(self):
+        return '<FileChunk %s[%s]>' % (self.file.path, self.serial)
+
 
 class ChunkStorage(models.Model):
     """
@@ -537,6 +575,10 @@ class ChunkStorage(models.Model):
     storage = models.ForeignKey(OAuth2StorageToken, on_delete=models.CASCADE)
     # Provider-specific attribute storage, such as the chunk's file ID.
     attrs = JSONField(null=True, blank=True)
+
+    def __str__(self):
+        return '<ChunkStorage %s@%s>' % (self.chunk,
+                                         self.storage.token.provider.name)
 
 
 from main.fs.clouds import get_client  # NOQA

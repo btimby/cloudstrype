@@ -1,13 +1,13 @@
 import logging
 
 
+from main.fs.clouds.dropbox import DropboxAPIClient
+from main.fs.clouds.onedrive import OnedriveAPIClient
+from main.fs.clouds.box import BoxAPIClient
+from main.fs.clouds.google import GDriveAPIClient
+
+
 LOGGER = logging.getLogger(__name__)
-
-
-from main.fs.clouds.dropbox import DropboxAPIClient  # NOQA
-from main.fs.clouds.onedrive import OnedriveAPIClient  # NOQA
-from main.fs.clouds.box import BoxAPIClient  # NOQA
-from main.fs.clouds.google import GDriveAPIClient  # NOQA
 
 PROVIDERS = (
     DropboxAPIClient,
@@ -18,7 +18,7 @@ PROVIDERS = (
 
 
 def get_client(provider, oauth_access=None, oauth_storage=None, **kwargs):
-    for item in globals().values():
+    for item in PROVIDERS:
         if getattr(item, 'PROVIDER', None) == provider.provider:
             provider_cls = item
             break

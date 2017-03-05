@@ -132,13 +132,8 @@ class BoxAPIClient(OAuth2APIClient):
         profile = self.oauthsession.request(
             *self.USER_PROFILE_URL, **kwargs).json()
 
-        uid = self._get_profile_field(profile, 'uid')
-        email = self._get_profile_field(profile, 'email')
-        name = self._get_profile_field(profile, 'name')
-        size = self._get_profile_field(profile, 'size')
-        used = self._get_profile_field(profile, 'used')
-
-        return (uid, email, name, size, used)
+        return self._get_profile_fields(profile, 'uid', 'email', 'name',
+                                        'size', 'used')
 
     def initialize(self):
         """

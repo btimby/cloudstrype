@@ -1,7 +1,5 @@
 import logging
 
-from inspect import isclass
-
 from requests_oauthlib import OAuth2Session
 from oauthlib.oauth2 import TokenExpiredError
 
@@ -35,33 +33,18 @@ class OAuth2APIClient(object):
     UPLOAD_URL = None
     DELETE_URL = None
 
-    @classmethod
-    def get_client(cls, provider, oauth_access=None, oauth_storage=None,
-                   **kwargs):
-        provider_cls = cls
-        for item in globals().values():
-            if isclass(item) and issubclass(item, cls) and \
-               getattr(item, 'PROVIDER', None) == \
-               provider.provider:
-                provider_cls = item
-                break
-        else:
-            raise ValueError('Invalid provider')
-        return provider_cls(provider, oauth_access=oauth_access,
-                            oauth_storage=oauth_storage, **kwargs)
-
     def __init__(self, provider, oauth_access=None, oauth_storage=None,
                  redirect_uri=None, **kwargs):
         self.provider = provider
         self.oauth_access = oauth_access
         self.oauth_storage = oauth_storage
         if self.oauth_access:
-            # self.oauthsession = OAuth2Session(
-            #     token=self.oauth_access.to_dict(), auto_refresh_url=self.REFRESH_TOKEN_URL,  # NOQA
-            #     token_updater=self._save_refresh_token, **kwargs)
+            # We already have a token, pass it along.
             self.oauthsession = OAuth2Session(
                 token=self.oauth_access.to_dict(), **kwargs)
         else:
+            # We have yet to obtain a token, so we have only the client ID etc.
+            # needed to call `authorization_url()` and get a token.
             self.oauthsession = OAuth2Session(
                 provider.client_id, redirect_uri=redirect_uri,
                 scope=self.SCOPES, **kwargs)
@@ -84,6 +67,10 @@ class OAuth2APIClient(object):
                 value = value.get(field_name.pop(0))
             return value
 
+    def _get_profile_fields(self, profile, *field_names):
+        return list(map(lambda x: self._get_profile_field(profile, x),
+                    field_names))
+
     def authorization_url(self, **kwargs):
         return self.oauthsession.authorization_url(self.AUTHORIZATION_URL,
                                                    **kwargs)
@@ -96,26 +83,15 @@ class OAuth2APIClient(object):
     def get_profile(self, **kwargs):
         profile = self.oauthsession.request(
             *self.USER_PROFILE_URL, **kwargs).json()
-        storage = self.oauthsession.request(
-            *self.USER_STORAGE_URL, **kwargs).json()
+        profile.update(self.oauthsession.request(
+            *self.USER_STORAGE_URL, **kwargs).json())
 
-        uid = self._get_profile_field(profile, 'uid')
-        email = self._get_profile_field(profile, 'email')
-        name = self._get_profile_field(profile, 'name')
-        size = self._get_profile_field(storage, 'size')
-        used = self._get_profile_field(storage, 'used')
+        return self._get_profile_fields(profile, 'uid', 'email', 'name',
+                                        'size', 'used')
 
-        return (uid, email, name, size, used)
-
-    # def request(self, method, url, chunk, headers={}, **kwargs):
-    #     """
-    #     Perform HTTP request for OAuth.
-    #     """
-    #     return self.oauthsession.request(method, url, headers=headers,
-    #                                      **kwargs)
     def request(self, method, url, chunk, headers={}, **kwargs):
         """
-        Perform HTTP request for OAuth.
+        Perform HTTP request with OAuth.
         """
         while True:
             try:
