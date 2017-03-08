@@ -1,8 +1,11 @@
+"""
+URL mapping for user interface.
+"""
+
 from django.conf import settings
 from django.conf.urls import url
 from django.contrib.staticfiles.views import serve
 from django.views.generic import TemplateView
-
 
 urlpatterns = [
     url(r'^$', TemplateView.as_view(template_name='ui/index.html'),
@@ -11,6 +14,8 @@ urlpatterns = [
         name='start'),
     url(r'^login/$', TemplateView.as_view(template_name='ui/login.html'),
         name='login'),
+    url(r'^app/$', TemplateView.as_view(template_name='ui/admin.html'),
+        name='app'),
 ]
 
 if settings.DEBUG:

@@ -1,5 +1,13 @@
+"""
+Data models.
+
+This file contains the models that pertain to the whole application.
+"""
+
 from datetime import datetime, timedelta
-from os.path import normpath, dirname
+from os.path import (
+    normpath, dirname, splitext
+)
 from os.path import join as pathjoin
 from os.path import split as pathsplit
 
@@ -79,6 +87,8 @@ class UidModelMixin(object):
 
 
 class UserManager(BaseUserManager):
+    """Manage User Model."""
+
     def create_user(self, email, **kwargs):
         """
         Creates and saves a User with the given email and password.
@@ -164,6 +174,12 @@ class User(UidModelMixin, AbstractBaseUser):
 
 
 class Option(models.Model):
+    """
+    User account options.
+
+    System-wide options that users define from a preference interface.
+    """
+
     RAID_TYPES = {
         0: _('RAID 0: Striping'),
         1: _('RAID 1: Mirroring'),
@@ -320,7 +336,7 @@ class OAuth2AccessToken(UidModelMixin, models.Model):
 
 class OAuth2StorageToken(UidModelMixin, models.Model):
     """
-    Track tokens used for storage vs. login.
+    Track tokens storage attributes.
     """
 
     class Meta:
@@ -329,7 +345,8 @@ class OAuth2StorageToken(UidModelMixin, models.Model):
 
     user = models.ForeignKey(User, related_name='storage',
                              on_delete=models.CASCADE)
-    token = models.OneToOneField(OAuth2AccessToken, on_delete=models.CASCADE)
+    token = models.OneToOneField(OAuth2AccessToken, related_name='storage',
+                                 on_delete=models.CASCADE)
     size = models.BigIntegerField(default=0)
     used = models.BigIntegerField(default=0)
     # Provider-specific attribute storage, such as chunk storage location
@@ -492,6 +509,8 @@ class File(UidModelMixin, models.Model):
     size = models.IntegerField(default=0)
     md5 = models.CharField(max_length=32)
     sha1 = models.CharField(max_length=40)
+    mime = models.CharField(max_length=64, default='application/unknown')
+    raid_level = models.SmallIntegerField(null=False, default=1)
     created = models.DateTimeField(null=False, default=timezone.now)
     tags = ArrayField(models.CharField(max_length=36), null=True)
     attrs = JSONField(null=True, blank=True)
@@ -504,6 +523,10 @@ class File(UidModelMixin, models.Model):
     @property
     def path(self):
         return pathjoin(self.directory.path, self.name)
+
+    @property
+    def extension(self):
+        return splitext(self.name)[1]
 
     @transaction.atomic
     def add_chunk(self, chunk):
@@ -552,7 +575,6 @@ class FileChunk(models.Model):
     file = models.ForeignKey(File, on_delete=models.CASCADE)
     chunk = models.ForeignKey(Chunk, on_delete=models.PROTECT)
     serial = models.IntegerField(default=0)
-    raid_level = models.SmallIntegerField(null=False, default=1)
 
     objects = FileChunkManager()
 
@@ -572,7 +594,8 @@ class ChunkStorage(models.Model):
 
     chunk = models.ForeignKey(Chunk, related_name='storage',
                               on_delete=models.CASCADE)
-    storage = models.ForeignKey(OAuth2StorageToken, on_delete=models.CASCADE)
+    storage = models.ForeignKey(OAuth2StorageToken, related_name='chunks',
+                                on_delete=models.CASCADE)
     # Provider-specific attribute storage, such as the chunk's file ID.
     attrs = JSONField(null=True, blank=True)
 
