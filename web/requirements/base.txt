@@ -4,9 +4,7 @@ django-oauth-toolkit
 django-rest-auth
 django-extensions
 django-filter
-# Broken, use fork:
-#django-mailjet
-git+https://github.com/btimby/django-mailjet.git
+django-mailjet
 django-environ
 
 oauthlib
@@ -17,3 +15,4 @@ psycopg2
 hashids
 python-uptimerobot
 raven
+git+git@github.com:Kloudless/kloudless-python.git
