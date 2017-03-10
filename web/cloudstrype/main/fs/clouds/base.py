@@ -9,6 +9,12 @@ from main.fs import Chunk
 LOGGER = logging.getLogger(__name__)
 
 
+class HTTPError(Exception):
+    def __init__(self, response):
+        message = '%s: %s' % (response.status_code, response.text)
+        super().__init__(message)
+
+
 class OAuth2APIClient(object):
     """
     OAuth API client base class.

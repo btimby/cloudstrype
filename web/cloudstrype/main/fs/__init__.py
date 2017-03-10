@@ -1,3 +1,31 @@
+"""
+I would like to remove this to a dedicated async HTTP server.
+
+Upload flow:
+ - Upload handled by nginx (written to /tmp).
+ - Upload handed off to uWSGI application, which auths users and performs
+   validation.
+ - Upload handed off to aiohttp server, temp file path passed.
+ - Application waits for aiohttp and nginx waits for application.
+ - https://www.nginx.com/resources/wiki/modules/upload/
+
+ [User] -> [Nginx] -> [uWSGI] -> [AIOHTTP]
+              |                      ^
+              |                      |
+              +--------[disk]--------+
+
+ Download flow:
+ - Download request hits application via nginx.
+ - Perform validation and auth.
+ - Redirect nginx to aiohttp, which will stream chunks via nginx to caller.
+ - https://kovyrin.net/2010/07/24/nginx-fu-x-accel-redirect-remote/
+
+ [User] <- [Nginx] <-> [uWSGI]
+              ^
+              |
+           [AIOHTTP]
+"""
+
 import collections
 import random
 import logging
@@ -13,28 +41,15 @@ from django.db import transaction
 from main.models import (
     Directory, File, Chunk, ChunkStorage, DirectoryQuerySet
 )
+from main.fs.raid import chunker, DEFAULT_CHUNK_SIZE
 from main.fs.errors import (
     DirectoryNotFoundError, FileNotFoundError, PathNotFoundError,
     DirectoryConflictError, FileConflictError
 )
 
 
-# Default 32K chunk size.
-CHUNK_SIZE = 32 * 1024
 REPLICAS = 2
 LOGGER = logging.getLogger(__name__)
-
-
-def chunker(f, chunk_size=CHUNK_SIZE):
-    """
-    Iterator that reads a file-like object and yields a series of chunks.
-    """
-    while True:
-        chunk = f.read(chunk_size)
-        if not chunk:
-            return
-        assert len(chunk) <= chunk_size, 'chunk exceeds %s' % chunk_size
-        yield chunk
 
 
 DirectoryListing = collections.namedtuple('DirectoryListing',
@@ -172,7 +187,7 @@ class MulticloudWriter(MulticloudBase, FileLikeBase):
     """
     File-like object that writes to multiple clouds.
     """
-    def __init__(self, user, clouds, file, chunk_size=CHUNK_SIZE,
+    def __init__(self, user, clouds, file, chunk_size=DEFAULT_CHUNK_SIZE,
                  replicas=REPLICAS):
         super().__init__(clouds)
         self.user = user

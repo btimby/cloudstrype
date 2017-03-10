@@ -1,11 +1,13 @@
 import json
 import logging
 
+from base64 import b64encode
+
 from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
 
 from main.fs import Chunk
-from main.fs.clouds.base import OAuth2APIClient
+from main.fs.clouds.base import OAuth2APIClient, HTTPError
 from main.models import OAuth2Provider
 
 
@@ -56,6 +58,8 @@ class GDriveAPIClient(OAuth2APIClient):
         method, url = self.DOWNLOAD_URL
         url = url.format(file_id=chunk_storage.attrs['file.id'])
         r = self.request(method, url, chunk, **kwargs)
+        if not 199 < r.status_code < 300:
+            raise HTTPError(response=r)
         return r.content
 
     def upload(self, chunk, data, **kwargs):
@@ -73,12 +77,13 @@ class GDriveAPIClient(OAuth2APIClient):
         related to MIME types.
         """
         assert isinstance(chunk, Chunk), 'must be chunk instance'
+
         try:
             parent_id = self.oauth_storage.attrs.get('root.id')
         except ValueError:
             parent_id = None
         attrs = {
-            'mimeType': 'application/vnd.google-apps.unknown',
+            'mimeType': 'text/plain',
             'title': chunk.uid,
             'description': 'Cloudstrype chunk',
         }
@@ -91,13 +96,14 @@ class GDriveAPIClient(OAuth2APIClient):
         jsonpart = MIMEBase('application', 'json', charset='utf-8')
         jsonpart.set_payload(json.dumps(attrs))
         related.attach(jsonpart)
-        chunkpart = MIMEBase('text', 'plain')
-        chunkpart.set_payload(data)
+        chunkpart = MIMEBase('application', 'octet-stream')
+        chunkpart.add_header('Content-Transfer-Encoding', 'base64')
+        chunkpart.set_payload(b64encode(data))
         related.attach(chunkpart)
 
         # Get the body, discarding the headers, then get the headers as a dict
         # allowing requests to handle the headers.
-        body = related.as_string().split('\n\n', 1)[1]
+        body = related.as_bytes().split(b'\n\n', 1)[1]
         headers = dict(related.items())
 
         method, url = self.UPLOAD_URL
@@ -106,7 +112,7 @@ class GDriveAPIClient(OAuth2APIClient):
                          **kwargs)
 
         if not 199 < r.status_code < 300:
-            raise Exception('%s: "%s"' % (r.status_code, r.text))
+            raise HTTPError(response=r)
         attrs = r.json()
         if 'id' not in attrs:
             LOGGER.error('key "id" not in response "%s"', attrs)

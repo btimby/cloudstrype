@@ -6,7 +6,7 @@ from io import BytesIO
 from oauthlib.oauth2 import TokenExpiredError
 
 from main.fs import Chunk
-from main.fs.clouds.base import OAuth2APIClient
+from main.fs.clouds.base import OAuth2APIClient, HTTPError
 from main.models import OAuth2Provider
 
 
@@ -107,7 +107,7 @@ class BoxAPIClient(OAuth2APIClient):
                 tried_delete = True
                 continue
             if not 199 < r.status_code < 300:
-                raise Exception('%s: "%s"' % (r.status_code, r.text))
+                raise HTTPError(response=r)
             else:
                 break
         attrs = r.json()
