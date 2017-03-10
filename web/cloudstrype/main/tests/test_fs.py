@@ -172,6 +172,12 @@ class FilesystemTestCase(TestCase):
             with self.assertRaises(DirectoryConflictError):
                 fs.move('/bar', '/foo')
 
+            with self.assertRaises(DirectoryNotFoundError):
+                fs.move('/bar/foo', '/missing/bar')
+
+            with self.assertRaises(DirectoryNotFoundError):
+                fs.move('/foo', '/missing/bar')
+
     def test_copy(self):
         user = User.objects.create(email='foo@bar.org')
         fs = MulticloudFilesystem(user)
@@ -194,6 +200,7 @@ class FilesystemTestCase(TestCase):
                 fs.upload('/foo', f)
 
             # Dst directories are created automatically.
+            fs.copy('/foo', '/miss')
             fs.copy('/foo', '/bar')
 
             self.assertTrue(fs.isfile('/bar'))
@@ -206,6 +213,14 @@ class FilesystemTestCase(TestCase):
 
             with self.assertRaises(FileConflictError):
                 fs.copy('/foo', '/bar')
+
+            with BytesIO(TEST_FILE) as f:
+                fs.upload('/bar/baz', f)
+            with BytesIO(TEST_FILE) as f:
+                fs.upload('/baz', f)
+
+            with self.assertRaises(FileConflictError):
+                fs.copy('/baz', '/bar')
 
             with self.assertRaises(PathNotFoundError):
                 fs.copy('/missing', 'bar')

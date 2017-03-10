@@ -1,3 +1,5 @@
+import time
+
 from django.db import transaction
 from django.db.utils import IntegrityError
 from django.test import TestCase
@@ -85,6 +87,7 @@ class UserTestCase(TestCase):
     def test_create(self):
         user = User.objects.create_user('foo@bar.org', full_name='Foo Bar')
         self.assertEqual(False, user.is_admin)
+        self.assertEqual(False, user.is_staff)
         self.assertEqual('Foo', user.first_name)
 
         self.assertEqual('<', str(user)[0])
@@ -98,6 +101,7 @@ class UserTestCase(TestCase):
         superuser = User.objects.create_superuser('bar@foo.org', 'foobar',
                                                   full_name='Bar Foo')
         self.assertEqual(True, superuser.is_admin)
+        self.assertEqual(True, superuser.is_staff)
         self.assertEqual('Bar', superuser.first_name)
         self.assertEqual('Bar Foo', superuser.get_full_name())
         self.assertEqual('Bar', superuser.get_short_name())
@@ -120,6 +124,8 @@ class TokenTestCase(TestCase):
         provider = OAuth2Provider.objects.create(
             provider=OAuth2Provider.PROVIDER_AMAZON)
 
+        self.assertFalse(provider.is_storage)
+
         self.assertEqual('<', str(provider)[0])
         self.assertEqual('>', str(provider)[-1])
 
@@ -136,6 +142,10 @@ class TokenTestCase(TestCase):
         token.update(**kwargs)
         self.assertEqual('AAAA', token.access_token)
         self.assertEqual('BBBB', token.refresh_token)
+        token.update('CCCC', expires_at=time.time())
+        d = token.to_dict()
+        self.assertEqual('CCCC', d['access_token'])
+        self.assertEqual('BBBB', d['refresh_token'])
 
         storage = OAuth2StorageToken(user=user, token=token)
 
