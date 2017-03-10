@@ -218,7 +218,7 @@ class Option(models.Model):
                                 on_delete=models.CASCADE)
     raid_level = models.SmallIntegerField(null=False, default=1)
     raid_replicas = models.SmallIntegerField(null=False, default=1)
-    attrs = JSONField()
+    attrs = JSONField(null=True)
 
     def __str__(self):
         return '<Option %s, %s, %s>' % (self.raid_level, self.raid_replicas,
@@ -550,7 +550,7 @@ class Chunk(UidModelMixin, models.Model):
     md5 = models.CharField(max_length=32)
 
     def __str__(self):
-        return '<Chunk %s %s>' % (self.file.path, self.md5)
+        return '<Chunk %s %s>' % (self.uid, self.md5)
 
 
 class FileChunkManager(models.Manager):
