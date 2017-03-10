@@ -119,6 +119,9 @@ class FilesystemTestCase(TestCase):
         self.assertEqual(2, len(listing.dirs))
         self.assertEqual(0, len(listing.files))
 
+        with self.assertRaises(DirectoryNotFoundError):
+            fs.listdir('/missing')
+
     def test_move(self):
         user = User.objects.create(email='foo@bar.org')
         fs = MulticloudFilesystem(user)
@@ -204,6 +207,9 @@ class FilesystemTestCase(TestCase):
             with self.assertRaises(FileConflictError):
                 fs.copy('/foo', '/bar')
 
+            with self.assertRaises(PathNotFoundError):
+                fs.copy('/missing', 'bar')
+
     def test_copy_fail(self):
         user = User.objects.create(email='foo@bar.org')
         with mock.patch('main.models.User.get_clients',
@@ -217,3 +223,17 @@ class FilesystemTestCase(TestCase):
                 fs.mkdir('/foo')
 
             fs.mkdir('/bar/foo')
+
+    def test_info(self):
+        user = User.objects.create(email='foo@bar.org')
+        with mock.patch('main.models.User.get_clients',
+                        MockClients(user).get_clients):
+            fs = MulticloudFilesystem(user)
+
+            with self.assertRaises(FileNotFoundError):
+                fs.info('/foo')
+
+            with BytesIO(TEST_FILE) as f:
+                fs.upload('/foo', f)
+
+            fs.info('/foo')
