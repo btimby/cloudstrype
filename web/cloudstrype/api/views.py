@@ -179,7 +179,7 @@ class DirectorySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Directory
-        fields = ('uid', 'name', 'path', 'tags', 'attrs')
+        fields = ('uid', 'name', 'path', 'created', 'tags', 'attrs')
 
 
 class FileSerializer(serializers.ModelSerializer):
@@ -194,7 +194,7 @@ class FileSerializer(serializers.ModelSerializer):
     class Meta:
         model = File
         fields = ('uid', 'name', 'extension', 'path', 'size', 'chunks', 'md5',
-                  'sha1', 'mime', 'created', 'tags', 'attrs', 'raid_level')
+                  'sha1', 'mime', 'created', 'raid_level', 'tags', 'attrs')
 
     def get_chunks(self, obj):
         return obj.chunks.all().count()
@@ -372,10 +372,15 @@ class DataUidView(BaseFSView):
 
     def get(self, request, uid, format=None):
         try:
-            file = File.objects.get(uid=uid)
+            file = File.objects.get(uid=uid, user=request.user)
         except File.DoesNotExist:
             raise exceptions.NotFound(uid)
-        return StreamingHttpResponse(self.get_fs().download(file.path))
+        response = StreamingHttpResponse(self.get_fs().download(file.path),
+                                         content_type=file.mime)
+        if request.GET.get('download', None):
+            response['Content-Disposition'] = \
+                'attachment; filename="%s"' % file.name
+        return response
 
     def post(self, request, uid, format=None):
         try:
@@ -399,9 +404,18 @@ class DataPathView(BaseFSView):
 
     def get(self, request, path, format=None):
         try:
-            return StreamingHttpResponse(self.get_fs().download(path))
+            file = File.objects.get(path=path, user=request.user)
+        except File.DoesNotExist:
+            raise exceptions.NotFound(path)
+        try:
+            response = StreamingHttpResponse(self.get_fs().download(path),
+                                             content_type=file.mime)
         except FileNotFoundError:
             raise exceptions.NotFound(path)
+        if request.GET.get('download', None):
+            response['Content-Disposition'] = \
+                'attachment; filename="%s"' % file.name
+        return response
 
     def post(self, request, path, format=None):
         file = self.get_fs().upload(path, f=request.data['file'])

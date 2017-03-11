@@ -3,6 +3,7 @@ Data models.
 
 This file contains the models that pertain to the whole application.
 """
+import mimetypes
 
 from datetime import datetime, timedelta
 from os.path import (
@@ -447,6 +448,7 @@ class Directory(UidModelMixin, models.Model):
     display_name = models.CharField(max_length=45)
     display_path = models.TextField()
     parents = ArrayField(models.CharField(max_length=45))
+    created = models.DateTimeField(null=False, default=timezone.now)
     tags = ArrayField(models.CharField(max_length=36), null=True)
     attrs = JSONField(null=True, blank=True)
 
@@ -509,7 +511,7 @@ class File(UidModelMixin, models.Model):
     size = models.IntegerField(default=0)
     md5 = models.CharField(max_length=32)
     sha1 = models.CharField(max_length=40)
-    mime = models.CharField(max_length=64, default='application/unknown')
+    mime = models.CharField(max_length=64)
     raid_level = models.SmallIntegerField(null=False, default=1)
     created = models.DateTimeField(null=False, default=timezone.now)
     tags = ArrayField(models.CharField(max_length=36), null=True)
@@ -519,6 +521,15 @@ class File(UidModelMixin, models.Model):
 
     def __str__(self):
         return '<File: %s>' % self.path
+
+    def save(self, *args, **kwargs):
+        if not self.mime:
+            # If mimetype is unknown, try to determine file's mime type based
+            # on it's name.
+            self.mime, _ = mimetypes.guess_type(self.name, strict=False)
+            if self.mime is None:
+                self.mime = 'application/octet-stream'
+        return super().save(*args, **kwargs)
 
     @property
     def path(self):

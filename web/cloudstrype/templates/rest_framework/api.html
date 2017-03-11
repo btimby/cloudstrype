@@ -12,6 +12,7 @@
 {% block jumbotron %}{% endblock %}
 
 {% block main %}
+    <div class="container">
         <!-- Content -->
         <div id="content">
 
@@ -198,6 +199,10 @@
               {% endif %}
             {% endif %}
         </div><!-- /.content -->
+{% block footer %}
+{{ block.super }}
+{% endblock %}
+</div>
 {% endblock %}
 
 
