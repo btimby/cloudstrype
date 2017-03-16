@@ -300,7 +300,8 @@ class MulticloudFilesystem(MulticloudBase):
     def _ensure_root(self):
         # Do this upfront so that fs operations can assume that a root
         # directory exists.
-        root, _ = Directory.objects.get_or_create(user=self.user, path='/')
+        root, _ = Directory.objects.get_or_create(user=self.user, path='/',
+                                                  display_path='/')
 
     def download(self, path):
         """

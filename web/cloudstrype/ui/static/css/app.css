@@ -231,3 +231,15 @@ footer {
 .panel-yellow > a:hover {
     color: #df8a13;
 }
+
+tr.selected {
+    background-color: #337ab7;
+}
+
+tr.selected  a {
+    color: white;
+}
+
+tr.selected:hover a {
+    color: #23527c;
+}

@@ -1,0 +1,241 @@
+{% load i18n %}
+{% load raven %}
+{% load staticfiles %}
+<html style="height: 100%;">
+<head>
+<title>{% block title %}Cloudstrype.io - Multicloud storage{% endblock %}</title>
+
+    <!-- Custom CSS -->
+{% block css %}
+    <link href="//cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.3.7/css/bootstrap.min.css" rel="stylesheet">
+    <link href="//cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.css" rel="stylesheet" type="text/css">
+    <!--<link href="//cdnjs.cloudflare.com/ajax/libs/morris.js/0.5.1/morris.css" rel="stylesheet">//-->
+    <link href="//cdnjs.cloudflare.com/ajax/libs/dropzone/4.3.0/min/dropzone.min.css" rel="stylesheet">
+    <link href="{% static "css/new.css" %}" rel="stylesheet">
+{% endblock %}
+
+{% block headscript %}
+{% verbatim %}
+    <script id="user-menu-template" type="text/x-handlebars-template">
+        <a href="#" class="dropdown-toggle" data-toggle="dropdown"><i class="fa fa-user"></i> {{full_name}} <b class="caret"></b></a>
+        <ul class="dropdown-menu">
+            <li>
+                <a href="#"><i class="fa fa-fw fa-user"></i> Profile</a>
+            </li>
+            <li>
+                <a href="#"><i class="fa fa-fw fa-gear"></i> Settings</a>
+            </li>
+            <li class="divider"></li>
+            <li>
+                <a href="#"><i class="fa fa-fw fa-power-off"></i> Log Out</a>
+            </li>
+        </ul>
+    </script>
+
+    <script id="path-list-template" type="text/x-handlebars-template">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Size</th>
+                        <th>Created</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </script>
+
+    <script id="path-item-template" type="text/x-handlebars-template">
+        <td>
+            {{#if isDirectory}}
+            <a href="#files{{path}}" title="Browse"><i class="fa fa-folder"></i>
+            {{else}}
+            <a href="/api/v1/me/files/path:{{path}}:/data/" title="View"><i class="fa fa-file"></i>
+            {{/if}}
+            {{display_name}}{{#if isDirectory}} /{{/if}}
+            </a>
+        </td>
+        <td>{{fileSize size}}</td>
+        <td>{{timeAgo created}}</td>
+    </script>
+
+    <script id="breadcrumb-template" type="text/x-handlebars-template">
+        <ol class="breadcrumb">
+            {{#each this}}
+            <li class="active">{{#if @first}}<i class="fa fa-hdd-o"></i>{{else}}/{{/if}} {{this}}</li>
+            {{/each}}
+        </ol>
+    </script>
+
+    <script id="create-modal-template" type="text/x-handlebars-template">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+                    <h4 class="modal-title">Create directory</h4>
+                </div>
+                <div class="modal-body">
+                    <label>Name: <input type="text" name="name" id="create-name-input"/></label>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="create-save-button">Save changes</button>
+                </div>
+            </div>
+        </div>
+    </script>
+
+{% endverbatim %}
+{% endblock %}
+</head>
+
+{% block body %}
+<body style="height: 100%; overflow: hidden;">
+
+<div class="container">
+    <div class="left-col">
+        <div class="col-wrapper">
+            <div class="user-menu">
+                <img class="img-gravatar" src="https://www.gravatar.com/avatar/f99f4d21eaff2ef715784b655984442b?s=40"/>
+                <div class="user-name">Ben Timby</div>
+            </div>
+            <div class="left-section input-group">
+                <span class="input-group-addon"><i class="fa fa-search fa-fw" aria-hidden="true"></i></span>
+                <input class="form-control" type="password" placeholder="Search">
+            </div>
+            <div class="left-section">
+                <div class="section-header">
+                    <div>VIEWS</div>
+                </div>
+                <i style="padding-right: 3px;" class="fa fa-calendar"></i><a href="#">Calendar</a><br/>
+                <i style="padding-right: 3px;" class="fa fa-line-chart"></i><a href="#">Active</a>
+            </div>
+            <div class="left-section">
+                <div class="section-header">
+                    <div class="section-header-left">FOLDERS</div>
+                    <div class="section-header-right">
+                        <i class="fa fa-plus-circle"></i>
+                        <i class="fa fa-minus-circle"></i>
+                    </div>
+                    <br style="clear:both;"/>
+                </div>
+                <div class="folder-list">
+                    <i style="padding-right: 3px;" class="fa fa-folder"></i><a href="#">Documents</a><br/>
+                    <i style="padding-right: 3px;" class="fa fa-folder"></i><a href="#">Pictures</a><br/>
+                    <i style="padding-right: 3px;" class="fa fa-folder"></i><a href="#">Music</a><br/>
+                    <i style="padding-right: 3px;" class="fa fa-folder"></i><a href="#">Archive</a><br/>
+                </div>
+            </div>
+            <div class="left-section tag-section">
+                <div class="section-header">
+                    <div>TAGS</div>
+                </div>
+                <div class="tag-list">
+                    <button class="btn btn-primary btn-xs" type="button">
+                      tunisia <span class="badge">4</span>
+                    </button>
+                    <button class="btn btn-primary btn-xs" type="button">
+                      brazil <span class="badge">8</span>
+                    </button>
+                    <button class="btn btn-primary btn-xs" type="button">
+                      cairo <span class="badge">12</span>
+                    </button>
+                    <button class="btn btn-primary btn-xs" type="button">
+                      delaware <span class="badge">1</span>
+                    </button>
+                    <button class="btn btn-primary btn-xs" type="button">
+                      mumbai <span class="badge">18</span>
+                    </button>
+                    <button class="btn btn-primary btn-xs" type="button">
+                      tazmania <span class="badge">3</span>
+                    </button>
+                    <button class="btn btn-primary btn-xs" type="button">
+                      paris <span class="badge">9</span>
+                    </button>
+                    <button class="btn btn-primary btn-xs" type="button">
+                      natucket <span class="badge">2</span>
+                    </button>
+                    <button class="btn btn-primary btn-xs" type="button">
+                      prague <span class="badge">11</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="middle-col">
+        <div class="col-wrapper">
+            <div class="file-name">Documents</div>
+            <i style="float: right; padding: 3px;" class="fa fa-cloud-upload fa-2x"></i>
+            <ol class="file-list">
+                <li>
+                    <img src="{% static "img/image-48x48.png" %}"/>
+                    <h4>Big.jpg</h4>
+                    <p>1.1 Mb
+                    9/27/2018 Friday Mar. 12 5:52:21 PM</p>
+                </li>
+                <li class="selected">
+                    <img src="{% static "img/image-48x48.png" %}"/>
+                    <h4>Big.jpg</h4>
+                    <p>1.1 Mb
+                    9/27/2018 Friday Mar. 12 5:52:21 PM</p>
+                </li>
+                <li>
+                    <img src="{% static "img/image-48x48.png" %}"/>
+                    <h4>Big.jpg</h4>
+                    <p>1.1 Mb
+                    9/27/2018 Friday Mar. 12 5:52:21 PM</p>
+                </li>
+                <li>
+                    <img src="{% static "img/image-48x48.png" %}"/>
+                    <h4>Big.jpg</h4>
+                    <p>1.1 Mb
+                    9/27/2018 Friday Mar. 12 5:52:21 PM</p>
+                </li>
+            </ol>
+        </div>
+    </div>
+    <div class="right-col">
+        <div class="col-wrapper">
+            <div class="file-name">Big.jpg</div>
+            <img src="{% static "img/image.png" %}"/>
+            <div style="width: 100px; height: 100px;" id="donut-example"></div>
+        </div>
+        <div class="file-menu">
+            <button type="button" class="btn btn-primary btn-lg">Primary</button>
+            <button type="button" class="btn btn-success btn-lg"><i class="fa fa-cloud-download fa-lg"></i> Download</button>
+            <button type="button" class="btn btn-danger btn-lg"><i class="fa fa-trash-o fa-lg"></i> Delete</button>
+        </div>
+    </div>
+</div>
+
+</body>
+{% endblock %}
+
+
+{% block footscript %}
+    <script src="//cdnjs.cloudflare.com/ajax/libs/raven.js/3.12.0/raven.min.js"></script>
+    <script type="text/javascript">
+    //<![CDATA[
+    Raven.config('{% sentry_public_dsn 'https' %}').install()
+    //]]>
+    </script>
+
+    <script src="//cdnjs.cloudflare.com/ajax/libs/jquery/3.1.1/jquery.min.js"></script>
+    <script>window.jQuery || document.write('<script src="{% static "js/lib/jquery.min.js" %}"><\/script>')</script>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.3.7/js/bootstrap.min.js"></script>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/underscore.js/1.8.3/underscore-min.js"></script>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/backbone.js/1.3.3/backbone-min.js"></script>
+    <script src="{% static "js/lib/backbone.select.min.js" %}"></script>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/raphael/2.2.7/raphael.min.js"></script>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/morris.js/0.5.1/morris.min.js"></script>
+    <script src="//cdn.filesizejs.com/filesize.min.js"></script>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/timeago.js/2.0.5/timeago.min.js"></script>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/dropzone/4.3.0/min/dropzone.min.js"></script>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/js-cookie/2.1.3/js.cookie.min.js"></script>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/handlebars.js/4.0.6/handlebars.min.js"></script>
+    <!--<script src="{% static "js/chart-data.js" %}"></script>//-->
+    <script src="{% static "js/new.js" %}"></script>
+{% endblock %}
+</html>

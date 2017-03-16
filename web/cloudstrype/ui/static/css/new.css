@@ -1,0 +1,114 @@
+html, body {
+    height: 100%;
+    padding: 0;
+    margin: 0;
+}
+.container {
+    height: 100%;
+}
+
+.container .left-col,
+.container .right-col,
+.container .middle-col {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+}
+
+.container .left-col {
+    left: 0;
+    width: 14%;
+    background: lightgrey;
+}
+
+.container .middle-col {
+    left: 14%;
+    right: 43%;
+    border-right: 1px solid black;
+}
+
+.container .right-col {
+    right: 0;
+    width: 43%;
+}
+
+.col-wrapper {
+    padding: 3px;
+}
+
+.folder-list {
+    height: 300px;
+    overflow: auto;
+}
+
+/*.tag-section {
+    width: 14%;
+    position: fixed;
+    bottom: 30;
+}*/
+
+ol.file-list {
+    margin-left: -30px;
+    margin-right: 10px;
+    list-style-type: none;
+}
+
+.file-list li {
+    border-bottom: 1px solid black;
+}
+
+.file-list li.selected {
+    background-color: lightgrey;
+}
+
+.file-list li h4 {
+    display: inline;
+}
+
+.file-list li p {
+    margin-left: 40px;
+}
+
+.left-section {
+    margin-top: 20px;
+}
+
+.tag-list button{
+    margin-top: 4px;
+}
+
+.img-gravatar {
+    border-radius: 50%;
+    float: left;
+    padding-left: 3px;
+}
+
+.user-name {
+    font-size: 20px;
+    padding: 6px 0 0 6px;
+}
+
+.file-name {
+    font-size: 36px;
+}
+
+.section-header {
+    font-size: 18px;
+    font-weight: bold;
+}
+
+.section-header-left {
+    float: left;
+}
+
+.section-header-right {
+    float: right;
+}
+
+.file-menu {
+    position: fixed;
+    width: 100%;
+    bottom: 0;
+    padding: 10px;
+    border-top: 1px solid black;
+}

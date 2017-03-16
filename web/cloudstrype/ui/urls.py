@@ -18,6 +18,9 @@ urlpatterns = [
     url(r'^app/$',
         login_required()(TemplateView.as_view(template_name='ui/app.html')),
         name='app'),
+    url(r'^new/$',
+        login_required()(TemplateView.as_view(template_name='ui/new.html')),
+        name='new'),
 ]
 
 if settings.DEBUG:

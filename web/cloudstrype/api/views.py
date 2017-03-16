@@ -7,7 +7,7 @@ API.
 
 from os.path import basename
 
-from django.db.models import Sum
+from django.db.models import Sum, Count
 from django.http import StreamingHttpResponse
 
 from rest_framework import (
@@ -19,7 +19,7 @@ from main.fs import MulticloudFilesystem
 from main.fs.errors import DirectoryNotFoundError, FileNotFoundError
 from main.models import (
     User, OAuth2Provider, OAuth2StorageToken, Directory, File, ChunkStorage,
-    Option
+    Option, Tag
 )
 
 
@@ -177,9 +177,19 @@ class DirectorySerializer(serializers.ModelSerializer):
     Provides details about a directory.
     """
 
+    mime = serializers.SerializerMethodField()
+    tags = serializers.SerializerMethodField()
+
     class Meta:
         model = Directory
-        fields = ('uid', 'name', 'path', 'created', 'tags', 'attrs')
+        fields = ('uid', 'name', 'display_name', 'path', 'display_path',
+                  'parents', 'mime', 'created', 'tags', 'attrs')
+
+    def get_mime(self, obj):
+        return 'application/x-directory'
+
+    def get_tags(self, obj):
+        return obj.tags.all().values_list('name', flat=True)
 
 
 class FileSerializer(serializers.ModelSerializer):
@@ -190,14 +200,34 @@ class FileSerializer(serializers.ModelSerializer):
     """
 
     chunks = serializers.SerializerMethodField()
+    display_name = serializers.SerializerMethodField()
+    display_path = serializers.SerializerMethodField()
+    tags = serializers.SerializerMethodField()
 
     class Meta:
         model = File
-        fields = ('uid', 'name', 'extension', 'path', 'size', 'chunks', 'md5',
-                  'sha1', 'mime', 'created', 'raid_level', 'tags', 'attrs')
+        fields = ('uid', 'name', 'display_name', 'extension', 'path',
+                  'display_path', 'size', 'chunks', 'md5', 'sha1', 'mime',
+                  'created', 'raid_level', 'tags', 'attrs')
 
     def get_chunks(self, obj):
-        return obj.chunks.all().count()
+        # These names are a bit long...
+        n1 = 'storage__storage__token__provider__provider'
+        n2 = 'storage__storage__token'
+        chunks = {}
+        for item in obj.chunks.values(n1).annotate(Count(n2)):
+            chunks[OAuth2Provider.PROVIDERS[item[n1]]] = \
+                item['%s__count' % n2]
+        return chunks
+
+    def get_display_name(self, obj):
+        return obj.name
+
+    def get_display_path(self, obj):
+        return obj.path
+
+    def get_tags(self, obj):
+        return obj.tags.all().values_list('name', flat=True)
 
 
 class DirectoryListingSerializer(serializers.Serializer):
@@ -420,3 +450,65 @@ class DataPathView(BaseFSView):
     def post(self, request, path, format=None):
         file = self.get_fs().upload(path, f=request.data['file'])
         return response.Response(FileSerializer(file).data)
+
+
+class TagSerializer(serializers.ModelSerializer):
+    """
+    Serialize a Cloud instance.
+
+    Provides statistics for a cloud account.
+    """
+
+    class Meta:
+        model = Tag
+        fields = ('name', )
+
+
+class TagListView(generics.ListAPIView):
+    """
+    List files with a given set of tags.
+
+    Queries Files with given set of Tags. Used to list files and additional tag
+    names in UI.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+    queryset = Tag.objects.all()
+    serializer_class = TagSerializer
+
+    def get_queryset(self):
+        kwargs = {}
+        if 'tag' in self.request.GET:
+            kwargs['name__in'] = self.request.GET.getlist('tag')
+        return Tag.objects.filter(user=self.request.user, **kwargs)
+
+
+class DirectoryTagView(BaseFSView):
+    """
+    File tag view.
+
+    Provides File information for a file identified by it's tag(s).
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, format=None):
+        tags = request.GET.get('tag')
+        return response.Response(
+            DirectorySerializer(
+                Directory.objects.filter(tag__name__in=tags)).data)
+
+
+class FileTagView(views.APIView):
+    """
+    File tag view.
+
+    Provides File information for a file identified by it's tag(s).
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, format=None):
+        tags = request.GET.get('tag')
+        return response.Response(
+            FileSerializer(File.objects.filter(tag__name__in=tags)).data)

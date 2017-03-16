@@ -18,6 +18,7 @@ from django.contrib.auth.base_user import (
 from django.contrib.postgres.fields import (
     JSONField, ArrayField
 )
+from django.contrib.postgres.search import SearchVectorField
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import models, transaction
 from django.db.models import Max
@@ -362,6 +363,10 @@ class OAuth2StorageToken(UidModelMixin, models.Model):
         return self.token.get_client(oauth_storage=self)
 
 
+class Tag(models.Model):
+    name = models.CharField(null=False, max_length=32)
+
+
 class DirectoryQuerySet(UidQuerySet):
     """
     QuerySet for Directories.
@@ -449,8 +454,9 @@ class Directory(UidModelMixin, models.Model):
     display_path = models.TextField()
     parents = ArrayField(models.CharField(max_length=45))
     created = models.DateTimeField(null=False, default=timezone.now)
-    tags = ArrayField(models.CharField(max_length=36), null=True)
+    tags = models.ManyToManyField(Tag)
     attrs = JSONField(null=True, blank=True)
+    search = SearchVectorField(null=True, blank=True, editable=False)
 
     objects = DirectoryManager()
 
@@ -460,6 +466,16 @@ class Directory(UidModelMixin, models.Model):
     @property
     def path(self):
         return '/%s' % self.display_path.lstrip('/')
+
+
+class DirectoryShare(models.Model):
+    class Meta:
+        unique_together = ('directory', 'user')
+
+    directory = models.ForeignKey(Directory, on_delete=models.CASCADE,
+                                  related_name='shared_to')
+    user = models.ForeignKey(User, on_delete=models.CASCADE,
+                             related_name='shared_directories')
 
 
 class FileQuerySet(UidQuerySet):
@@ -514,8 +530,9 @@ class File(UidModelMixin, models.Model):
     mime = models.CharField(max_length=64)
     raid_level = models.SmallIntegerField(null=False, default=1)
     created = models.DateTimeField(null=False, default=timezone.now)
-    tags = ArrayField(models.CharField(max_length=36), null=True)
+    tags = models.ManyToManyField(Tag)
     attrs = JSONField(null=True, blank=True)
+    search = SearchVectorField(null=True, blank=True, editable=False)
 
     objects = FileManager()
 
@@ -547,6 +564,23 @@ class File(UidModelMixin, models.Model):
             Max('serial'))['serial__max'] or 0) + 1
         fc.save()
         return fc
+
+
+class FileStat(models.Model):
+    file = models.OneToOneField(File, on_delete=models.CASCADE,
+                                related_name='stats')
+    reads = models.IntegerField()
+    last = models.DateTimeField(auto_now=True)
+
+
+class FileShare(models.Model):
+    class Meta:
+        unique_together = ('file', 'user')
+
+    file = models.ForeignKey(File, on_delete=models.CASCADE,
+                             related_name='shared_to')
+    user = models.ForeignKey(User, on_delete=models.CASCADE,
+                             related_name='shared_files')
 
 
 class Chunk(UidModelMixin, models.Model):
