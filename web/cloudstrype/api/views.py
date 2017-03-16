@@ -464,7 +464,7 @@ class TagSerializer(serializers.ModelSerializer):
         fields = ('name', )
 
 
-class TagListView(generics.ListAPIView):
+class TagListView(views.APIView):
     """
     List files with a given set of tags.
 
@@ -472,15 +472,14 @@ class TagListView(generics.ListAPIView):
     names in UI.
     """
 
-    permission_classes = [permissions.IsAuthenticated]
-    queryset = Tag.objects.all()
-    serializer_class = TagSerializer
-
-    def get_queryset(self):
+    def get(self, request, format=None):
         kwargs = {}
-        if 'tag' in self.request.GET:
-            kwargs['name__in'] = self.request.GET.getlist('tag')
-        return Tag.objects.filter(user=self.request.user, **kwargs)
+        if 'tag' in request.GET:
+            kwargs['name__in'] = request.GET.getlist('tag')
+        tags = Tag.objects.filter(file__user=request.user, **kwargs)
+        tags = tags.annotate(Count('file'))
+        tags = tags.values_list('name', 'file__count')
+        return response.Response({i[0]: i[1] for i in tags})
 
 
 class DirectoryTagView(BaseFSView):
@@ -499,7 +498,7 @@ class DirectoryTagView(BaseFSView):
                 Directory.objects.filter(tag__name__in=tags)).data)
 
 
-class FileTagView(views.APIView):
+class FileTagView(generics.ListAPIView):
     """
     File tag view.
 
@@ -507,6 +506,10 @@ class FileTagView(views.APIView):
     """
 
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        tags = []
+        return File.objects.filter(tag__name__in=tags)
 
     def get(self, request, format=None):
         tags = request.GET.get('tag')
