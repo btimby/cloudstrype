@@ -99,11 +99,14 @@ class OAuth2APIClient(object):
         """
         Perform HTTP request with OAuth.
         """
+        tried_refresh = False
         while True:
             try:
                 return self.oauthsession.request(method, url, headers=headers,
                                                  **kwargs)
             except TokenExpiredError:
+                if tried_refresh:
+                    break
                 # Do our own, since requests_oauthlib is broken.
                 token = self.oauthsession.refresh_token(
                     self.REFRESH_TOKEN_URL,
@@ -111,7 +114,7 @@ class OAuth2APIClient(object):
                     client_id=self.provider.client_id,
                     client_secret=self.provider.client_secret)
                 self._save_refresh_token(token)
-                continue
+                tried_refresh = True
 
     def download(self, chunk, **kwargs):
         assert isinstance(chunk, Chunk), 'must be chunk instance'

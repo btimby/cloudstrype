@@ -3,8 +3,6 @@ import logging
 
 from io import BytesIO
 
-from oauthlib.oauth2 import TokenExpiredError
-
 from main.fs import Chunk
 from main.fs.clouds.base import OAuth2APIClient, HTTPError
 from main.models import OAuth2Provider
@@ -52,24 +50,6 @@ class BoxAPIClient(OAuth2APIClient):
     DELETE_URL = ('delete', 'https://api.box.com/2.0/files/{file_id}')
 
     CREATE_URL = 'https://api.box.com/2.0/folders'
-
-    def request(self, method, url, chunk, headers={}, **kwargs):
-        """
-        Perform HTTP request for OAuth.
-        """
-        while True:
-            try:
-                return self.oauthsession.request(method, url, headers=headers,
-                                                 **kwargs)
-            except TokenExpiredError:
-                # Do our own, since requests_oaulib is broken.
-                token = self.oauthsession.refresh_token(
-                    self.REFRESH_TOKEN_URL,
-                    refresh_token=self.oauth_access.refresh_token,
-                    client_id=self.provider.client_id,
-                    client_secret=self.provider.client_secret)
-                self._save_refresh_token(token)
-                continue
 
     def download(self, chunk, **kwargs):
         "Overidden to add file_id to URL."
