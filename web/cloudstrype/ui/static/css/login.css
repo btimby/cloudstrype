@@ -11,10 +11,20 @@
 }
 
 .form-signin-logos > li {
+    cursor: pointer;
+    border: solid 1px white;
     display: inline-block;
     list-style-type: none;
-    padding-right: 20px;
+    margin-right: 20px;
     vertical-align: middle;
+}
+
+.form-signin-selected {
+    border: solid 1px black !important;
+}
+
+.form-signin-logos > li:hover {
+    border: solid 1px lightgrey;
 }
 
 #form-signin-checkbox {

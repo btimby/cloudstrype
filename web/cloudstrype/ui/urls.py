@@ -11,10 +11,8 @@ from django.views.generic import TemplateView
 urlpatterns = [
     url(r'^$', TemplateView.as_view(template_name='ui/index.html'),
         name='home'),
-    url(r'^start/$', TemplateView.as_view(template_name='ui/start.html'),
-        name='start'),
-    url(r'^login/$', TemplateView.as_view(template_name='ui/login.html'),
-        name='login'),
+    url(r'^how/$', TemplateView.as_view(template_name='ui/how.html'),
+        name='how'),
     url(r'^app/$',
         login_required()(TemplateView.as_view(template_name='ui/app.html')),
         name='app'),

@@ -1,5 +1,7 @@
 {% extends "ui/index.html" %}
 
+{% block jumbotron %}{% endblock %}
+
 {% block main %}
         <!-- Call to Action Well -->
         <div class="row">
@@ -12,6 +14,7 @@
         </div>
         <!-- /.row -->
 
+    <div class="container">
         <!-- Content Row -->
         <div class="row">
             <!-- /.col-md-2 -->
@@ -41,4 +44,10 @@
             <!-- /.col-md-2 -->
         </div>
         <!-- /.row -->
+        <hr/>
+
+{% block footer %}
+{{ block.super }}
+{% endblock %}
+    </div>
 {% endblock %}

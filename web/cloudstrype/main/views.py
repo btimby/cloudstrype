@@ -1,14 +1,13 @@
 import logging
 
-from django.contrib.auth import login, logout, get_user_model
-from django.contrib.auth.tokens import default_token_generator
+from django.contrib.auth import login as _login
+from django.contrib.auth import logout as _logout
 from django.db import transaction, IntegrityError
 from django.shortcuts import (
-    redirect, get_object_or_404
+    redirect, get_object_or_404, render
 )
 from django.http import HttpResponseBadRequest, Http404
 from django.views import View
-from django.views.generic import RedirectView
 from django.urls import reverse
 
 from main.models import (
@@ -17,6 +16,28 @@ from main.models import (
 
 
 LOGGER = logging.getLogger(__name__)
+
+
+def login(request):
+    if request.method == 'POST':
+        provider = request.POST.get('provider', None)
+        email = request.POST.get('email', None)
+        if not provider and email:
+            try:
+                user = User.objects.get(email=email)
+            except User.DoesNotExist:
+                pass
+            else:
+                provider = \
+                    user.tokens.order_by('id').first().provider.name.lower()
+        if provider:
+            return redirect(reverse('login_oauth2', args=(provider,)))
+    return render(request, 'main/login.html')
+
+
+def logout(request):
+    _logout(request)
+    return redirect(reverse('ui:home'))
 
 
 class Http400(Http404):
@@ -36,7 +57,7 @@ class OAuth2View(View):
         else:
             raise Http404()
 
-        redirect_uri = reverse('main:login_complete', args=[provider_name])
+        redirect_uri = reverse('complete_oauth2', args=[provider_name])
         redirect_uri = request.build_absolute_uri(redirect_uri)
 
         provider = get_object_or_404(OAuth2Provider, provider=id)
@@ -80,6 +101,7 @@ class Login(OAuth2View):
     """
 
     def get(self, request, provider_name):
+        provider_name = provider_name.lower()
         request.session['oauth2_action_%s' % provider_name] = 'expand'
         return self.step_one(request, provider_name)
 
@@ -97,6 +119,9 @@ class LoginComplete(OAuth2View):
 
     @transaction.atomic
     def get(self, request, provider_name):
+        if 'error' in request.GET:
+            return redirect(reverse('login'))
+        provider_name = provider_name.lower()
         client = self.get_oauth2_client(request, provider_name)
 
         try:
@@ -139,41 +164,6 @@ class LoginComplete(OAuth2View):
             oauth_storage.save()
             oauth_storage.get_client().initialize()
 
-        login(request, user)
+        _login(request, user)
 
-        return redirect(reverse('ui:home'))
-
-
-class Logout(RedirectView):
-    """
-    Log the user out then redirect them.
-    """
-
-    @property
-    def url(self):
-        "Replace property. Can't reverse during import."
-        return reverse('ui:start')
-
-    def get(self, request):
-        "Log user out, let base class redirect."
-        logout(request)
-        return super().get(request)
-
-
-class EmailConfirm(RedirectView):
-    """
-    Handle email confirmation link.
-    """
-
-    @property
-    def url(self):
-        "Replace property. Can't reverse during import."
-        return reverse('ui:start')
-
-    def get(self, request, uid, token):
-        user = get_user_model().objects.get(uid=uid)
-        if default_token_generator.check_token(user, token):
-            user.is_active = True
-            user.save()
-            return super().get(request)
-        raise Http404()
+        return redirect(reverse('ui:new'))
