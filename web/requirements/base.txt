@@ -16,3 +16,4 @@ hashids
 python-uptimerobot
 raven
 git+https://github.com/Kloudless/kloudless-python.git
+websockets
