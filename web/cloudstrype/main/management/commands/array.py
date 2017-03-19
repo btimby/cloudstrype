@@ -7,7 +7,7 @@ import websockets
 
 from urllib.parse import parse_qs
 
-from django.core.management.base import BaseCommand, CommandError
+from django.core.management.base import BaseCommand
 
 
 LOGGER = logging.getLogger(__name__)
