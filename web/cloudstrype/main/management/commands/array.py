@@ -171,7 +171,7 @@ class ArrayServer(object):
             cmd.data = await reader.read(cmd.length)
         LOGGER.info('Send(%s): %s(%s), %s, payload %s bytes' %
                     (client_id, cmd.name, cmd.id, cmd.status_name,
-                    str(cmd.length)))
+                     str(cmd.length)))
 
         outq, inq = self.client.clients[client_id]
         await outq.put(cmd)
@@ -181,7 +181,7 @@ class ArrayServer(object):
 
         LOGGER.info('Recv(%s): %s(%s), %s, payload %s bytes' %
                     (client_id, cmd.name, cmd.id, cmd.status_name,
-                    str(cmd.length)))
+                     str(cmd.length)))
         if cmd.status == ArrayCommand.STATUS_SUCCESS:
             await start_response(writer, status=200,
                                  headers={'Content-Length': cmd.length})

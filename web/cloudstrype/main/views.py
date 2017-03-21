@@ -19,6 +19,12 @@ LOGGER = logging.getLogger(__name__)
 
 
 def login(request):
+    """
+    Let user choose provider.
+
+    Otherwise handles POST from quick login form on index.html template or
+    full provider-selection form on login.html.
+    """
     if request.method == 'POST':
         provider = request.POST.get('provider', None)
         email = request.POST.get('email', None)
@@ -36,11 +42,14 @@ def login(request):
 
 
 def logout(request):
+    "Simple logout view."
     _logout(request)
     return redirect(reverse('ui:home'))
 
 
 class Http400(Http404):
+    "Throwable 400 error."
+
     pass
 
 
@@ -146,6 +155,9 @@ class LoginComplete(OAuth2View):
                 except IntegrityError:
                     return HttpResponseBadRequest('User already registered '
                                                   '-- login and try again.')
+                else:
+                    # TODO: send new user a welcome email.
+                    pass
 
         # If the token exists, update it. Otherwise create it.
         try:
