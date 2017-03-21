@@ -17,15 +17,16 @@ LOGGER.addHandler(logging.NullHandler())
 HTTP_STATUS = {
     200: b'OK',
     404: b'NOT FOUND',
+    503: b'UNAVAILABLE',
 }
-HTML_ERROR = b'<html><body>%s</body></html>'
+HTML_ERROR = b'<html><body>%b</body></html>'
 
 
 async def start_response(writer, content_type='text/html', status=200,
                          headers={}):
     writer.write(b'HTTP/1.1 %b %b\r\n' %
                  (bytes(str(status), 'ascii'), HTTP_STATUS.get(status, 'NA')))
-    writer.write(b'Content-Type: %b\r\n' % content_type)
+    writer.write(b'Content-Type: %b\r\n' % bytes(content_type, 'ascii'))
     for name, value in headers.items():
         if isinstance(value, int):
             value = str(value)
@@ -38,10 +39,11 @@ async def start_response(writer, content_type='text/html', status=200,
 
 async def error_response(writer, status, message):
     body = HTML_ERROR % message
-    start_response(
+    await start_response(
         writer, status=status, headers={'Content-Length': len(body)})
-    await writer.write(body)
-    await writer.aclose()
+    writer.write(body)
+    await writer.drain()
+    writer.close()
 
 
 class ArrayCommand(object):
@@ -57,16 +59,30 @@ class ArrayCommand(object):
 
     COMMAND_TYPES = {v: n for n, v in COMMAND_NAMES.items()}
 
-    FORMAT = '<bsip'
-    FORMAT2 = '<bs24i'
+    STATUS_NONE = 0
+    STATUS_SUCCESS = 1
+    STATUS_ERROR = 2
 
-    def __init__(self, type, id=b''):
+    STATUS_NAMES = {
+        STATUS_NONE: 'NONE',
+        STATUS_SUCCESS: 'SUCCESS',
+        STATUS_ERROR: 'ERROR',
+    }
+
+    STATUS_TYPES = {v: n for n, v in STATUS_NAMES.items()}
+
+    FORMAT = '<bb24si'
+
+    def __init__(self, type, status=STATUS_NONE, id=b''):
         if isinstance(type, str):
             # Convert HTTP method string to integer.
             type = self.COMMAND_TYPES[type]
         assert type in (self.COMMAND_GET, self.COMMAND_PUT,
                         self.COMMAND_DELETE)
+        assert type in (self.STATUS_NONE, self.STATUS_SUCCESS,
+                        self.STATUS_ERROR)
         self.type = type
+        self.status = status
         self.id = id
         self.length = 0
         self.data = b''
@@ -74,14 +90,14 @@ class ArrayCommand(object):
     def __bytes__(self):
         assert len(self.data) == self.length
         assert len(self.id) == 24
-        return struct.pack(self.FORMAT, self.type, self.id, self.length,
-                           self.data)
+        return struct.pack(self.FORMAT, self.type, self.status, self.id,
+                           self.length) + self.data
 
     @staticmethod
     def decode(buffer):
-        cmd = ArrayCommand(buffer[0], id=buffer[1:25])
-        cmd.length = struct.unpack('<i', buffer[25:29])[0]
-        cmd.data = buffer[29:]
+        cmd = ArrayCommand(buffer[0], buffer[1], id=buffer[2:26])
+        cmd.length = struct.unpack('<i', buffer[26:30])[0]
+        cmd.data = buffer[30:]
         assert len(cmd.data) == cmd.length
         assert len(cmd.id) == 24
         return cmd
@@ -89,6 +105,10 @@ class ArrayCommand(object):
     @property
     def name(self):
         return self.COMMAND_NAMES[self.type]
+
+    @property
+    def status_name(self):
+        return self.STATUS_NAMES[self.status]
 
 
 class ArrayServer(object):
@@ -120,18 +140,19 @@ class ArrayServer(object):
             client_id, chunk_id = path.strip('/').split('/', 1)
         except ValueError as e:
             LOGGER.debug(e)
-            await error_response(writer, 404, 'Not Found')
+            await error_response(writer, 404, b'Not Found')
             return
 
         try:
             client_id = uuid.UUID(client_id)
         except ValueError as e:
             LOGGER.debug(e)
-            await error_response(writer, 404, 'Not Found')
+            await error_response(writer, 404, b'Not Found')
             return
 
         if client_id not in self.client.clients:
-            await error_response(writer, 404, 'Not Found')
+            LOGGER.debug('"%s" not in (%s)' % (client_id, self.client.clients))
+            await error_response(writer, 404, b'Not Found')
             return
 
         # Parse headers.
@@ -144,23 +165,30 @@ class ArrayServer(object):
             k, v = l.split(':', 1)
             headers[k] = v.strip()
 
-        cmd = ArrayCommand(method, bytes(chunk_id, 'ascii'))
+        cmd = ArrayCommand(method, id=bytes(chunk_id, 'ascii'))
         if cmd.type == ArrayCommand.COMMAND_PUT:
             cmd.length = int(headers['Content-Length'])
             cmd.data = await reader.read(cmd.length)
-        LOGGER.info('Command: %s(%s), payload %s bytes' %
-                    (cmd.name, cmd.id, str(cmd.length)))
+        LOGGER.info('Send(%s): %s(%s), %s, payload %s bytes' %
+                    (client_id, cmd.name, cmd.id, cmd.status_name,
+                    str(cmd.length)))
 
         outq, inq = self.client.clients[client_id]
         await outq.put(cmd)
         cmd = await inq.get()
+        # Should have status of success or error, not none after a round-trip.
+        assert cmd.status != ArrayCommand.STATUS_NONE
 
-        LOGGER.info('Respnse: %s(%s), payload %s bytes' %
-                    (cmd.name, cmd.id, str(cmd.length)))
-        await start_response(writer, status=200,
-                             headers={'Content-Length': cmd.length})
-        if cmd.type == ArrayCommand.COMMAND_GET:
-            writer.write(cmd.data)
+        LOGGER.info('Recv(%s): %s(%s), %s, payload %s bytes' %
+                    (client_id, cmd.name, cmd.id, cmd.status_name,
+                    str(cmd.length)))
+        if cmd.status == ArrayCommand.STATUS_SUCCESS:
+            await start_response(writer, status=200,
+                                 headers={'Content-Length': cmd.length})
+            if cmd.type == ArrayCommand.COMMAND_GET:
+                writer.write(cmd.data)
+        else:
+            await start_response(writer, status=503)
         writer.write_eof()
         writer.close()
 
@@ -171,26 +199,35 @@ class ArrayClient(object):
 
     async def handle(self, websocket, path):
         name = await websocket.recv()
-        name = uuid.UUID(bytes=name)
-        LOGGER.info('Client: {0}'.format(name))
-        # Register name into global client list. Create a q for receiving
-        # commands, commands will originate from the HTTP server and will be
-        # passed down to the websocket client to be fulfilled.
-        assert name not in self.clients
-        (inq, outq) = self.clients[name] = (asyncio.Queue(), asyncio.Queue())
         try:
+            name = uuid.UUID(bytes=name)
+        except ValueError as e:
+            LOGGER.debug(e)
+            websocket.close()
+        LOGGER.info('Connect: {0}'.format(name))
+        try:
+            inq, outq = self.clients.setdefault(name, (asyncio.Queue(),
+                                                       asyncio.Queue()))
             while True:
                 cmd = await inq.get()
                 try:
-                    await websocket.send(bytes(cmd))
-                    cmd = ArrayCommand.decode(bytes(await websocket.recv(),
-                                              'ascii'))
-                    await outq.put(cmd)
+                    await asyncio.wait_for(websocket.send(bytes(cmd)), 5)
+                    r = await asyncio.wait_for(websocket.recv(), 10)
+                    cmd = ArrayCommand.decode(bytes(r, 'ascii'))
                 except Exception as e:
                     LOGGER.exception(e)
+                    cmd.status = ArrayCommand.STATUS_ERROR
+                    cmd.length = 0
+                    cmd.data = ''
+                await outq.put(cmd)
         # TODO: client is disconnecting, but we don't know it.
         finally:
-            del self.clients[name]
+            try:
+                websocket.close()
+            except Exception as e:
+                LOGGER.exception(e)
+            self.clients.pop(name, None)
+            LOGGER.info('Disconnect: {0}'.format(name))
 
 
 class Command(BaseCommand):
