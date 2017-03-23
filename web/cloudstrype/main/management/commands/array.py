@@ -3,8 +3,6 @@ import struct
 import asyncio
 import logging
 
-import websockets
-
 from urllib.parse import parse_qs
 
 from django.core.management.base import BaseCommand
@@ -46,15 +44,67 @@ async def error_response(writer, status, message):
     writer.close()
 
 
+async def parse_request(reader, writer):
+    request = await reader.readline()
+    if request == b'':
+        LOGGER.debug("Empty request")
+        writer.close()
+        raise RequestError()
+
+    method, path, http = request.decode().split()
+    assert method in ('GET', 'PUT', 'DELETE')
+    assert http == 'HTTP/1.1'
+
+    try:
+        path, querystring = path.split('?', 1)
+    except ValueError as e:
+        querystring = {}
+    else:
+        querystring = parse_qs(querystring)
+
+    # path == <client GUID>/<chunk ID>
+    try:
+        client_id, chunk_id = path.strip('/').split('/', 1)
+    except ValueError as e:
+        LOGGER.debug(e)
+        await error_response(writer, 404, b'Not Found')
+        raise RequestError()
+
+    try:
+        client_id = uuid.UUID(client_id)
+    except ValueError as e:
+        LOGGER.debug(e)
+        await error_response(writer, 404, b'Not Found')
+        raise RequestError()
+
+    # Parse headers.
+    headers = {}
+    while True:
+        l = await reader.readline()
+        l = l.decode()
+        if l == '\r\n':
+            break
+        k, v = l.split(':', 1)
+        headers[k] = v.strip()
+
+    return method, path, querystring, headers, client_id, chunk_id
+
+
+class RequestError(Exception):
+    pass
+
+
 class ArrayCommand(object):
     COMMAND_GET = 0
     COMMAND_PUT = 1
     COMMAND_DELETE = 2
+    COMMAND_PING = 3
 
     COMMAND_NAMES = {
         COMMAND_GET: 'GET',
         COMMAND_PUT: 'PUT',
         COMMAND_DELETE: 'DELETE',
+        COMMAND_PING: 'PING',
     }
 
     COMMAND_TYPES = {v: n for n, v in COMMAND_NAMES.items()}
@@ -71,39 +121,68 @@ class ArrayCommand(object):
 
     STATUS_TYPES = {v: n for n, v in STATUS_NAMES.items()}
 
-    FORMAT = '<bb24si'
+    FORMAT = '<bbii'
 
-    def __init__(self, type, status=STATUS_NONE, id=b''):
+    def __init__(self, type, status=STATUS_NONE, idlen=None, datalen=None,
+                 id=None, data=None):
         if isinstance(type, str):
             # Convert HTTP method string to integer.
             type = self.COMMAND_TYPES[type]
         assert type in (self.COMMAND_GET, self.COMMAND_PUT,
-                        self.COMMAND_DELETE)
-        assert type in (self.STATUS_NONE, self.STATUS_SUCCESS,
+                        self.COMMAND_DELETE, self.COMMAND_PING)
+        assert status in (self.STATUS_NONE, self.STATUS_SUCCESS,
                         self.STATUS_ERROR)
         self.type = type
         self.status = status
-        self.id = id
-        self.length = 0
-        self.data = b''
+        self.idlen = 0 if idlen is None else idlen
+        self.datalen = 0 if datalen is None else datalen
+        self._id, self._data = b'', b''
+        if id is not None:
+            self.id = id
+        if data is not None:
+            self.data = data
+
+    def _get_id(self):
+        return self._id
+
+    def _set_id(self, value):
+        self.idlen = len(value)
+        self._id = value
+
+    id = property(_get_id, _set_id)
+
+    def _get_data(self):
+        return self._data
+
+    def _set_data(self, value):
+        self.datalen = len(value)
+        self._data = value
+
+    data = property(_get_data, _set_data)
+
+    @property
+    def length(self):
+        return self.idlen + self.datalen
+
+    @property
+    def header(self):
+        return struct.pack(self.FORMAT, self.type, self.status, self.idlen,
+                           self.datalen)
 
     def __bytes__(self):
-        assert len(self.data) == self.length
-        assert len(self.id) == 24
-        return struct.pack(self.FORMAT, self.type, self.status, self.id,
-                           self.length) + self.data
+        assert len(self.id) == self.idlen
+        assert len(self.data) == self.datalen
+        return self.header + self.id + self.data
 
     @staticmethod
-    def decode(buffer):
-        cmd = ArrayCommand(buffer[0], buffer[1], id=buffer[2:26])
-        cmd.length = struct.unpack('<i', buffer[26:30])[0]
-        cmd.data = buffer[30:]
-        assert len(cmd.data) == cmd.length
-        assert len(cmd.id) == 24
+    def decode_header(buffer):
+        type, status, idlen, datalen = struct.unpack(ArrayCommand.FORMAT,
+                                                     buffer)
+        return ArrayCommand(type, status, idlen, datalen)
         return cmd
 
     @property
-    def name(self):
+    def type_name(self):
         return self.COMMAND_NAMES[self.type]
 
     @property
@@ -114,116 +193,122 @@ class ArrayCommand(object):
 class ArrayServer(object):
     # TODO: combine with Client class. We can detect the path and "upgrade" to
     # a websocket for certain clients, or handle as HTTP for others.
-    def __init__(self, client):
-        self.client = client
+    def __init__(self):
+        self.clients = {}
 
-    async def handle(self, reader, writer):
-        request = await reader.readline()
-        if request == b'':
-            LOGGER.debug("Empty request")
-            await writer.aclose()
-            return
+    async def handle_http(self, reader, writer):
+        """
+        Handle the HTTP side of the server.
 
-        method, path, http = request.decode().split()
-        assert method in ('GET', 'PUT', 'DELETE')
-        assert http == 'HTTP/1.1'
-
+        HTTP clients send us REST-like requests for chunks. We dispatch them to
+        array clients on the other side.
+        """
         try:
-            path, querystring = path.split('?', 1)
-        except ValueError as e:
-            querystring = {}
-        else:
-            querystring = parse_qs(querystring)
-
-        # path == <client GUID>/<chunk ID>
-        try:
-            client_id, chunk_id = path.strip('/').split('/', 1)
-        except ValueError as e:
-            LOGGER.debug(e)
-            await error_response(writer, 404, b'Not Found')
+            method, path, querystring, headers, client_id, chunk_id = \
+                await parse_request(reader, writer)
+        except RequestError:
             return
-
-        try:
-            client_id = uuid.UUID(client_id)
-        except ValueError as e:
-            LOGGER.debug(e)
-            await error_response(writer, 404, b'Not Found')
-            return
-
-        if client_id not in self.client.clients:
-            LOGGER.debug('"%s" not in (%s)' % (client_id, self.client.clients))
-            await error_response(writer, 404, b'Not Found')
-            return
-
-        # Parse headers.
-        headers = {}
-        while True:
-            l = await reader.readline()
-            l = l.decode()
-            if l == '\r\n':
-                break
-            k, v = l.split(':', 1)
-            headers[k] = v.strip()
 
         cmd = ArrayCommand(method, id=bytes(chunk_id, 'ascii'))
         if cmd.type == ArrayCommand.COMMAND_PUT:
-            cmd.length = int(headers['Content-Length'])
-            cmd.data = await reader.read(cmd.length)
-        LOGGER.info('Send(%s): %s(%s), %s, payload %s bytes' %
-                    (client_id, cmd.name, cmd.id, cmd.status_name,
-                     str(cmd.length)))
+            datalen = int(headers['Content-Length'])
+            cmd.data = await reader.read(datalen)
 
-        outq, inq = self.client.clients[client_id]
+        LOGGER.info('Send({0}): {1.type_name}({1.id}), {1.status_name}, '
+                    'id {1.idlen} bytes, payload {1.datalen} bytes'.format(
+                    client_id, cmd))
+
+        try:
+            outq, inq = self.clients[client_id]
+        except KeyError:
+            LOGGER.debug('%s not in (%s)' % (client_id,
+                                             list(self.clients.keys())))
+            await error_response(writer, 404, b'Not Found')
+            return
+
+        # Send the command to the array client. Wait for their response. Should
+        # probably timeout on the get().
         await outq.put(cmd)
         cmd = await inq.get()
+
         # Should have status of success or error, not none after a round-trip.
         assert cmd.status != ArrayCommand.STATUS_NONE
 
-        LOGGER.info('Recv(%s): %s(%s), %s, payload %s bytes' %
-                    (client_id, cmd.name, cmd.id, cmd.status_name,
-                     str(cmd.length)))
+        LOGGER.info('Recv({0}): {1.type_name}({1.id}), {1.status_name}, '
+                    'id {1.idlen} bytes, payload {1.datalen} bytes'.format(
+                    client_id, cmd))
+
         if cmd.status == ArrayCommand.STATUS_SUCCESS:
             await start_response(writer, status=200,
-                                 headers={'Content-Length': cmd.length})
+                                 headers={'Content-Length': cmd.datalen})
             if cmd.type == ArrayCommand.COMMAND_GET:
                 writer.write(cmd.data)
         else:
             await start_response(writer, status=503)
+
         writer.write_eof()
+        await writer.drain()
         writer.close()
 
+    async def handle_client(self, reader, writer):
+        """
+        Handle the array side of the server.
 
-class ArrayClient(object):
-    def __init__(self):
-        self.clients = {}
-
-    async def handle(self, websocket, path):
-        name = await websocket.recv()
+        Here we maintain an open connection with all the array clients, and
+        send commands when they arrive. Periodically, we send a PING command as
+        a simple keepalive.
+        """
+        name = await reader.read(16)
+        #name, total, used = handshake.split()
         try:
             name = uuid.UUID(bytes=name)
         except ValueError as e:
             LOGGER.debug(e)
-            websocket.close()
+            writer.close()
+            return
         LOGGER.info('Connect: {0}'.format(name))
         try:
             inq, outq = self.clients.setdefault(name, (asyncio.Queue(),
                                                        asyncio.Queue()))
             while True:
-                cmd = await inq.get()
                 try:
-                    await asyncio.wait_for(websocket.send(bytes(cmd)), 5)
-                    r = await asyncio.wait_for(websocket.recv(), 10)
-                    cmd = ArrayCommand.decode(bytes(r, 'ascii'))
+                    cmd = await asyncio.wait_for(inq.get(), 30)
+                except asyncio.TimeoutError:
+                    LOGGER.debug('No command, doing keepalive')
+                    cmd = ArrayCommand(ArrayCommand.COMMAND_PING)
+                try:
+                    # Write command to client.
+                    LOGGER.debug('Sending {0.length} bytes'.format(cmd))
+                    writer.write(bytes(cmd))
+                    await asyncio.wait_for(writer.drain(), 5)
+
+                    # Read client response.
+                    buffer = await asyncio.wait_for(
+                        reader.read(struct.calcsize(ArrayCommand.FORMAT)), 5)
+                    cmd = ArrayCommand.decode_header(buffer)
+                    if cmd.length:
+                        buffer = await asyncio.wait_for(
+                            reader.read(cmd.length), 10)
+                        cmd.id = buffer[:cmd.idlen]
+                        cmd.data = buffer[cmd.idlen:]
+                    LOGGER.debug('Received {0.length} bytes'.format(cmd))
                 except Exception as e:
                     LOGGER.exception(e)
+                    # Create error response to (maybe) push back to the HTTP
+                    # side.
                     cmd.status = ArrayCommand.STATUS_ERROR
-                    cmd.length = 0
                     cmd.data = ''
-                await outq.put(cmd)
-        # TODO: client is disconnecting, but we don't know it.
+                    # Consider all exceptions fatal. We can catch more specific
+                    # ones above and treat them as non-fatal.
+                    break
+                finally:
+                    # PING commands did not originate from the queue, so no
+                    # need to return them to HTTP side.
+                    if cmd.type != ArrayCommand.COMMAND_PING:
+                        await outq.put(cmd)
         finally:
             try:
-                websocket.close()
+                writer.close()
             except Exception as e:
                 LOGGER.exception(e)
             self.clients.pop(name, None)
@@ -247,12 +332,11 @@ class Command(BaseCommand):
         LOGGER.addHandler(logging.StreamHandler())
         LOGGER.setLevel(logging.DEBUG)
 
-        client = ArrayClient()
-        server = ArrayServer(client)
+        server = ArrayServer()
 
         loop = asyncio.get_event_loop()
         loop.run_until_complete(
-            websockets.serve(client.handle, 'localhost', 8765))
+            asyncio.start_server(server.handle_client, 'localhost', 8765))
         loop.run_until_complete(
-            asyncio.start_server(server.handle, 'localhost', 8081))
+            asyncio.start_server(server.handle_http, 'localhost', 8081))
         loop.run_forever()
