@@ -131,7 +131,7 @@ class ArrayCommand(object):
         assert type in (self.COMMAND_GET, self.COMMAND_PUT,
                         self.COMMAND_DELETE, self.COMMAND_PING)
         assert status in (self.STATUS_NONE, self.STATUS_SUCCESS,
-                        self.STATUS_ERROR)
+                          self.STATUS_ERROR)
         self.type = type
         self.status = status
         self.idlen = 0 if idlen is None else idlen
@@ -179,7 +179,6 @@ class ArrayCommand(object):
         type, status, idlen, datalen = struct.unpack(ArrayCommand.FORMAT,
                                                      buffer)
         return ArrayCommand(type, status, idlen, datalen)
-        return cmd
 
     @property
     def type_name(self):
@@ -214,9 +213,9 @@ class ArrayServer(object):
             datalen = int(headers['Content-Length'])
             cmd.data = await reader.read(datalen)
 
-        LOGGER.info('Send({0}): {1.type_name}({1.id}), {1.status_name}, '
-                    'id {1.idlen} bytes, payload {1.datalen} bytes'.format(
-                    client_id, cmd))
+        LOGGER.info(
+            'Send({0}): {1.type_name}({1.id}), {1.status_name}, id {1.idlen} '
+            'bytes, payload {1.datalen} bytes'.format(client_id, cmd))
 
         try:
             outq, inq = self.clients[client_id]
@@ -234,9 +233,9 @@ class ArrayServer(object):
         # Should have status of success or error, not none after a round-trip.
         assert cmd.status != ArrayCommand.STATUS_NONE
 
-        LOGGER.info('Recv({0}): {1.type_name}({1.id}), {1.status_name}, '
-                    'id {1.idlen} bytes, payload {1.datalen} bytes'.format(
-                    client_id, cmd))
+        LOGGER.info(
+            'Recv({0}): {1.type_name}({1.id}), {1.status_name}, id {1.idlen} '
+            'bytes, payload {1.datalen} bytes'.format(client_id, cmd))
 
         if cmd.status == ArrayCommand.STATUS_SUCCESS:
             await start_response(writer, status=200,
@@ -259,7 +258,6 @@ class ArrayServer(object):
         a simple keepalive.
         """
         name = await reader.read(16)
-        #name, total, used = handshake.split()
         try:
             name = uuid.UUID(bytes=name)
         except ValueError as e:
