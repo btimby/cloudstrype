@@ -8,7 +8,8 @@ WEBROOT="/usr/share/nginx/cloudstrype/"
 SSHCMD="ssh ${SSHARGS} ${SSHUSER}@${SSHHOST}"
 
 CONFIG_NGINX="/etc/nginx/conf.d/cloudstrype.conf"
-CONFIG_SUPERVISORD="/etc/supervisord.d/cloudstrype.ini"
+CONFIG_SUPERVISORD="/etc/supervisord.d"
+CONFIG_HITCH="/etc/hitch/hitch.conf"
 
 # This script is run from inside deploy/, so we have to use .. to refer to
 # local paths.
@@ -16,7 +17,9 @@ CONFIG_SUPERVISORD="/etc/supervisord.d/cloudstrype.ini"
 rsync -avr --del -e "ssh ${SSHARGS}" --exclude-from=rsync.excludes ../ ${SSHUSER}@${SSHHOST}:${WEBROOT}
 
 # Build virtualenv
-${SSHCMD} "cd ${WEBROOT} && virtualenv-3.5 venv && venv/bin/pip install -r web/requirements/base.txt"
+#${SSHCMD} "cd ${WEBROOT} && virtualenv-3.5 venv && venv/bin/pip install -r web/requirements/base.txt"
+# Don't build each time, just ensure deps exist.
+${SSHCMD} "cd ${WEBROOT} && venv/bin/pip install -r web/requirements/base.txt"
 
 # Configure Django.
 ${SSHCMD} "cp ${WEBROOT}deploy/.env ${WEBROOT}.env"
@@ -30,7 +33,9 @@ ${SSHCMD} "cd ${WEBROOT}web/cloudstrype && ${WEBROOT}venv/bin/python manage.py c
 
 # Configure services.
 ${SSHCMD} "sudo cp ${WEBROOT}deploy/nginx-cloudstrype.conf ${CONFIG_NGINX}"
+${SSHCMD} "sudo cp ${WEBROOT}deploy/hitch-cloudstrype.conf ${CONFIG_HITCH}"
 ${SSHCMD} "sudo cp ${WEBROOT}deploy/supervisord-uwsgi.ini ${CONFIG_SUPERVISORD}"
+${SSHCMD} "sudo cp ${WEBROOT}deploy/supervisord-array.ini ${CONFIG_SUPERVISORD}"
 
 # Restart serices
 if ! ${SSHCMD} "sudo nginx -t -c /etc/nginx/nginx.conf"; then
@@ -40,4 +45,4 @@ fi
 
 # I don't think supervisord can check it's config before reload.
 
-${SSHCMD} "sudo systemctl restart supervisord && sudo systemctl restart nginx"
+${SSHCMD} "sudo systemctl restart supervisord && sudo systemctl restart nginx && sudo systemctl restart hitch"
