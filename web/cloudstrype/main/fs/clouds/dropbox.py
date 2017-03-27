@@ -3,7 +3,7 @@ import logging
 
 from main.fs import Chunk
 from main.fs.clouds.base import OAuth2APIClient
-from main.models import OAuth2Provider
+from main.models import BaseStorage
 
 
 LOGGER = logging.getLogger(__name__)
@@ -21,7 +21,7 @@ class DropboxAPIClient(OAuth2APIClient):
     sync on the .cloudstrype directory.
     """
 
-    PROVIDER = OAuth2Provider.PROVIDER_DROPBOX
+    PROVIDER = BaseStorage.PROVIDER_DROPBOX
     PROFILE_FIELDS = {
         'uid': 'account_id',
         'email': 'email',

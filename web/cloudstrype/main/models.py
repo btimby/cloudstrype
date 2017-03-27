@@ -164,7 +164,7 @@ class User(UidModelMixin, AbstractBaseUser):
 
     def get_clients(self):
         clients = []
-        for storage in OAuth2AccessToken.objects.filter(user=self):
+        for storage in BaseUserStorage.objects.filter(user=self):
             clients.append(storage.get_client())
         return clients
 
@@ -227,11 +227,11 @@ class Option(models.Model):
                                         self.attrs)
 
 
-class ServiceProvider(UidModelMixin, models.Model):
+class BaseStorage(UidModelMixin, models.Model):
     """
-    ServiceProvider model.
+    BaseStorage model.
 
-    An external provider of authentication or storage.
+    An external provider of storage.
     """
 
     PROVIDER_DROPBOX = 1
@@ -239,6 +239,7 @@ class ServiceProvider(UidModelMixin, models.Model):
     PROVIDER_BOX = 3
     PROVIDER_GDRIVE = 4
     PROVIDER_ARRAY = 5
+    PROVIDER_BASIC = 6
 
     PROVIDERS = {
         PROVIDER_DROPBOX: "Dropbox",
@@ -246,41 +247,42 @@ class ServiceProvider(UidModelMixin, models.Model):
         PROVIDER_BOX: "Box",
         PROVIDER_GDRIVE: "Google Drive",
         PROVIDER_ARRAY: "Array",
+        PROVIDER_BASIC: "Basic",
     }
 
     class Meta:
-        verbose_name = 'Service Provider'
-        verbose_name_plural = 'Service Providers'
+        verbose_name = 'Storage'
+        verbose_name_plural = 'Storage'
 
     provider = models.SmallIntegerField(null=False, choices=PROVIDERS.items())
 
     def __str__(self):
-        return '<OAuth2Provider: %s>' % self.name
+        return '<BaseStorage: %s>' % self.name
 
     @property
     def name(self):
         return self.PROVIDERS[self.provider]
 
 
-class ArrayProvider(ServiceProvider):
+class ArrayStorage(BaseStorage):
     """
-    ArrayProvider model.
+    ArrayStorage model.
 
-    Represents a ServiceProvider for the Cloudstrype array.
+    Represents storage access via array system.
     """
 
     def __str__(self):
         return '<ArrayProvider: %s>' % self.name
 
     def get_client(self, **kwargs):
-        raise NotImplementedError('No provider client.')
+        raise NotImplementedError('No client available.')
 
 
-class OAuth2Provider(ServiceProvider):
+class OAuth2Storage(BaseStorage):
     """
-    OAuth2Provider model.
+    OAuth2Storage model.
 
-    Represents a ServiceProvider for OAuth2 cloud storage.
+    Represents Storage accessed via HTTP and OAuth2.
     """
 
     client_id = models.TextField(null=False)
@@ -293,15 +295,30 @@ class OAuth2Provider(ServiceProvider):
         return get_client(self, redirect_uri=redirect_uri)
 
 
-class UserService(UidModelMixin, models.Model):
+class BasicStorage(BaseStorage):
     """
-    UserService model.
+    BasicStorage model.
 
-    Represents a ServiceProvider instance for a given user.
+    Represents storage accessed via URL and secure by username/password.
+    """
+
+    def __str__(self):
+        return '<BasicStorage: %s>' % self.name
+
+    def get_client(self, **kwargs):
+        "Get an HTTP client to interact with this node."
+        raise NotImplementedError('No client available.')
+
+
+class BaseUserStorage(UidModelMixin, models.Model):
+    """
+    BaseUserStorage model.
+
+    Represents a Storage instance for a given user.
     """
 
     user = models.ForeignKey(User)
-    provider = models.ForeignKey(ServiceProvider)
+    storage = models.ForeignKey(BaseStorage)
     size = models.BigIntegerField(default=0)
     used = models.BigIntegerField(default=0)
     # Provider-specific attribute storage, such as chunk storage location
@@ -309,9 +326,9 @@ class UserService(UidModelMixin, models.Model):
     attrs = JSONField(null=True, blank=True)
 
 
-class ArrayNode(UserService):
+class ArrayUserStorage(BaseUserStorage):
     """
-    ArrayNode model.
+    ArrayUserStorage model.
 
     Represents a node within an array belonging to a user.
     """
@@ -319,16 +336,16 @@ class ArrayNode(UserService):
     name = models.UUIDField()
 
     def __str__(self):
-        return '<ArrayNode: %s>' % self.name
+        return '<ArrayUserStorage: %s>' % self.name
 
     def get_client(self, **kwargs):
         "Get an HTTP client to interact with this node."
         return ArrayClient(self, **kwargs)
 
 
-class OAuth2AccessToken(UserService):
+class OAuth2UserStorage(BaseUserStorage):
     """
-    OAuth2AccessToken model.
+    OAuth2UserStorage model.
 
     An access token obtained for a user from a provider. Represents an instance
     of a cloud service provider for a specific user.
@@ -345,12 +362,12 @@ class OAuth2AccessToken(UserService):
     expires = models.DateTimeField(null=True)
 
     def __str__(self):
-        return '<OAuth2AccessToken: %s@%s>' % (self.user.email,
-                                               self.provider.name)
+        return '<OAuth2UserStorage: %s@%s>' % (self.user.email,
+                                               self.storage.name)
 
     def get_client(self, **kwargs):
         "Get an OAuth2 client to interact with this cloud."
-        return get_client(self.provider, oauth_access=self, **kwargs)
+        return get_client(self.storage, oauth_access=self, **kwargs)
 
     def update(self, access_token, refresh_token=None, expires=None, **kwargs):
         if 'expires_at' in kwargs:
@@ -381,6 +398,20 @@ class OAuth2AccessToken(UserService):
         if self.expires:
             token['expires_at'] = format(self.expires, 'U')
         return token
+
+
+class BasicUserStorage(BaseUserStorage):
+    url = models.URLField(max_length=256)
+    username = models.CharField(max_length=256)
+    # TODO: encrypt this.
+    password = models.CharField(max_length=256)
+
+    def __str__(self):
+        return '<BasicServer: %s>' % self.url
+
+    def get_client(self, **kwargs):
+        # TODO: get a protocol specific client for this server.
+        pass
 
 
 class Tag(models.Model):
@@ -678,7 +709,7 @@ class FileChunk(models.Model):
         return '<FileChunk %s[%s]>' % (self.file.path, self.serial)
 
 
-class ChunkService(models.Model):
+class ChunkStorage(models.Model):
     """
     ChunkStorage model.
 
@@ -687,17 +718,17 @@ class ChunkService(models.Model):
     """
 
     class Meta:
-        unique_together = ('chunk', 'service')
+        unique_together = ('chunk', 'storage')
 
-    chunk = models.ForeignKey(Chunk, related_name='services',
+    chunk = models.ForeignKey(Chunk, related_name='storage',
                               on_delete=models.CASCADE)
-    service = models.ForeignKey(UserService, related_name='chunks',
+    storage = models.ForeignKey(BaseUserStorage, related_name='chunks',
                                 on_delete=models.CASCADE)
     # Provider-specific attribute storage, such as the chunk's file ID.
     attrs = JSONField(null=True, blank=True)
 
     def __str__(self):
-        return '<ChunkService %s@%s>' % (self.chunk,
+        return '<ChunkStorage %s@%s>' % (self.chunk,
                                          self.service.provider.name)
 
 

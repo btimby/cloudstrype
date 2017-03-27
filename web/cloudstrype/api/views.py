@@ -18,12 +18,12 @@ from rest_framework import (
 from main.fs import MulticloudFilesystem
 from main.fs.errors import DirectoryNotFoundError, FileNotFoundError
 from main.models import (
-    User, OAuth2Provider, OAuth2AccessToken, Directory, File, ChunkService,
+    User, BaseStorage, OAuth2Storage, Directory, File, ChunkStorage,
     Option, Tag,
 )
 
 
-class OAuth2ProviderSerializer(serializers.ModelSerializer):
+class BaseStorageSerializer(serializers.ModelSerializer):
     """
     Serialize a Cloud.
 
@@ -35,19 +35,19 @@ class OAuth2ProviderSerializer(serializers.ModelSerializer):
     chunks = serializers.SerializerMethodField()
 
     class Meta:
-        model = OAuth2Provider
+        model = BaseStorage
         fields = ('name', 'size', 'used', 'chunks')
 
     def get_size(self, obj):
-        return OAuth2AccessToken.objects.filter(
+        return OAuth2Storage.objects.filter(
             token__provider=obj).aggregate(Sum('size'))['size__sum'] or 0
 
     def get_used(self, obj):
-        return OAuth2AccessToken.objects.filter(
+        return OAuth2Storage.objects.filter(
             token__provider=obj).aggregate(Sum('used'))['used__sum'] or 0
 
     def get_chunks(self, obj):
-        return ChunkService.objects.filter(
+        return ChunkStorage.objects.filter(
             storage__token__provider=obj).count()
 
 
@@ -60,11 +60,11 @@ class PublicCloudListView(generics.ListAPIView):
     """
 
     permission_classes = [permissions.AllowAny]
-    queryset = OAuth2AccessToken.objects.all()
-    serializer_class = OAuth2ProviderSerializer
+    queryset = OAuth2Storage.objects.all()
+    serializer_class = BaseStorageSerializer
 
     def get_queryset(self):
-        return OAuth2Provider.objects.all().order_by('provider')
+        return BaseStorage.objects.all().order_by('provider')
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -134,7 +134,7 @@ class OptionsView(mixins.RetrieveModelMixin, mixins.UpdateModelMixin,
         return self.update(request, *args, **kwargs)
 
 
-class OAuth2AccessTokenSerializer(serializers.ModelSerializer):
+class OAuth2StorageSerializer(serializers.ModelSerializer):
     """
     Serialize a Cloud instance.
 
@@ -145,7 +145,7 @@ class OAuth2AccessTokenSerializer(serializers.ModelSerializer):
     chunks = serializers.SerializerMethodField()
 
     class Meta:
-        model = OAuth2AccessToken
+        model = OAuth2Storage
         fields = ('name', 'size', 'used', 'chunks')
 
     def get_chunks(self, obj):
@@ -161,11 +161,11 @@ class CloudListView(generics.ListAPIView):
     """
 
     permission_classes = [permissions.IsAuthenticated]
-    queryset = OAuth2AccessToken.objects.all()
-    serializer_class = OAuth2AccessTokenSerializer
+    queryset = OAuth2Storage.objects.all()
+    serializer_class = OAuth2StorageSerializer
 
     def get_queryset(self):
-        queryset = OAuth2AccessToken.objects.filter(
+        queryset = OAuth2Storage.objects.filter(
             user=self.request.user).order_by('token__provider__provider')
         return (o for o in queryset if o.token.provider.is_storage)
 
@@ -216,7 +216,7 @@ class FileSerializer(serializers.ModelSerializer):
         n2 = 'storage__storage__token'
         chunks = {}
         for item in obj.chunks.values(n1).annotate(Count(n2)):
-            chunks[OAuth2Provider.PROVIDERS[item[n1]]] = \
+            chunks[BaseStorage.PROVIDERS[item[n1]]] = \
                 item['%s__count' % n2]
         return chunks
 

@@ -8,7 +8,7 @@ from email.mime.base import MIMEBase
 
 from main.fs import Chunk
 from main.fs.clouds.base import OAuth2APIClient, HTTPError
-from main.models import OAuth2Provider
+from main.models import BaseStorage
 
 
 LOGGER = logging.getLogger(__name__)
@@ -21,7 +21,7 @@ class GDriveAPIClient(OAuth2APIClient):
     Unholy fuck-shits is all I have to say. Look at how much code I had to
     write... And all of it hard-fought.
     """
-    PROVIDER = OAuth2Provider.PROVIDER_GDRIVE
+    PROVIDER = BaseStorage.PROVIDER_GDRIVE
     SCOPES = [
         'profile', 'email', 'https://www.googleapis.com/auth/drive',
     ]
@@ -53,8 +53,8 @@ class GDriveAPIClient(OAuth2APIClient):
     def download(self, chunk, **kwargs):
         "Overidden to add file_id to URL."
         assert isinstance(chunk, Chunk), 'must be chunk instance'
-        chunk_storage = chunk.services.get(
-            service__provider__provider=self.PROVIDER)
+        chunk_storage = chunk.storage.get(
+            storage__storage__provider=self.PROVIDER)
         method, url = self.DOWNLOAD_URL
         url = url.format(file_id=chunk_storage.attrs['file.id'])
         r = self.request(method, url, chunk, **kwargs)
@@ -119,8 +119,8 @@ class GDriveAPIClient(OAuth2APIClient):
             raise KeyError('id')
         # Store the file ID provided by Google into the attribute store of
         # ChunkStorage
-        chunk_storage = chunk.services.get(
-            service__provider__provider=self.PROVIDER)
+        chunk_storage = chunk.storage.get(
+            storage__storage__provider=self.PROVIDER)
         chunk_storage.attrs = {'file.id': attrs['id']}
         chunk_storage.save()
         r.close()
@@ -134,8 +134,8 @@ class GDriveAPIClient(OAuth2APIClient):
         discovering it's ID from it's path.
         """
         assert isinstance(chunk, Chunk), 'must be chunk instance'
-        chunk_storage = chunk.services.get(
-            service__provider__provider=self.PROVIDER)
+        chunk_storage = chunk.storage.get(
+            storage__storage__provider=self.PROVIDER)
         method, url = self.DELETE_URL
         url = url.format(file_id=chunk_storage.attrs['file.id'])
         r = self.request(method, url, chunk, **kwargs)

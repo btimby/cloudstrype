@@ -11,7 +11,7 @@ from django.views import View
 from django.urls import reverse
 
 from main.models import (
-    OAuth2Provider, User, OAuth2AccessToken,
+    BaseStorage, User, OAuth2Storage,
 )
 
 
@@ -59,7 +59,7 @@ class OAuth2View(View):
     """
 
     def get_oauth2_client(self, request, provider_name):
-        for id, name in OAuth2Provider.PROVIDERS.items():
+        for id, name in BaseStorage.PROVIDERS.items():
             # split() so that 'Google Drive' becomes 'google'
             if name.lower().split(' ')[0] == provider_name:
                 break
@@ -69,7 +69,7 @@ class OAuth2View(View):
         redirect_uri = reverse('complete_oauth2', args=[provider_name])
         redirect_uri = request.build_absolute_uri(redirect_uri)
 
-        provider = get_object_or_404(OAuth2Provider, provider=id)
+        provider = get_object_or_404(BaseStorage, provider=id)
 
         return provider.get_client(redirect_uri)
 
@@ -161,7 +161,7 @@ class LoginComplete(OAuth2View):
 
         # If the token exists, update it. Otherwise create it.
         try:
-            oauth_access, _ = OAuth2AccessToken.objects.get_or_create(
+            oauth_access, _ = OAuth2Storage.objects.get_or_create(
                 provider=client.provider, user=user, provider_uid=uid,
                 size=size, used=used)
         except IntegrityError:

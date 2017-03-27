@@ -8,10 +8,10 @@ from django.test import TestCase
 from main.fs import MulticloudFilesystem
 from main.fs.errors import (
     PathNotFoundError, FileNotFoundError, DirectoryNotFoundError,
-    DirectoryConflictError, FileConflictError
+    DirectoryConflictError, FileConflictError,
 )
 from main.models import (
-    User, OAuth2Provider, OAuth2AccessToken
+    User, BaseStorage, OAuth2UserStorage,
 )
 
 
@@ -19,8 +19,8 @@ TEST_FILE = b'Test file body.'
 
 
 class MockClient(object):
-    def __init__(self, service):
-        self.service = service
+    def __init__(self, storage):
+        self.storage = storage
         self.data = {}
 
     def upload(self, chunk, data):
@@ -37,14 +37,14 @@ class MockClients(object):
     def __init__(self, user):
         self.user = user
 
-        provider = OAuth2Provider.objects.create(
-            provider=OAuth2Provider.PROVIDER_DROPBOX)
+        storage = BaseStorage.objects.create(
+            provider=BaseStorage.PROVIDER_DROPBOX)
 
         self.clients = []
         for i in range(4):
-            access_token = OAuth2AccessToken.objects.create(
-                provider=provider, user=self.user)
-            self.clients.append(MockClient(access_token))
+            oauth2 = OAuth2UserStorage.objects.create(
+                storage=storage, user=self.user)
+            self.clients.append(MockClient(oauth2))
 
     def get_clients(self):
         return self.clients

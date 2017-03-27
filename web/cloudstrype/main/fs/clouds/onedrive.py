@@ -1,7 +1,7 @@
 import logging
 
 from main.fs.clouds.base import OAuth2APIClient
-from main.models import OAuth2Provider
+from main.models import BaseStorage
 
 
 LOGGER = logging.getLogger(__name__)
@@ -22,7 +22,7 @@ class OnedriveAPIClient(OAuth2APIClient):
     SCOPES = [
         'wl.basic', 'onedrive.readwrite', 'offline_access', 'wl.emails',
     ]
-    PROVIDER = OAuth2Provider.PROVIDER_ONEDRIVE
+    PROVIDER = BaseStorage.PROVIDER_ONEDRIVE
     PROFILE_FIELDS = {
         'uid': 'id',
         'email': ['emails', 'account'],

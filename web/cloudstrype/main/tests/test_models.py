@@ -5,8 +5,8 @@ from django.db.utils import IntegrityError
 from django.test import TestCase
 
 from main.models import (
-    User, File, Directory, Chunk, FileChunk, Option, OAuth2Provider,
-    OAuth2AccessToken
+    User, File, Directory, Chunk, FileChunk, Option, BaseStorage,
+    OAuth2UserStorage,
 )
 
 
@@ -121,26 +121,26 @@ class UserTestCase(TestCase):
 class TokenTestCase(TestCase):
     def test_create(self):
         user = User.objects.create_user('foo@bar.org', full_name='Foo Bar')
-        provider = OAuth2Provider.objects.create(
-            provider=OAuth2Provider.PROVIDER_DROPBOX)
+        storage = BaseStorage.objects.create(
+            provider=BaseStorage.PROVIDER_DROPBOX)
 
-        self.assertEqual('<', str(provider)[0])
-        self.assertEqual('>', str(provider)[-1])
+        self.assertEqual('<', str(storage)[0])
+        self.assertEqual('>', str(storage)[-1])
 
-        token = OAuth2AccessToken.objects.create(provider=provider, user=user)
+        oauth2 = OAuth2UserStorage.objects.create(storage=storage, user=user)
 
-        self.assertEqual('<', str(token)[0])
-        self.assertEqual('>', str(token)[-1])
+        self.assertEqual('<', str(oauth2)[0])
+        self.assertEqual('>', str(oauth2)[-1])
 
         kwargs = {
             'access_token': 'AAAA',
             'refresh_token': 'BBBB',
             'expires_in': 10,
         }
-        token.update(**kwargs)
-        self.assertEqual('AAAA', token.access_token)
-        self.assertEqual('BBBB', token.refresh_token)
-        token.update('CCCC', expires_at=time.time())
-        d = token.to_dict()
+        oauth2.update(**kwargs)
+        self.assertEqual('AAAA', oauth2.access_token)
+        self.assertEqual('BBBB', oauth2.refresh_token)
+        oauth2.update('CCCC', expires_at=time.time())
+        d = oauth2.to_dict()
         self.assertEqual('CCCC', d['access_token'])
         self.assertEqual('BBBB', d['refresh_token'])

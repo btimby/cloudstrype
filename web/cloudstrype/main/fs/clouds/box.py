@@ -5,7 +5,7 @@ from io import BytesIO
 
 from main.fs import Chunk
 from main.fs.clouds.base import OAuth2APIClient, HTTPError
-from main.models import OAuth2Provider
+from main.models import BaseStorage
 
 
 LOGGER = logging.getLogger(__name__)
@@ -29,7 +29,7 @@ class BoxAPIClient(OAuth2APIClient):
     to refresh our key set, but what a PiTA.
     """
 
-    PROVIDER = OAuth2Provider.PROVIDER_BOX
+    PROVIDER = BaseStorage.PROVIDER_BOX
     PROFILE_FIELDS = {
         'uid': 'id',
         'email': 'login',
@@ -54,8 +54,8 @@ class BoxAPIClient(OAuth2APIClient):
     def download(self, chunk, **kwargs):
         "Overidden to add file_id to URL."
         assert isinstance(chunk, Chunk), 'must be chunk instance'
-        chunk_storage = chunk.services.get(
-            service__provider__provider=self.PROVIDER)
+        chunk_storage = chunk.storage.get(
+            storage__storage__provider=self.PROVIDER)
         method, url = self.DOWNLOAD_URL
         url = url.format(file_id=chunk_storage.attrs['file.id'])
         r = self.request(method, url, chunk, **kwargs)
@@ -93,8 +93,8 @@ class BoxAPIClient(OAuth2APIClient):
         attrs = r.json()
         # Store the file_id provided by Box into the attribute store of
         # ChunkStorage
-        chunk_storage = chunk.services.get(
-            service__provider__provider=self.PROVIDER)
+        chunk_storage = chunk.storage.get(
+            storage__storage__provider=self.PROVIDER)
         try:
             chunk_storage.attrs = {'file.id': attrs['entries'][0]['id']}
         except KeyError as e:
@@ -106,8 +106,8 @@ class BoxAPIClient(OAuth2APIClient):
     def delete(self, chunk, **kwargs):
         "Overidden to add file_id to URL."
         assert isinstance(chunk, Chunk), 'must be chunk instance'
-        chunk_storage = chunk.services.get(
-            service__provider__provider=self.PROVIDER)
+        chunk_storage = chunk.storage.get(
+            storage__storage__provider=self.PROVIDER)
         method, url = self.DELETE_URL
         url = url.format(file_id=chunk_storage.attrs['file.id'])
         r = self.request(method, url, chunk, **kwargs)
