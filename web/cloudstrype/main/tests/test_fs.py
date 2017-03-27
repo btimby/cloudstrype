@@ -11,7 +11,7 @@ from main.fs.errors import (
     DirectoryConflictError, FileConflictError
 )
 from main.models import (
-    User, OAuth2Provider, OAuth2AccessToken, OAuth2StorageToken
+    User, OAuth2Provider, OAuth2AccessToken
 )
 
 
@@ -19,8 +19,8 @@ TEST_FILE = b'Test file body.'
 
 
 class MockClient(object):
-    def __init__(self, oauth_storage):
-        self.oauth_storage = oauth_storage
+    def __init__(self, service):
+        self.service = service
         self.data = {}
 
     def upload(self, chunk, data):
@@ -44,9 +44,7 @@ class MockClients(object):
         for i in range(4):
             access_token = OAuth2AccessToken.objects.create(
                 provider=provider, user=self.user)
-            storage_token = OAuth2StorageToken.objects.create(
-                user=self.user, token=access_token)
-            self.clients.append(MockClient(storage_token))
+            self.clients.append(MockClient(access_token))
 
     def get_clients(self):
         return self.clients

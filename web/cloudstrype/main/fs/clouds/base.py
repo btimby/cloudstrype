@@ -3,7 +3,7 @@ import logging
 from requests_oauthlib import OAuth2Session
 from oauthlib.oauth2 import TokenExpiredError
 
-from main.fs import Chunk
+from main.models import Chunk
 
 
 LOGGER = logging.getLogger(__name__)
@@ -39,11 +39,10 @@ class OAuth2APIClient(object):
     UPLOAD_URL = None
     DELETE_URL = None
 
-    def __init__(self, provider, oauth_access=None, oauth_storage=None,
-                 redirect_uri=None, **kwargs):
+    def __init__(self, provider, oauth_access=None, redirect_uri=None,
+                 **kwargs):
         self.provider = provider
         self.oauth_access = oauth_access
-        self.oauth_storage = oauth_storage
         if self.oauth_access:
             # We already have a token, pass it along.
             self.oauthsession = OAuth2Session(

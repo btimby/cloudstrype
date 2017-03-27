@@ -54,8 +54,8 @@ class BoxAPIClient(OAuth2APIClient):
     def download(self, chunk, **kwargs):
         "Overidden to add file_id to URL."
         assert isinstance(chunk, Chunk), 'must be chunk instance'
-        chunk_storage = chunk.storage.get(
-            storage__token__provider__provider=self.PROVIDER)
+        chunk_storage = chunk.services.get(
+            service__provider__provider=self.PROVIDER)
         method, url = self.DOWNLOAD_URL
         url = url.format(file_id=chunk_storage.attrs['file.id'])
         r = self.request(method, url, chunk, **kwargs)
@@ -63,7 +63,7 @@ class BoxAPIClient(OAuth2APIClient):
 
     def upload(self, chunk, data, **kwargs):
         assert isinstance(chunk, Chunk), 'must be chunk instance'
-        parent_id = self.oauth_storage.attrs['root.id']
+        parent_id = self.oauth_access.attrs['root.id']
         kwargs['data'] = {
             'attributes': json.dumps({
                 'name': chunk.uid, 'parent': {'id': parent_id}
@@ -93,8 +93,8 @@ class BoxAPIClient(OAuth2APIClient):
         attrs = r.json()
         # Store the file_id provided by Box into the attribute store of
         # ChunkStorage
-        chunk_storage = chunk.storage.get(
-            storage__token__provider__provider=self.PROVIDER)
+        chunk_storage = chunk.services.get(
+            service__provider__provider=self.PROVIDER)
         try:
             chunk_storage.attrs = {'file.id': attrs['entries'][0]['id']}
         except KeyError as e:
@@ -106,8 +106,8 @@ class BoxAPIClient(OAuth2APIClient):
     def delete(self, chunk, **kwargs):
         "Overidden to add file_id to URL."
         assert isinstance(chunk, Chunk), 'must be chunk instance'
-        chunk_storage = chunk.storage.get(
-            storage__token__provider__provider=self.PROVIDER)
+        chunk_storage = chunk.services.get(
+            service__provider__provider=self.PROVIDER)
         method, url = self.DELETE_URL
         url = url.format(file_id=chunk_storage.attrs['file.id'])
         r = self.request(method, url, chunk, **kwargs)
@@ -146,5 +146,5 @@ class BoxAPIClient(OAuth2APIClient):
             else:
                 # We created it, so nab the ID and continue to child.
                 parent_id = r.json()['id']
-        self.oauth_storage.attrs = {'root.id': parent_id}
-        self.oauth_storage.save()
+        self.oauth_access.attrs = {'root.id': parent_id}
+        self.oauth_access.save()

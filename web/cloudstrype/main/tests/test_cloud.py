@@ -5,8 +5,7 @@ from hashlib import md5
 from django.test import TestCase
 
 from main.models import (
-    User, File, OAuth2Provider, OAuth2AccessToken, OAuth2StorageToken,
-    Chunk, ChunkStorage
+    User, File, OAuth2Provider, OAuth2AccessToken, Chunk, ChunkService
 )
 from main.fs.clouds.dropbox import DropboxAPIClient
 from main.fs.clouds.onedrive import OnedriveAPIClient
@@ -27,10 +26,8 @@ class OAuth2APIClientTestCase(TestCase):
         self.oauth_access = OAuth2AccessToken.objects.create(
             user=self.user,
             provider=self.provider, access_token='test-access_token',
-            refresh_token='test-refresh_token')
-        self.oauth_storage = OAuth2StorageToken.objects.create(
-            user=self.user, token=self.oauth_access, attrs={'root.id': '0'})
-        self.client = self.oauth_storage.get_client()
+            refresh_token='test-refresh_token', attrs={'root.id': '0'})
+        self.client = self.oauth_access.get_client()
         self.file = File.objects.create(path='/foo', user=self.user)
         self.chunk = Chunk.objects.create(md5=md5(b'foo').hexdigest())
         self.file.add_chunk(self.chunk)
@@ -111,14 +108,14 @@ class BoxAPIClientTestCase(OAuth2APIClientTestCase):
 
     def setUp(self):
         super().setUp()
-        ChunkStorage.objects.create(
-            chunk=self.chunk, storage=self.oauth_storage,
+        ChunkService.objects.create(
+            chunk=self.chunk, service=self.oauth_access,
             attrs={'file.id': 'abc123'})
 
     @httpretty.activate
     def test_download(self):
         # Box requires the file id in the URL, the file_id is assigned by Box,
-        # and therefore is stored in ChunkStorage.attrs.
+        # and therefore is stored in ChunkService.attrs.
         httpretty.register_uri(
             httpretty.GET,
             BoxAPIClient.DOWNLOAD_URL[1].format(file_id='abc123'),
@@ -129,7 +126,7 @@ class BoxAPIClientTestCase(OAuth2APIClientTestCase):
     @httpretty.activate
     def test_upload(self):
         # Box requires the file id in the URL, the file_id is assigned by Box,
-        # and therefore is stored in ChunkStorage.attrs.
+        # and therefore is stored in ChunkService.attrs.
         httpretty.register_uri(
             httpretty.POST,
             BoxAPIClient.UPLOAD_URL[1].format(file_id='abc123'),
@@ -140,7 +137,7 @@ class BoxAPIClientTestCase(OAuth2APIClientTestCase):
     @httpretty.activate
     def test_delete(self):
         # Box requires the file id in the URL, the file_id is assigned by Box,
-        # and therefore is stored in ChunkStorage.attrs.
+        # and therefore is stored in ChunkService.attrs.
         httpretty.register_uri(
             httpretty.DELETE,
             BoxAPIClient.DELETE_URL[1].format(file_id='abc123'),
@@ -157,14 +154,14 @@ class GDriveAPIClientTestCase(OAuth2APIClientTestCase):
 
     def setUp(self):
         super().setUp()
-        ChunkStorage.objects.create(
-            chunk=self.chunk, storage=self.oauth_storage,
+        ChunkService.objects.create(
+            chunk=self.chunk, service=self.oauth_access,
             attrs={'file.id': 'abc123'})
 
     @httpretty.activate
     def test_download(self):
         # GDrive requires the file id in the URL, the file_id is assigned by
-        # Google, and therefore is stored in ChunkStorage.attrs.
+        # Google, and therefore is stored in ChunkService.attrs.
         httpretty.register_uri(
             httpretty.GET,
             GDriveAPIClient.DOWNLOAD_URL[1].format(file_id='abc123'),
@@ -175,7 +172,7 @@ class GDriveAPIClientTestCase(OAuth2APIClientTestCase):
     @httpretty.activate
     def test_upload(self):
         # GDrive requires the file id in the URL, the file_id is assigned by
-        # Google, and therefore is stored in ChunkStorage.attrs.
+        # Google, and therefore is stored in ChunkService.attrs.
         httpretty.register_uri(
             httpretty.POST,
             GDriveAPIClient.UPLOAD_URL[1].format(file_id='abc123'),
@@ -186,7 +183,7 @@ class GDriveAPIClientTestCase(OAuth2APIClientTestCase):
     @httpretty.activate
     def test_delete(self):
         # GDrive requires the file id in the URL, the file_id is assigned by
-        # Google, and therefore is stored in ChunkStorage.attrs.
+        # Google, and therefore is stored in ChunkService.attrs.
         httpretty.register_uri(
             httpretty.DELETE,
             GDriveAPIClient.DELETE_URL[1].format(file_id='abc123'),

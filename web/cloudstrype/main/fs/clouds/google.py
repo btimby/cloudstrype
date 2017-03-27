@@ -53,8 +53,8 @@ class GDriveAPIClient(OAuth2APIClient):
     def download(self, chunk, **kwargs):
         "Overidden to add file_id to URL."
         assert isinstance(chunk, Chunk), 'must be chunk instance'
-        chunk_storage = chunk.storage.get(
-            storage__token__provider__provider=self.PROVIDER)
+        chunk_storage = chunk.services.get(
+            service__provider__provider=self.PROVIDER)
         method, url = self.DOWNLOAD_URL
         url = url.format(file_id=chunk_storage.attrs['file.id'])
         r = self.request(method, url, chunk, **kwargs)
@@ -79,7 +79,7 @@ class GDriveAPIClient(OAuth2APIClient):
         assert isinstance(chunk, Chunk), 'must be chunk instance'
 
         try:
-            parent_id = self.oauth_storage.attrs.get('root.id')
+            parent_id = self.oauth_access.attrs.get('root.id')
         except ValueError:
             parent_id = None
         attrs = {
@@ -119,8 +119,8 @@ class GDriveAPIClient(OAuth2APIClient):
             raise KeyError('id')
         # Store the file ID provided by Google into the attribute store of
         # ChunkStorage
-        chunk_storage = chunk.storage.get(
-            storage__token__provider__provider=self.PROVIDER)
+        chunk_storage = chunk.services.get(
+            service__provider__provider=self.PROVIDER)
         chunk_storage.attrs = {'file.id': attrs['id']}
         chunk_storage.save()
         r.close()
@@ -134,8 +134,8 @@ class GDriveAPIClient(OAuth2APIClient):
         discovering it's ID from it's path.
         """
         assert isinstance(chunk, Chunk), 'must be chunk instance'
-        chunk_storage = chunk.storage.get(
-            storage__token__provider__provider=self.PROVIDER)
+        chunk_storage = chunk.services.get(
+            service__provider__provider=self.PROVIDER)
         method, url = self.DELETE_URL
         url = url.format(file_id=chunk_storage.attrs['file.id'])
         r = self.request(method, url, chunk, **kwargs)
@@ -200,5 +200,5 @@ class GDriveAPIClient(OAuth2APIClient):
             # Create the directory:
             r = self.oauthsession.post(self.CREATE_URL, **kwargs)
             parent_id = r.json()['id']
-        self.oauth_storage.attrs = {'root.id': parent_id}
-        self.oauth_storage.save()
+        self.oauth_access.attrs = {'root.id': parent_id}
+        self.oauth_access.save()

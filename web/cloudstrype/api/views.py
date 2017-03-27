@@ -18,8 +18,8 @@ from rest_framework import (
 from main.fs import MulticloudFilesystem
 from main.fs.errors import DirectoryNotFoundError, FileNotFoundError
 from main.models import (
-    User, OAuth2Provider, OAuth2StorageToken, Directory, File, ChunkStorage,
-    Option, Tag
+    User, OAuth2Provider, OAuth2AccessToken, Directory, File, ChunkService,
+    Option, Tag,
 )
 
 
@@ -39,15 +39,15 @@ class OAuth2ProviderSerializer(serializers.ModelSerializer):
         fields = ('name', 'size', 'used', 'chunks')
 
     def get_size(self, obj):
-        return OAuth2StorageToken.objects.filter(
+        return OAuth2AccessToken.objects.filter(
             token__provider=obj).aggregate(Sum('size'))['size__sum'] or 0
 
     def get_used(self, obj):
-        return OAuth2StorageToken.objects.filter(
+        return OAuth2AccessToken.objects.filter(
             token__provider=obj).aggregate(Sum('used'))['used__sum'] or 0
 
     def get_chunks(self, obj):
-        return ChunkStorage.objects.filter(
+        return ChunkService.objects.filter(
             storage__token__provider=obj).count()
 
 
@@ -60,7 +60,7 @@ class PublicCloudListView(generics.ListAPIView):
     """
 
     permission_classes = [permissions.AllowAny]
-    queryset = OAuth2StorageToken.objects.all()
+    queryset = OAuth2AccessToken.objects.all()
     serializer_class = OAuth2ProviderSerializer
 
     def get_queryset(self):
@@ -134,7 +134,7 @@ class OptionsView(mixins.RetrieveModelMixin, mixins.UpdateModelMixin,
         return self.update(request, *args, **kwargs)
 
 
-class OAuth2StorageTokenSerializer(serializers.ModelSerializer):
+class OAuth2AccessTokenSerializer(serializers.ModelSerializer):
     """
     Serialize a Cloud instance.
 
@@ -145,7 +145,7 @@ class OAuth2StorageTokenSerializer(serializers.ModelSerializer):
     chunks = serializers.SerializerMethodField()
 
     class Meta:
-        model = OAuth2StorageToken
+        model = OAuth2AccessToken
         fields = ('name', 'size', 'used', 'chunks')
 
     def get_chunks(self, obj):
@@ -161,11 +161,11 @@ class CloudListView(generics.ListAPIView):
     """
 
     permission_classes = [permissions.IsAuthenticated]
-    queryset = OAuth2StorageToken.objects.all()
-    serializer_class = OAuth2StorageTokenSerializer
+    queryset = OAuth2AccessToken.objects.all()
+    serializer_class = OAuth2AccessTokenSerializer
 
     def get_queryset(self):
-        queryset = OAuth2StorageToken.objects.filter(
+        queryset = OAuth2AccessToken.objects.filter(
             user=self.request.user).order_by('token__provider__provider')
         return (o for o in queryset if o.token.provider.is_storage)
 

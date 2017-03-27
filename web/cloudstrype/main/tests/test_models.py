@@ -6,7 +6,7 @@ from django.test import TestCase
 
 from main.models import (
     User, File, Directory, Chunk, FileChunk, Option, OAuth2Provider,
-    OAuth2AccessToken, OAuth2StorageToken
+    OAuth2AccessToken
 )
 
 
@@ -122,9 +122,7 @@ class TokenTestCase(TestCase):
     def test_create(self):
         user = User.objects.create_user('foo@bar.org', full_name='Foo Bar')
         provider = OAuth2Provider.objects.create(
-            provider=OAuth2Provider.PROVIDER_AMAZON)
-
-        self.assertFalse(provider.is_storage)
+            provider=OAuth2Provider.PROVIDER_DROPBOX)
 
         self.assertEqual('<', str(provider)[0])
         self.assertEqual('>', str(provider)[-1])
@@ -146,8 +144,3 @@ class TokenTestCase(TestCase):
         d = token.to_dict()
         self.assertEqual('CCCC', d['access_token'])
         self.assertEqual('BBBB', d['refresh_token'])
-
-        storage = OAuth2StorageToken(user=user, token=token)
-
-        self.assertEqual('<', str(storage)[0])
-        self.assertEqual('>', str(storage)[-1])

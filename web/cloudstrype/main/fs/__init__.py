@@ -39,7 +39,7 @@ from django.conf import settings
 from django.db import transaction
 
 from main.models import (
-    Directory, File, Chunk, ChunkStorage, DirectoryQuerySet
+    Directory, File, Chunk, ChunkService, DirectoryQuerySet
 )
 from main.fs.raid import chunker, DEFAULT_CHUNK_SIZE
 from main.fs.errors import (
@@ -61,16 +61,16 @@ class MulticloudBase(object):
     Base class for interacting with multiple clouds.
     """
 
-    def __init__(self, clouds):
-        assert isinstance(clouds, collections.Iterable), \
-            'clouds must be iterable'
-        self.clouds = clouds
+    def __init__(self, services):
+        assert isinstance(services, collections.Iterable), \
+            'services must be iterable'
+        self.services = services
 
-    def get_cloud(self, oauth_storage):
-        for cloud in self.clouds:
-            if cloud.oauth_storage == oauth_storage:
-                return cloud
-        raise ValueError('invalid cloud oauth_access')
+    def get_service(self, service):
+        for s in self.services:
+            if s.service.pk == service.pk:
+                return s
+        raise ValueError('invalid service %s' % service)
 
 
 class FileLikeBase(object):
@@ -97,8 +97,8 @@ class MulticloudReader(MulticloudBase, FileLikeBase):
     """
     File-like object that reads from multiple clouds.
     """
-    def __init__(self, user, clouds, file):
-        super().__init__(clouds)
+    def __init__(self, user, services, file):
+        super().__init__(services)
         self.user = user
         self.file = file
         self.chunks = list(
@@ -120,9 +120,9 @@ class MulticloudReader(MulticloudBase, FileLikeBase):
         except IndexError:
             raise EOFError('out of chunks')
         # Try providers in random order.
-        for storage in sorted(chunk.storage.all(),
+        for storage in sorted(chunk.services.all(),
                               key=lambda k: random.random()):
-            cloud = self.get_cloud(storage.storage)
+            cloud = self.get_service(storage.service)
             try:
                 return cloud.download(chunk)
             except Exception as e:
@@ -215,16 +215,16 @@ class MulticloudWriter(MulticloudBase, FileLikeBase):
         # Upload to N random providers where N is desired replica count.
         chunk = Chunk.objects.create(md5=md5(data).hexdigest())
         chunks_uploaded = 0
-        for cloud in sorted(self.clouds, key=lambda k: random.random()):
+        for service in sorted(self.services, key=lambda k: random.random()):
             # We add one to replicas because replicas are the COPIES we write
             # in addition to the base block.
             if chunks_uploaded == self.replicas + 1:
                 break
-            chunk.storage.add(
-                ChunkStorage.objects.create(chunk=chunk,
-                                            storage=cloud.oauth_storage))
+            chunk.services.add(
+                ChunkService.objects.create(chunk=chunk,
+                                            service=service.service))
             try:
-                cloud.upload(chunk, data)
+                service.upload(chunk, data)
             except Exception as e:
                 LOGGER.exception(e)
                 continue
@@ -305,7 +305,7 @@ class MulticloudFilesystem(MulticloudBase):
 
     def download(self, path):
         """
-        Download from multiple clouds.
+        Download from multiple services.
 
         Uses Metastore backend to resolve path to a series of chunks. Returns a
         MulticloudReader that can read these chunks in order.
@@ -314,23 +314,23 @@ class MulticloudFilesystem(MulticloudBase):
             file = File.objects.get(path=path, user=self.user)
         except File.DoesNotExist:
             raise FileNotFoundError(path)
-        return MulticloudReader(self.user, self.clouds, file)
+        return MulticloudReader(self.user, self.services, file)
 
     @transaction.atomic
     def upload(self, path, f):
         """
-        Upload to multiple clouds.
+        Upload to multiple services.
 
         Reads the provided file-like object as a series of chunks, writing each
         to multiple cloud providers. Stores chunk information into the
         Metastore backend.
         """
-        assert len(self.clouds) >= self.replicas, \
-            'not enough clouds (%s) for %s replicas' % (len(self.clouds),
-                                                        self.replicas)
+        assert len(self.services) >= self.replicas, \
+            'not enough services (%s) for %s replicas' % (len(self.services),
+                                                          self.replicas)
 
         file = File.objects.create(path=path, user=self.user)
-        with MulticloudWriter(self.user, self.clouds, file,
+        with MulticloudWriter(self.user, self.services, file,
                               chunk_size=self.chunk_size,
                               replicas=self.replicas) as out:
             for chunk in chunker(f, chunk_size=self.chunk_size):
@@ -340,7 +340,7 @@ class MulticloudFilesystem(MulticloudBase):
     @transaction.atomic
     def delete(self, path):
         """
-        Delete from multiple clouds.
+        Delete from multiple services.
 
         If path is a file it is deleted (as described below). If path is a
         directory then it is simply removed from the Metastore.
@@ -354,8 +354,8 @@ class MulticloudFilesystem(MulticloudBase):
             raise FileNotFoundError(path)
         # We do not care about order...
         for chunk in Chunk.objects.filter(filechunk__file=file):
-            for storage in chunk.storage.all():
-                cloud = self.get_cloud(storage.storage)
+            for storage in chunk.services.all():
+                cloud = self.get_service(storage.service)
                 try:
                     cloud.delete(chunk)
                 except Exception as e:

@@ -11,7 +11,7 @@ from django.views import View
 from django.urls import reverse
 
 from main.models import (
-    OAuth2Provider, User, OAuth2AccessToken, OAuth2StorageToken,
+    OAuth2Provider, User, OAuth2AccessToken,
 )
 
 
@@ -162,19 +162,12 @@ class LoginComplete(OAuth2View):
         # If the token exists, update it. Otherwise create it.
         try:
             oauth_access, _ = OAuth2AccessToken.objects.get_or_create(
-                provider=client.provider, user=user, provider_uid=uid)
+                provider=client.provider, user=user, provider_uid=uid,
+                size=size, used=used)
         except IntegrityError:
             return HttpResponseBadRequest('Cloud already registered to user')
         oauth_access.update(**token)
         oauth_access.save()
-
-        if client.provider.is_storage:
-            oauth_storage, _ = OAuth2StorageToken.objects.get_or_create(
-                user=user, token=oauth_access)
-            oauth_storage.size = size
-            oauth_storage.used = used
-            oauth_storage.save()
-            oauth_storage.get_client().initialize()
 
         _login(request, user)
 

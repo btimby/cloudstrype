@@ -117,7 +117,7 @@ class UserManager(BaseUserManager):
 
 class User(UidModelMixin, AbstractBaseUser):
     """
-    Custom user model.
+    User model.
 
     Created as placeholder for future expansion.
     """
@@ -164,7 +164,7 @@ class User(UidModelMixin, AbstractBaseUser):
 
     def get_clients(self):
         clients = []
-        for storage in OAuth2StorageToken.objects.filter(token__user=self):
+        for storage in OAuth2AccessToken.objects.filter(user=self):
             clients.append(storage.get_client())
         return clients
 
@@ -177,7 +177,7 @@ class User(UidModelMixin, AbstractBaseUser):
 
 class Option(models.Model):
     """
-    User account options.
+    Option model.
 
     System-wide options that users define from a preference interface.
     """
@@ -227,42 +227,32 @@ class Option(models.Model):
                                         self.attrs)
 
 
-class OAuth2Provider(UidModelMixin, models.Model):
+class ServiceProvider(UidModelMixin, models.Model):
     """
-    A storage provider or login provider that supports OAuth2.
+    ServiceProvider model.
+
+    An external provider of authentication or storage.
     """
 
     PROVIDER_DROPBOX = 1
     PROVIDER_ONEDRIVE = 2
     PROVIDER_BOX = 3
     PROVIDER_GDRIVE = 4
-    PROVIDER_AMAZON = 5
-    PROVIDER_SMARTFILE = 6
+    PROVIDER_ARRAY = 5
 
     PROVIDERS = {
         PROVIDER_DROPBOX: "Dropbox",
         PROVIDER_ONEDRIVE: "Onedrive",
         PROVIDER_BOX: "Box",
         PROVIDER_GDRIVE: "Google Drive",
-        PROVIDER_AMAZON: "Amazon",
-        PROVIDER_SMARTFILE: "SmartFile",
+        PROVIDER_ARRAY: "Array",
     }
 
-    STORAGE_PROVIDERS = [
-        PROVIDER_DROPBOX,
-        PROVIDER_ONEDRIVE,
-        PROVIDER_BOX,
-        PROVIDER_GDRIVE,
-        PROVIDER_SMARTFILE,
-    ]
-
     class Meta:
-        verbose_name = 'OAuth2 Provider'
-        verbose_name_plural = 'OAuth2 Providers'
+        verbose_name = 'Service Provider'
+        verbose_name_plural = 'Service Providers'
 
     provider = models.SmallIntegerField(null=False, choices=PROVIDERS.items())
-    client_id = models.TextField(null=False)
-    client_secret = models.TextField()
 
     def __str__(self):
         return '<OAuth2Provider: %s>' % self.name
@@ -271,29 +261,85 @@ class OAuth2Provider(UidModelMixin, models.Model):
     def name(self):
         return self.PROVIDERS[self.provider]
 
+
+class ArrayProvider(ServiceProvider):
+    """
+    ArrayProvider model.
+
+    Represents a ServiceProvider for the Cloudstrype array.
+    """
+
+    def __str__(self):
+        return '<ArrayProvider: %s>' % self.name
+
+    def get_client(self, **kwargs):
+        raise NotImplementedError('No provider client.')
+
+
+class OAuth2Provider(ServiceProvider):
+    """
+    OAuth2Provider model.
+
+    Represents a ServiceProvider for OAuth2 cloud storage.
+    """
+
+    client_id = models.TextField(null=False)
+    client_secret = models.TextField()
+
+    def __str__(self):
+        return '<OAuth2Provider: %s>' % self.name
+
     def get_client(self, redirect_uri, **kwargs):
         return get_client(self, redirect_uri=redirect_uri)
 
-    @property
-    def is_storage(self):
-        return self.provider in self.STORAGE_PROVIDERS
 
-
-class OAuth2AccessToken(UidModelMixin, models.Model):
+class UserService(UidModelMixin, models.Model):
     """
-    An access token obtain for a user from a provider.
+    UserService model.
+
+    Represents a ServiceProvider instance for a given user.
+    """
+
+    user = models.ForeignKey(User)
+    provider = models.ForeignKey(ServiceProvider)
+    size = models.BigIntegerField(default=0)
+    used = models.BigIntegerField(default=0)
+    # Provider-specific attribute storage, such as chunk storage location
+    # directory ID.
+    attrs = JSONField(null=True, blank=True)
+
+
+class ArrayNode(UserService):
+    """
+    ArrayNode model.
+
+    Represents a node within an array belonging to a user.
+    """
+
+    name = models.UUIDField()
+
+    def __str__(self):
+        return '<ArrayNode: %s>' % self.name
+
+    def get_client(self, **kwargs):
+        "Get an HTTP client to interact with this node."
+        return ArrayClient(self, **kwargs)
+
+
+class OAuth2AccessToken(UserService):
+    """
+    OAuth2AccessToken model.
+
+    An access token obtained for a user from a provider. Represents an instance
+    of a cloud service provider for a specific user.
     """
 
     class Meta:
         verbose_name = 'OAuth2 Access Token'
         verbose_name_plural = 'OAuth2 Access Tokens'
 
-    provider = models.ForeignKey(OAuth2Provider, related_name='tokens',
-                                 on_delete=models.CASCADE)
     provider_uid = models.CharField(null=False, blank=False, editable=False,
                                     max_length=255)
-    user = models.ForeignKey(User, related_name='tokens',
-                             on_delete=models.CASCADE)
     access_token = models.TextField()
     refresh_token = models.TextField(null=True)
     expires = models.DateTimeField(null=True)
@@ -303,6 +349,7 @@ class OAuth2AccessToken(UidModelMixin, models.Model):
                                                self.provider.name)
 
     def get_client(self, **kwargs):
+        "Get an OAuth2 client to interact with this cloud."
         return get_client(self.provider, oauth_access=self, **kwargs)
 
     def update(self, access_token, refresh_token=None, expires=None, **kwargs):
@@ -336,34 +383,14 @@ class OAuth2AccessToken(UidModelMixin, models.Model):
         return token
 
 
-class OAuth2StorageToken(UidModelMixin, models.Model):
-    """
-    Track tokens storage attributes.
-    """
-
-    class Meta:
-        verbose_name = 'OAuth2 Storage Token'
-        verbose_name_plural = 'OAuth2 Storage Tokens'
-
-    user = models.ForeignKey(User, related_name='storage',
-                             on_delete=models.CASCADE)
-    token = models.OneToOneField(OAuth2AccessToken, related_name='storage',
-                                 on_delete=models.CASCADE)
-    size = models.BigIntegerField(default=0)
-    used = models.BigIntegerField(default=0)
-    # Provider-specific attribute storage, such as chunk storage location
-    # directory ID.
-    attrs = JSONField(null=True, blank=True)
-
-    def __str__(self):
-        return '<OAuth2StorageToken: %s@%s>' % (self.user.email,
-                                                self.token.provider.name)
-
-    def get_client(self):
-        return self.token.get_client(oauth_storage=self)
-
-
 class Tag(models.Model):
+    """
+    Tag model.
+
+    Contains all possible tag values system-wide. Tags can be assigned to files
+    and directories.
+    """
+
     name = models.CharField(null=False, max_length=32)
 
 
@@ -469,6 +496,12 @@ class Directory(UidModelMixin, models.Model):
 
 
 class DirectoryShare(models.Model):
+    """
+    DirectoryShare model.
+
+    Represents a directory shared by one user to another.
+    """
+
     class Meta:
         unique_together = ('directory', 'user')
 
@@ -560,13 +593,19 @@ class File(UidModelMixin, models.Model):
     def add_chunk(self, chunk):
         "Adds a chunk to a file, taking care to set the serial number."
         fc = FileChunk(file=self, chunk=chunk)
-        fc.serial = (FileChunk.objects.filter(file=self).aggregate(
-            Max('serial'))['serial__max'] or 0) + 1
+        fc.serial = (FileChunk.objects.filter(file=self).select_for_update(
+            ).aggregate(Max('serial'))['serial__max'] or 0) + 1
         fc.save()
         return fc
 
 
 class FileStat(models.Model):
+    """
+    FileStat model.
+
+    Represents stats about a file.
+    """
+
     file = models.OneToOneField(File, on_delete=models.CASCADE,
                                 related_name='stats')
     reads = models.IntegerField()
@@ -574,6 +613,12 @@ class FileStat(models.Model):
 
 
 class FileShare(models.Model):
+    """
+    FileShare model.
+
+    Represents a file shared by a user to another user.
+    """
+
     class Meta:
         unique_together = ('file', 'user')
 
@@ -587,7 +632,9 @@ class Chunk(UidModelMixin, models.Model):
     """
     Chunk model.
 
-    Represents a unique chunk of data.
+    Represents a unique chunk of data. There is a many to many relationship
+    between chunks and files. This may allow future de-dupe, as a chunk with
+    the same content can be shared by many files.
     """
 
     file = models.ManyToManyField(to=File, through='FileChunk',
@@ -599,11 +646,15 @@ class Chunk(UidModelMixin, models.Model):
 
 
 class FileChunkManager(models.Manager):
+    """
+    Manage FileChunks.
+    """
+
     def get_queryset(self):
         """
         Return QuerySet with default ordering.
         """
-        return FileQuerySet(self.model, using=self._db).order_by('serial')
+        return QuerySet(self.model, using=self._db).order_by('serial')
 
 
 class FileChunk(models.Model):
@@ -611,7 +662,7 @@ class FileChunk(models.Model):
     FileChunk model.
 
     A file consists of a series of chunks. This model ties chunks to a file,
-    ordering is provided by `serial`.
+    ordering for a given file is provided by `serial`.
     """
 
     class Meta:
@@ -627,26 +678,28 @@ class FileChunk(models.Model):
         return '<FileChunk %s[%s]>' % (self.file.path, self.serial)
 
 
-class ChunkStorage(models.Model):
+class ChunkService(models.Model):
     """
     ChunkStorage model.
 
-    Represents a chunk in cloud storage.
+    Represents a chunk stored in a provider. Each chunk may exist in multiple
+    storage services (for redundancy).
     """
 
     class Meta:
-        unique_together = ('chunk', 'storage')
+        unique_together = ('chunk', 'service')
 
-    chunk = models.ForeignKey(Chunk, related_name='storage',
+    chunk = models.ForeignKey(Chunk, related_name='services',
                               on_delete=models.CASCADE)
-    storage = models.ForeignKey(OAuth2StorageToken, related_name='chunks',
+    service = models.ForeignKey(UserService, related_name='chunks',
                                 on_delete=models.CASCADE)
     # Provider-specific attribute storage, such as the chunk's file ID.
     attrs = JSONField(null=True, blank=True)
 
     def __str__(self):
-        return '<ChunkStorage %s@%s>' % (self.chunk,
-                                         self.storage.token.provider.name)
+        return '<ChunkService %s@%s>' % (self.chunk,
+                                         self.service.provider.name)
 
 
 from main.fs.clouds import get_client  # NOQA
+from main.fs.array import ArrayClient  # NOQA
