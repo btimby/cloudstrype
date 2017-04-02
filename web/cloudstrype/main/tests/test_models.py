@@ -172,7 +172,8 @@ class UserStorageTestCase(TestCase):
         storage = BaseStorage.objects.create(
             provider=BaseStorage.PROVIDER_ARRAY)
 
-        array = ArrayUserStorage.objects.create(storage=storage, user=self.user)
+        array = ArrayUserStorage.objects.create(storage=storage,
+                                                user=self.user)
 
         self.assertEqual('<', str(array)[0])
         self.assertEqual('>', str(array)[-1])
@@ -187,7 +188,8 @@ class UserStorageTestCase(TestCase):
         storage = BaseStorage.objects.create(
             provider=BaseStorage.PROVIDER_BASIC)
 
-        basic = BasicUserStorage.objects.create(storage=storage, user=self.user,
+        basic = BasicUserStorage.objects.create(storage=storage,
+                                                user=self.user,
                                                 url='http://foobar.org/',
                                                 username='foo',
                                                 password='bar')
