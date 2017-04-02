@@ -59,9 +59,9 @@ class OAuth2View(View):
     """
 
     def get_oauth2_client(self, request, provider_name):
-        for id, name in BaseStorage.PROVIDERS.items():
+        for id, slug in BaseStorage.PROVIDER_SLUGS.items():
             # split() so that 'Google Drive' becomes 'google'
-            if name.lower().split(' ')[0] == provider_name:
+            if slug == provider_name:
                 break
         else:
             raise Http404()

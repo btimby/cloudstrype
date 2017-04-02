@@ -21,7 +21,7 @@ class GDriveAPIClient(BaseOAuth2APIClient):
     Unholy fuck-shits is all I have to say. Look at how much code I had to
     write... And all of it hard-fought.
     """
-    PROVIDER = BaseStorage.PROVIDER_GDRIVE
+    PROVIDER = BaseStorage.PROVIDER_GOOGLE
     SCOPES = [
         'profile', 'email', 'https://www.googleapis.com/auth/drive',
     ]

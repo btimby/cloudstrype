@@ -150,7 +150,7 @@ class BoxAPIClientTestCase(OAuth2APIClientTestCase):
 
 
 class GDriveAPIClientTestCase(OAuth2APIClientTestCase):
-    PROVIDER = BaseStorage.PROVIDER_GDRIVE
+    PROVIDER = BaseStorage.PROVIDER_GOOGLE
 
     def setUp(self):
         super().setUp()

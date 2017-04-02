@@ -238,7 +238,7 @@ class BaseStorage(UidModelMixin, models.Model):
     PROVIDER_DROPBOX = 1
     PROVIDER_ONEDRIVE = 2
     PROVIDER_BOX = 3
-    PROVIDER_GDRIVE = 4
+    PROVIDER_GOOGLE = 4
     PROVIDER_ARRAY = 5
     PROVIDER_BASIC = 6
 
@@ -246,9 +246,18 @@ class BaseStorage(UidModelMixin, models.Model):
         PROVIDER_DROPBOX: "Dropbox",
         PROVIDER_ONEDRIVE: "Onedrive",
         PROVIDER_BOX: "Box",
-        PROVIDER_GDRIVE: "Google Drive",
+        PROVIDER_GOOGLE: "Google Drive",
         PROVIDER_ARRAY: "Array",
         PROVIDER_BASIC: "Basic",
+    }
+
+    PROVIDER_SLUGS = {
+        PROVIDER_DROPBOX: "dropbox",
+        PROVIDER_ONEDRIVE: "onedrive",
+        PROVIDER_BOX: "box",
+        PROVIDER_GOOGLE: "google",
+        PROVIDER_ARRAY: "array",
+        PROVIDER_BASIC: "basic",
     }
 
     class Meta:
@@ -263,6 +272,18 @@ class BaseStorage(UidModelMixin, models.Model):
     @property
     def name(self):
         return self.PROVIDERS[self.provider]
+
+    @property
+    def slug(self):
+        return self.PROVIDER_SLUGS[self.provider]
+
+    def get_client(self, *args, **kwargs):
+        for subclass in ('oauth2storage', 'arraystorage', 'basicstorage'):
+            try:
+                return getattr(self, subclass).get_client(*args, **kwargs)
+            except ObjectDoesNotExist:
+                continue
+        raise ValueError('Invalid BaseStorage instance')
 
 
 class ArrayStorage(BaseStorage):
@@ -290,7 +311,7 @@ class OAuth2Storage(BaseStorage):
     client_secret = models.TextField()
 
     def __str__(self):
-        return '<OAuth2Provider: %s>' % self.name
+        return '<OAuth2Storage: %s>' % self.name
 
     def get_client(self, redirect_uri, **kwargs):
         return get_client(self, redirect_uri=redirect_uri)
