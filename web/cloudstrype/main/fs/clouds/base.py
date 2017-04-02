@@ -15,7 +15,7 @@ class HTTPError(Exception):
         super().__init__(message)
 
 
-class OAuth2APIClient(object):
+class BaseOAuth2APIClient(object):
     """
     OAuth API client base class.
     """

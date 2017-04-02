@@ -2,14 +2,14 @@ import json
 import logging
 
 from main.fs import Chunk
-from main.fs.clouds.base import OAuth2APIClient
+from main.fs.clouds.base import BaseOAuth2APIClient
 from main.models import BaseStorage
 
 
 LOGGER = logging.getLogger(__name__)
 
 
-class DropboxAPIClient(OAuth2APIClient):
+class DropboxAPIClient(BaseOAuth2APIClient):
     """
     OAuth2 API client for Dropbox.
 

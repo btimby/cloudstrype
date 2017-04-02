@@ -12,7 +12,7 @@ from main.models import Chunk
 LOGGER = logging.getLogger(__name__)
 
 
-def ArrayClient(object):
+class ArrayClient(object):
     def __init__(self, array_service):
         self.service = array_service
         self.name = array_service.name

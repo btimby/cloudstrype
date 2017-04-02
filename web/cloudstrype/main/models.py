@@ -3,6 +3,7 @@ Data models.
 
 This file contains the models that pertain to the whole application.
 """
+import uuid
 import mimetypes
 
 from datetime import datetime, timedelta
@@ -333,7 +334,7 @@ class ArrayUserStorage(BaseUserStorage):
     Represents a node within an array belonging to a user.
     """
 
-    name = models.UUIDField()
+    name = models.UUIDField(default=uuid.uuid4)
 
     def __str__(self):
         return '<ArrayUserStorage: %s>' % self.name
@@ -729,7 +730,7 @@ class ChunkStorage(models.Model):
 
     def __str__(self):
         return '<ChunkStorage %s@%s>' % (self.chunk,
-                                         self.service.provider.name)
+                                         self.storage.storage.name)
 
 
 from main.fs.clouds import get_client  # NOQA

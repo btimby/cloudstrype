@@ -1,13 +1,13 @@
 import logging
 
-from main.fs.clouds.base import OAuth2APIClient
+from main.fs.clouds.base import BaseOAuth2APIClient
 from main.models import BaseStorage
 
 
 LOGGER = logging.getLogger(__name__)
 
 
-class OnedriveAPIClient(OAuth2APIClient):
+class OnedriveAPIClient(BaseOAuth2APIClient):
     """
     OAuth2 API client for OneDrive.
 

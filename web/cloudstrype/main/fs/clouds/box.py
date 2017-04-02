@@ -4,14 +4,14 @@ import logging
 from io import BytesIO
 
 from main.fs import Chunk
-from main.fs.clouds.base import OAuth2APIClient, HTTPError
+from main.fs.clouds.base import BaseOAuth2APIClient, HTTPError
 from main.models import BaseStorage
 
 
 LOGGER = logging.getLogger(__name__)
 
 
-class BoxAPIClient(OAuth2APIClient):
+class BoxAPIClient(BaseOAuth2APIClient):
     """
     OAuth2 API client for Box.
 
