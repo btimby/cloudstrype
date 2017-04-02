@@ -5,7 +5,10 @@ from io import BytesIO
 
 from django.test import TestCase
 
+from mock import MagicMock
+
 from main.fs import MulticloudFilesystem
+from main.fs.clouds import get_client
 from main.fs.errors import (
     PathNotFoundError, FileNotFoundError, DirectoryNotFoundError,
     DirectoryConflictError, FileConflictError,
@@ -250,3 +253,11 @@ class FilesystemTestCase(TestCase):
                 fs.upload('/foo', f)
 
             fs.info('/foo')
+
+
+class GetclientTestCase(TestCase):
+    def test_get_client(self):
+        obj = MagicMock(provider=1024)
+
+        with self.assertRaises(ValueError):
+            get_client(obj)
