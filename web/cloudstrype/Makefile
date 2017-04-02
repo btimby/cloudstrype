@@ -10,6 +10,10 @@ test:
 coveralls:
 	coveralls -v
 
+.PHONY: coverage
+coverage:
+	coverage report
+
 .PHONY: ci-test
 ci-test:
 	coverage run manage.py test

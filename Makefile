@@ -16,8 +16,14 @@ test:
 	$(MAKE) -C web test
 
 #: coveralls - Submit coverage stats to coveralls
+.PHONY: coveralls
 coveralls:
 	$(MAKE) -C web coveralls
+
+#: coverage - Coverage report
+.PHONY: coverage
+coverage:
+	$(MAKE) -C web coverage
 
 #: ci-test - Runs CI in Travis.
 .PHONY: ci-test

@@ -6,6 +6,10 @@ test:
 coveralls:
 	$(MAKE) -C cloudstrype coveralls
 
+.PHONY: coverage
+coverage:
+	$(MAKE) -C cloudstrype coverage
+
 .PHONY: travis-ci
 ci-test:
 	$(MAKE) -C cloudstrype ci-test
