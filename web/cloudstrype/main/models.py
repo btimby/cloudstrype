@@ -700,8 +700,10 @@ class FileChunk(models.Model):
     class Meta:
         unique_together = ('file', 'serial')
 
-    file = models.ForeignKey(File, on_delete=models.CASCADE)
-    chunk = models.ForeignKey(Chunk, on_delete=models.PROTECT)
+    file = models.ForeignKey(File, on_delete=models.CASCADE,
+                             related_name='filechunks')
+    chunk = models.ForeignKey(Chunk, on_delete=models.PROTECT,
+                              related_name='filechunks')
     serial = models.IntegerField(default=0)
 
     objects = FileChunkManager()

@@ -103,7 +103,7 @@ class MulticloudReader(MulticloudBase, FileLikeBase):
         self.file = file
         self.chunks = list(
             Chunk.objects.filter(
-                filechunk__file=file).order_by('filechunk__serial')
+                filechunks__file=file).order_by('filechunks__serial')
         )
         self._buffer = []
         self._closed = False
@@ -220,14 +220,14 @@ class MulticloudWriter(MulticloudBase, FileLikeBase):
             # in addition to the base block.
             if chunks_uploaded == self.replicas + 1:
                 break
-            chunk.storage.add(
-                ChunkStorage.objects.create(chunk=chunk,
-                                            storage=storage.storage))
             try:
                 storage.upload(chunk, data)
             except Exception as e:
                 LOGGER.exception(e)
                 continue
+            chunk.storage.add(
+                ChunkStorage.objects.create(chunk=chunk,
+                                            storage=storage.storage))
             chunks_uploaded += 1
         else:
             raise IOError('Failed to write chunk')
@@ -353,7 +353,7 @@ class MulticloudFilesystem(MulticloudBase):
         except File.DoesNotExist:
             raise FileNotFoundError(path)
         # We do not care about order...
-        for chunk in Chunk.objects.filter(filechunk__file=file):
+        for chunk in Chunk.objects.filter(filechunks__file=file):
             for storage in chunk.storage.all():
                 cloud = self.get_storage(storage.storage)
                 try:
@@ -429,8 +429,8 @@ class MulticloudFilesystem(MulticloudBase):
         dstfile = \
             File.objects.create(md5=srcfile.md5, path=dst, user=self.user)
         # Then clone it's chunks:
-        for chunk in Chunk.objects.filter(filechunk__file=srcfile).order_by(
-                                          'filechunk__serial'):
+        for chunk in Chunk.objects.filter(filechunks__file=srcfile).order_by(
+                                          'filechunks__serial'):
             dstfile.add_chunk(chunk)
         return dstfile
 
