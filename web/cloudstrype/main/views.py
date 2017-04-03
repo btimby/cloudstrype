@@ -11,7 +11,7 @@ from django.views import View
 from django.urls import reverse
 
 from main.models import (
-    BaseStorage, User, OAuth2Storage,
+    BaseStorage, User, OAuth2UserStorage,
 )
 
 
@@ -147,7 +147,8 @@ class LoginComplete(OAuth2View):
         else:
             try:
                 # Try to fetch the user and log them in.
-                user = User.objects.get(tokens__provider_uid=uid)
+                user = User.objects.get(
+                    baseuserstorage__oauth2userstorage__provider_uid=uid)
             except User.DoesNotExist:
                 try:
                     user = User.objects.create_user(email=email,
@@ -161,8 +162,8 @@ class LoginComplete(OAuth2View):
 
         # If the token exists, update it. Otherwise create it.
         try:
-            oauth_access, _ = OAuth2Storage.objects.get_or_create(
-                provider=client.provider, user=user, provider_uid=uid,
+            oauth_access, _ = OAuth2UserStorage.objects.get_or_create(
+                storage=client.provider, user=user, provider_uid=uid,
                 size=size, used=used)
         except IntegrityError:
             return HttpResponseBadRequest('Cloud already registered to user')
