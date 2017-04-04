@@ -18,7 +18,7 @@ urlpatterns = [
 
     # Application urls
     url(r'^accounts/login/$', login, name='login'),
-    url(r'^accounts/logout/$', logout),
+    url(r'^accounts/logout/$', logout, name='logout'),
     url(r'^accounts/login/(\w+)/$', Login.as_view(), name='login_oauth2'),
     url(r'^accounts/login/(\w+)/complete/$', LoginComplete.as_view(),
         name='complete_oauth2'),

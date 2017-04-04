@@ -47,6 +47,6 @@ class OnedriveAPIClient(BaseOAuth2APIClient):
 
     def request(self, method, url, chunk, headers={}, **kwargs):
         url = url.format(
-            path='.cloudstrype/%s/%s' % (self.oauth_access.user.uid,
+            path='.cloudstrype/%s/%s' % (self.user_storage.user.uid,
                                          chunk.uid))
         return super().request(method, url, chunk, headers=headers, **kwargs)

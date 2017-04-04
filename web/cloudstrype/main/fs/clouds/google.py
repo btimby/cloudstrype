@@ -79,7 +79,7 @@ class GDriveAPIClient(BaseOAuth2APIClient):
         assert isinstance(chunk, Chunk), 'must be chunk instance'
 
         try:
-            parent_id = self.oauth_access.attrs.get('root.id')
+            parent_id = self.user_storage.attrs.get('root.id')
         except ValueError:
             parent_id = None
         attrs = {
@@ -171,7 +171,7 @@ class GDriveAPIClient(BaseOAuth2APIClient):
         parent_id, kwargs = None, {
             'headers': {'Content-Type': 'application/json'}
         }
-        for name in ('.cloudstrype', self.oauth_access.user.uid):
+        for name in ('.cloudstrype', self.user_storage.user.uid):
             # Hey Google, fuck you for making me do this!
             query = [
                 "title='%s'" % name,
@@ -200,5 +200,5 @@ class GDriveAPIClient(BaseOAuth2APIClient):
             # Create the directory:
             r = self.oauthsession.post(self.CREATE_URL, **kwargs)
             parent_id = r.json()['id']
-        self.oauth_access.attrs = {'root.id': parent_id}
-        self.oauth_access.save()
+        self.user_storage.attrs = {'root.id': parent_id}
+        self.user_storage.save()

@@ -17,11 +17,11 @@ PROVIDERS = (
 )
 
 
-def get_client(provider, oauth_access=None, **kwargs):
+def get_client(provider, user_storage=None, **kwargs):
     for item in PROVIDERS:
         if getattr(item, 'PROVIDER', None) == provider.provider:
             provider_cls = item
             break
     else:
         raise ValueError('Invalid provider')
-    return provider_cls(provider, oauth_access=oauth_access, **kwargs)
+    return provider_cls(provider, user_storage=user_storage, **kwargs)

@@ -63,7 +63,7 @@ class BoxAPIClient(BaseOAuth2APIClient):
 
     def upload(self, chunk, data, **kwargs):
         assert isinstance(chunk, Chunk), 'must be chunk instance'
-        parent_id = self.oauth_access.attrs['root.id']
+        parent_id = self.user_storage.attrs['root.id']
         kwargs['data'] = {
             'attributes': json.dumps({
                 'name': chunk.uid, 'parent': {'id': parent_id}
@@ -130,7 +130,7 @@ class BoxAPIClient(BaseOAuth2APIClient):
         """
         # "0" root directory, our first goes under that, sencond under first.
         parent_id, kwargs = "0", {}
-        for name in ('.cloudstrype', self.oauth_access.user.uid):
+        for name in ('.cloudstrype', self.user_storage.user.uid):
             kwargs['data'] = json.dumps({
                 'name': name,
                 'parent': {
@@ -146,5 +146,5 @@ class BoxAPIClient(BaseOAuth2APIClient):
             else:
                 # We created it, so nab the ID and continue to child.
                 parent_id = r.json()['id']
-        self.oauth_access.attrs = {'root.id': parent_id}
-        self.oauth_access.save()
+        self.user_storage.attrs = {'root.id': parent_id}
+        self.user_storage.save()

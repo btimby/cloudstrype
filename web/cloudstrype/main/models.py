@@ -339,7 +339,8 @@ class BaseUserStorage(UidModelMixin, models.Model):
     Represents a Storage instance for a given user.
     """
 
-    user = models.ForeignKey(User)
+    user = models.ForeignKey(User, on_delete=models.CASCADE,
+                             related_name='storages')
     storage = models.ForeignKey(BaseStorage)
     size = models.BigIntegerField(default=0)
     used = models.BigIntegerField(default=0)
@@ -389,7 +390,7 @@ class OAuth2UserStorage(BaseUserStorage):
 
     def get_client(self, **kwargs):
         "Get an OAuth2 client to interact with this cloud."
-        return get_client(self.storage, oauth_access=self, **kwargs)
+        return get_client(self.storage, user_storage=self, **kwargs)
 
     def update(self, access_token, refresh_token=None, expires=None, **kwargs):
         if 'expires_at' in kwargs:

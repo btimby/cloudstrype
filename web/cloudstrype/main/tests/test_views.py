@@ -8,7 +8,7 @@ import httpretty
 from django.test import TestCase, Client
 from django.urls import reverse
 
-from main.models import BaseStorage, OAuth2Storage
+from main.models import User, BaseStorage, OAuth2Storage, OAuth2UserStorage
 
 from main.fs.clouds import get_client
 
@@ -56,6 +56,12 @@ USER_PROFILE = {
         'quotaBytesUsed': 100,
     },
 }
+CREATE = {
+    'id': 'abc123',
+    'items': [
+        {'id': 'abc123'}
+    ]
+}
 METHODS = {
     'get': httpretty.GET,
     'post': httpretty.POST,
@@ -70,6 +76,34 @@ class NonProviderLoginTestCase(TestCase):
     def test_login_provider(self):
         r = self.client.get(reverse('login_oauth2', args=('wtf', )))
         self.assertEqual(404, r.status_code)
+
+
+class LoginTestCase(TestCase):
+    def setUp(self):
+        self.storage = OAuth2Storage.objects.create(
+            provider=BaseStorage.PROVIDER_DROPBOX)
+        self.user = User.objects.create(email='foo@bar.org')
+        self.oauth2 = OAuth2UserStorage.objects.create(
+                storage=self.storage, user=self.user)
+
+    def test_login_get(self):
+        r = self.client.get(reverse('login'))
+        self.assertEqual(200, r.status_code)
+
+    def test_login_post_provider(self):
+        r = self.client.post(reverse('login'),
+                             {'provider': self.storage.name})
+        self.assertEqual(302, r.status_code)
+
+    def test_login_post_email(self):
+        r = self.client.post(reverse('login'), {'email': 'foo@bar.org'})
+        self.assertEqual(302, r.status_code)
+
+
+class LogoutTestCase(TestCase):
+    def test_logout_get(self):
+        r = self.client.get(reverse('logout'))
+        self.assertEqual(302, r.status_code)
 
 
 class BaseLogin(object):
@@ -95,6 +129,13 @@ class BaseLogin(object):
                 METHODS.get(oauth2.USER_STORAGE_URL[0]),
                 oauth2.USER_STORAGE_URL[1],
                 body=json.dumps(USER_PROFILE[self.provider.slug]),
+                content_type='application/json')
+        if getattr(oauth2, 'CREATE_URL', None):
+            httpretty.register_uri(httpretty.GET, oauth2.CREATE_URL,
+                body=json.dumps(CREATE),
+                content_type='application/json')
+            httpretty.register_uri(httpretty.POST, oauth2.CREATE_URL,
+                body=json.dumps(CREATE),
                 content_type='application/json')
 
     def tearDown(self):

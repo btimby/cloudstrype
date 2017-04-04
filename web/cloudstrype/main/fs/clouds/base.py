@@ -39,19 +39,19 @@ class BaseOAuth2APIClient(object):
     UPLOAD_URL = None
     DELETE_URL = None
 
-    def __init__(self, provider, oauth_access=None, redirect_uri=None,
+    def __init__(self, storage, user_storage=None, redirect_uri=None,
                  **kwargs):
-        self.provider = provider
-        self.oauth_access = oauth_access
-        if self.oauth_access:
+        self.storage = storage
+        self.user_storage = user_storage
+        if self.user_storage:
             # We already have a token, pass it along.
             self.oauthsession = OAuth2Session(
-                token=self.oauth_access.to_dict(), **kwargs)
+                token=self.user_storage.to_dict(), **kwargs)
         else:
             # We have yet to obtain a token, so we have only the client ID etc.
             # needed to call `authorization_url()` and get a token.
             self.oauthsession = OAuth2Session(
-                provider.client_id, redirect_uri=redirect_uri,
+                storage.client_id, redirect_uri=redirect_uri,
                 scope=self.SCOPES, **kwargs)
 
     def _save_refresh_token(self, token):
@@ -60,7 +60,7 @@ class BaseOAuth2APIClient(object):
 
         Called by OAuthSession during refresh. Also used by fetch_token.
         """
-        self.oauth_access.update(**token)
+        self.user_storage.update(**token)
 
     def _get_profile_field(self, profile, field_name):
         field_name = self.PROFILE_FIELDS[field_name]
@@ -83,7 +83,7 @@ class BaseOAuth2APIClient(object):
     def fetch_token(self, request_uri):
         return self.oauthsession.fetch_token(
             self.ACCESS_TOKEN_URL, authorization_response=request_uri,
-            client_secret=self.provider.client_secret)
+            client_secret=self.storage.client_secret)
 
     def get_profile(self, **kwargs):
         profile = self.oauthsession.request(
@@ -109,9 +109,9 @@ class BaseOAuth2APIClient(object):
                 # Do our own, since requests_oauthlib is broken.
                 token = self.oauthsession.refresh_token(
                     self.REFRESH_TOKEN_URL,
-                    refresh_token=self.oauth_access.refresh_token,
-                    client_id=self.provider.client_id,
-                    client_secret=self.provider.client_secret)
+                    refresh_token=self.user_storage.refresh_token,
+                    client_id=self.storage.client_id,
+                    client_secret=self.storage.client_secret)
                 self._save_refresh_token(token)
                 tried_refresh = True
 

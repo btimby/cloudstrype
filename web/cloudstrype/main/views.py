@@ -35,7 +35,7 @@ def login(request):
                 pass
             else:
                 provider = \
-                    user.tokens.order_by('id').first().provider.name.lower()
+                    user.storages.order_by('id').first().storage.slug
         if provider:
             return redirect(reverse('login_oauth2', args=(provider,)))
     return render(request, 'main/login.html')
@@ -45,12 +45,6 @@ def logout(request):
     "Simple logout view."
     _logout(request)
     return redirect(reverse('ui:home'))
-
-
-class Http400(Http404):
-    "Throwable 400 error."
-
-    pass
 
 
 class OAuth2View(View):
@@ -73,36 +67,6 @@ class OAuth2View(View):
 
         return provider.get_client(redirect_uri)
 
-    def step_one(self, request, provider_name):
-        """
-        Start the OAuth workflow.
-        """
-        client = self.get_oauth2_client(request, provider_name)
-
-        url, state = client.authorization_url()
-        # Store the generated state for validation in step two.
-        request.session['oauth2_state_%s' % provider_name] = state
-
-        return redirect(url)
-
-    def step_two(self, request, provider_name):
-        """
-        Complete the OAuth workflow.
-        """
-        client = self.get_oauth2_client(request, provider_name)
-
-        try:
-            # Retrieve the state saved in step 1.
-            client.oauthsession._state = state = \
-                request.session.pop('oauth2_state_%s' % provider_name)
-        except KeyError:
-            raise Http400()
-
-        return client.fetch_token(request.build_absolute_uri()), state
-
-    def step_three(self, request):
-        raise NotImplementedError('There is no step three!')
-
 
 class Login(OAuth2View):
     """
@@ -111,8 +75,13 @@ class Login(OAuth2View):
 
     def get(self, request, provider_name):
         provider_name = provider_name.lower()
-        request.session['oauth2_action_%s' % provider_name] = 'expand'
-        return self.step_one(request, provider_name)
+        client = self.get_oauth2_client(request, provider_name)
+
+        url, state = client.authorization_url()
+        # Store the generated state for validation in step two.
+        request.session['oauth2_state_%s' % provider_name] = state
+
+        return redirect(url)
 
 
 class LoginComplete(OAuth2View):
@@ -133,13 +102,17 @@ class LoginComplete(OAuth2View):
         provider_name = provider_name.lower()
         client = self.get_oauth2_client(request, provider_name)
 
+        client = self.get_oauth2_client(request, provider_name)
+
         try:
-            token, state = self.step_two(
-                request, provider_name)
-        except Http400:
+            # Retrieve the state saved in step 1.
+            client.oauthsession._state = state = \
+                request.session.pop('oauth2_state_%s' % provider_name)
+        except KeyError:
             return HttpResponseBadRequest('Missing state')
 
-        client.oauthsession.token = token
+        client.oauthsession.token = token = client.fetch_token(
+            request.build_absolute_uri())
         uid, email, name, size, used = client.get_profile()
 
         if request.user.is_authenticated():
@@ -148,7 +121,7 @@ class LoginComplete(OAuth2View):
             try:
                 # Try to fetch the user and log them in.
                 user = User.objects.get(
-                    baseuserstorage__oauth2userstorage__provider_uid=uid)
+                    storages__oauth2userstorage__provider_uid=uid)
             except User.DoesNotExist:
                 try:
                     user = User.objects.create_user(email=email,
@@ -162,9 +135,14 @@ class LoginComplete(OAuth2View):
 
         # If the token exists, update it. Otherwise create it.
         try:
-            oauth_access, _ = OAuth2UserStorage.objects.get_or_create(
-                storage=client.provider, user=user, provider_uid=uid,
-                size=size, used=used)
+            oauth_access, created = OAuth2UserStorage.objects.get_or_create(
+                storage=client.storage, user=user, provider_uid=uid)
+            oauth_access.size = size
+            oauth_access.used = used
+            oauth_access.save()
+            client.user_storage = oauth_access
+            if created:
+                client.initialize()
         except IntegrityError:
             return HttpResponseBadRequest('Cloud already registered to user')
         oauth_access.update(**token)
