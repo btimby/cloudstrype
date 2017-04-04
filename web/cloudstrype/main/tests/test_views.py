@@ -132,11 +132,11 @@ class BaseLogin(object):
                 content_type='application/json')
         if getattr(oauth2, 'CREATE_URL', None):
             httpretty.register_uri(httpretty.GET, oauth2.CREATE_URL,
-                body=json.dumps(CREATE),
-                content_type='application/json')
+                                   body=json.dumps(CREATE),
+                                   content_type='application/json')
             httpretty.register_uri(httpretty.POST, oauth2.CREATE_URL,
-                body=json.dumps(CREATE),
-                content_type='application/json')
+                                   body=json.dumps(CREATE),
+                                   content_type='application/json')
 
     def tearDown(self):
         httpretty.disable()

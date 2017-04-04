@@ -106,7 +106,7 @@ class LoginComplete(OAuth2View):
 
         try:
             # Retrieve the state saved in step 1.
-            client.oauthsession._state = state = \
+            client.oauthsession._state = \
                 request.session.pop('oauth2_state_%s' % provider_name)
         except KeyError:
             return HttpResponseBadRequest('Missing state')
