@@ -18,46 +18,47 @@ ACCESS_TOKEN = {
     'refresh_token': '5678',
     'expires': time.time()+600,
 }
-USER_PROFILE = {
-    'dropbox': {
-        'account_id': '1234',
-        'email': 'foo@bar.org',
-        'name': {
-            'display_name': 'Foo Bar',
-        },
-        'allocation': {
-            'allocated': 1000,
-        },
+
+USER_PROFILE_DROPBOX = {
+    'account_id': '1234',
+    'email': 'foo@bar.org',
+    'name': {
+        'display_name': 'Foo Bar',
+    },
+    'allocation': {
+        'allocated': 1000,
+    },
+    'used': 100,
+}
+USER_PROFILE_ONEDRIVE = {
+    'id': '1234',
+    'emails': {
+        'account': 'foo@bar.org',
+    },
+    'name': 'Foo Bar',
+    'quota': {
+        'total': 1000,
         'used': 100,
     },
-    'onedrive': {
-        'id': '1234',
-        'emails': {
-            'account': 'foo@bar.org',
-        },
-        'name': 'Foo Bar',
-        'quota': {
-            'total': 1000,
-            'used': 100,
-        },
-    },
-    'box': {
-        'id': '1234',
-        'login': 'foo@bar.org',
-        'name': 'Foo Bar',
-        'space_amount': 1000,
-        'space_used': 100,
-    },
-    'google': {
-        'id': '1234',
-        'email': 'foo@bar.org',
-        'name': 'Foo Bar',
-        'quotaBytesTotal': 1000,
-        'quotaBytesUsed': 100,
-    },
 }
-CREATE = {
+USER_PROFILE_BOX = {
+    'id': '1234',
+    'login': 'foo@bar.org',
+    'name': 'Foo Bar',
+    'space_amount': 1000,
+    'space_used': 100,
+}
+USER_PROFILE_GOOGLE = {
+    'id': '1234',
+    'email': 'foo@bar.org',
+    'name': 'Foo Bar',
+    'quotaBytesTotal': 1000,
+    'quotaBytesUsed': 100,
+}
+CREATE_BOX = {
     'id': 'abc123',
+}
+CREATE_GOOGLE = {
     'items': [
         {'id': 'abc123'}
     ]
@@ -115,28 +116,11 @@ class BaseLogin(object):
         self.client = Client()
         self.provider = OAuth2Storage.objects.create(provider=self.PROVIDER)
         httpretty.enable()
-        oauth2 = get_client(self.provider)
-        httpretty.register_uri(httpretty.POST, oauth2.ACCESS_TOKEN_URL,
-                               body=json.dumps(ACCESS_TOKEN),
-                               content_type='application/json')
+        self.oauth2_client = get_client(self.provider)
         httpretty.register_uri(
-            METHODS.get(oauth2.USER_PROFILE_URL[0]),
-            oauth2.USER_PROFILE_URL[1],
-            body=json.dumps(USER_PROFILE[self.provider.slug]),
+            httpretty.POST, self.oauth2_client.ACCESS_TOKEN_URL,
+            body=json.dumps(ACCESS_TOKEN),
             content_type='application/json')
-        if oauth2.USER_STORAGE_URL:
-            httpretty.register_uri(
-                METHODS.get(oauth2.USER_STORAGE_URL[0]),
-                oauth2.USER_STORAGE_URL[1],
-                body=json.dumps(USER_PROFILE[self.provider.slug]),
-                content_type='application/json')
-        if getattr(oauth2, 'CREATE_URL', None):
-            httpretty.register_uri(httpretty.GET, oauth2.CREATE_URL,
-                                   body=json.dumps(CREATE),
-                                   content_type='application/json')
-            httpretty.register_uri(httpretty.POST, oauth2.CREATE_URL,
-                                   body=json.dumps(CREATE),
-                                   content_type='application/json')
 
     def tearDown(self):
         httpretty.disable()
@@ -166,14 +150,67 @@ class BaseLogin(object):
 class DropboxLoginTestCase(BaseLogin, TestCase):
     PROVIDER = BaseStorage.PROVIDER_DROPBOX
 
+    def setUp(self):
+        super().setUp()
+        httpretty.register_uri(
+            METHODS.get(self.oauth2_client.USER_PROFILE_URL[0]),
+            self.oauth2_client.USER_PROFILE_URL[1],
+            body=json.dumps(USER_PROFILE_DROPBOX),
+            content_type='application/json')
+        httpretty.register_uri(
+            METHODS.get(self.oauth2_client.USER_STORAGE_URL[0]),
+            self.oauth2_client.USER_STORAGE_URL[1],
+            body=json.dumps(USER_PROFILE_DROPBOX),
+            content_type='application/json')
+
 
 class OnedriveLoginTestCase(BaseLogin, TestCase):
     PROVIDER = BaseStorage.PROVIDER_ONEDRIVE
+
+    def setUp(self):
+        super().setUp()
+        httpretty.register_uri(
+            METHODS.get(self.oauth2_client.USER_PROFILE_URL[0]),
+            self.oauth2_client.USER_PROFILE_URL[1],
+            body=json.dumps(USER_PROFILE_ONEDRIVE),
+            content_type='application/json')
+        httpretty.register_uri(
+            METHODS.get(self.oauth2_client.USER_STORAGE_URL[0]),
+            self.oauth2_client.USER_STORAGE_URL[1],
+            body=json.dumps(USER_PROFILE_ONEDRIVE),
+            content_type='application/json')
 
 
 class BoxLoginTestCase(BaseLogin, TestCase):
     PROVIDER = BaseStorage.PROVIDER_BOX
 
+    def setUp(self):
+        super().setUp()
+        httpretty.register_uri(
+            METHODS.get(self.oauth2_client.USER_PROFILE_URL[0]),
+            self.oauth2_client.USER_PROFILE_URL[1],
+            body=json.dumps(USER_PROFILE_BOX),
+            content_type='application/json')
+        httpretty.register_uri(httpretty.POST, self.oauth2_client.CREATE_URL,
+                               body=json.dumps(CREATE_BOX),
+                               content_type='application/json')
+
 
 class GoogleLoginTestCase(BaseLogin, TestCase):
     PROVIDER = BaseStorage.PROVIDER_GOOGLE
+
+    def setUp(self):
+        super().setUp()
+        httpretty.register_uri(
+            METHODS.get(self.oauth2_client.USER_PROFILE_URL[0]),
+            self.oauth2_client.USER_PROFILE_URL[1],
+            body=json.dumps(USER_PROFILE_GOOGLE),
+            content_type='application/json')
+        httpretty.register_uri(
+            METHODS.get(self.oauth2_client.USER_STORAGE_URL[0]),
+            self.oauth2_client.USER_STORAGE_URL[1],
+            body=json.dumps(USER_PROFILE_GOOGLE),
+            content_type='application/json')
+        httpretty.register_uri(httpretty.GET, self.oauth2_client.CREATE_URL,
+                               body=json.dumps(CREATE_GOOGLE),
+                               content_type='application/json')
