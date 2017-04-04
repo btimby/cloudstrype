@@ -14,26 +14,29 @@ from main.fs.array import ArrayClient
 
 
 class DirectoryTestCase(TestCase):
-    def test_create(self):
-        user = User.objects.create(email='foo@bar.org')
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create(email='foo@bar.org')
 
+    def test_create(self):
         with self.assertRaises(ValueError):
             Directory.objects.create(path='/foobar')
 
-        dir1 = Directory.objects.create(path='/foobar', user=user)
+        dir1 = Directory.objects.create(path='/foobar', user=self.user)
         self.assertEqual('/foobar', dir1.path)
         self.assertEqual('<', str(dir1)[0])
         self.assertEqual('>', str(dir1)[-1])
 
-        dir2 = Directory.objects.create(path='/foobar/foo/bar', user=user)
+        dir2 = Directory.objects.create(path='/foobar/foo/bar', user=self.user)
         self.assertEqual('/foobar/foo/bar', dir2.path)
 
         dir1.delete()
 
 
 class FileTestCase(TestCase):
-    def setUp(self):
-        self.user = User.objects.create(email='foo@bar.org')
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create(email='foo@bar.org')
 
     def test_create(self):
         with self.assertRaises(ValueError):
@@ -138,9 +141,10 @@ class UserStorageTestCase(TestCase):
     Test user storage (usable storage instances).
     """
 
-    def setUp(self):
-        self.user = User.objects.create_user('foo@bar.org',
-                                             full_name='Foo Bar')
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user('foo@bar.org',
+                                            full_name='Foo Bar')
 
     def test_oauth2(self):
         storage = BaseStorage.objects.create(

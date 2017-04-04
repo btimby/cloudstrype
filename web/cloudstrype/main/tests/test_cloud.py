@@ -18,19 +18,22 @@ TEST_CHUNK_BODY = b'Test chunk body'
 
 
 class OAuth2APIClientTestCase(TestCase):
-    def setUp(self):
-        self.user = User.objects.create_user(email='foo@bar.org')
-        self.storage = OAuth2Storage.objects.create(
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(email='foo@bar.org')
+        cls.storage = OAuth2Storage.objects.create(
             client_id='test-client_id', client_secret='test-client_secret',
-            provider=self.PROVIDER)
-        self.oauth_access = OAuth2UserStorage.objects.create(
-            user=self.user,
-            storage=self.storage, access_token='test-access_token',
+            provider=cls.PROVIDER)
+        cls.oauth_access = OAuth2UserStorage.objects.create(
+            user=cls.user,
+            storage=cls.storage, access_token='test-access_token',
             refresh_token='test-refresh_token', attrs={'root.id': '0'})
+        cls.file = File.objects.create(path='/foo', user=cls.user)
+        cls.chunk = Chunk.objects.create(md5=md5(b'foo').hexdigest())
+        cls.file.add_chunk(cls.chunk)
+
+    def setUp(self):
         self.client = self.oauth_access.get_client()
-        self.file = File.objects.create(path='/foo', user=self.user)
-        self.chunk = Chunk.objects.create(md5=md5(b'foo').hexdigest())
-        self.file.add_chunk(self.chunk)
 
     def _get_path(self):
         return '.cloudstrype/%s/%s' % (self.user.uid, self.chunk.uid)

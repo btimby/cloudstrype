@@ -54,11 +54,14 @@ class MockClients(object):
 
 
 class FilesystemTestCase(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create(email='foo@bar.org')
+
     def test_fs(self):
-        user = User.objects.create(email='foo@bar.org')
         with mock.patch('main.models.User.get_clients',
-                        MockClients(user).get_clients):
-            fs = MulticloudFilesystem(user)
+                        MockClients(self.user).get_clients):
+            fs = MulticloudFilesystem(self.user)
 
             with BytesIO(TEST_FILE) as f:
                 file = fs.upload('/foo', f)
@@ -77,11 +80,10 @@ class FilesystemTestCase(TestCase):
                 fs.delete('/foo')
 
     def test_fs_replicas(self):
-        user = User.objects.create(email='foo@bar.org')
-        mock_clients = MockClients(user)
+        mock_clients = MockClients(self.user)
         with mock.patch('main.models.User.get_clients',
                         mock_clients.get_clients):
-            fs = MulticloudFilesystem(user, chunk_size=3, replicas=2)
+            fs = MulticloudFilesystem(self.user, chunk_size=3, replicas=2)
 
             with BytesIO(TEST_FILE) as f:
                 file = fs.upload('/foo', f)
@@ -101,8 +103,7 @@ class FilesystemTestCase(TestCase):
             fs.delete('/foo')
 
     def test_mkdir(self):
-        user = User.objects.create(email='foo@bar.org')
-        fs = MulticloudFilesystem(user)
+        fs = MulticloudFilesystem(self.user)
         dir = fs.mkdir('/foo')
         self.assertEqual('/foo', dir.path)
         fs.rmdir('/foo')
@@ -110,8 +111,7 @@ class FilesystemTestCase(TestCase):
             fs.rmdir('/foo')
 
     def test_listdir(self):
-        user = User.objects.create(email='foo@bar.org')
-        fs = MulticloudFilesystem(user)
+        fs = MulticloudFilesystem(self.user)
         fs.mkdir('/foo')
         fs.mkdir('/foo/bar')
         fs.mkdir('/foo/baz')
@@ -124,8 +124,7 @@ class FilesystemTestCase(TestCase):
             fs.listdir('/missing')
 
     def test_move(self):
-        user = User.objects.create(email='foo@bar.org')
-        fs = MulticloudFilesystem(user)
+        fs = MulticloudFilesystem(self.user)
         fs.mkdir('/foo')
         fs.mkdir('/bar')
         fs.move('/foo', '/bar')
@@ -135,10 +134,9 @@ class FilesystemTestCase(TestCase):
         self.assertTrue(fs.isdir('/bar/foo'))
 
     def test_move_file(self):
-        user = User.objects.create(email='foo@bar.org')
         with mock.patch('main.models.User.get_clients',
-                        MockClients(user).get_clients):
-            fs = MulticloudFilesystem(user)
+                        MockClients(self.user).get_clients):
+            fs = MulticloudFilesystem(self.user)
 
             with BytesIO(TEST_FILE) as f:
                 fs.upload('/foo', f)
@@ -151,10 +149,9 @@ class FilesystemTestCase(TestCase):
             self.assertFalse(fs.exists('/foo'))
 
     def test_move_fail(self):
-        user = User.objects.create(email='foo@bar.org')
         with mock.patch('main.models.User.get_clients',
-                        MockClients(user).get_clients):
-            fs = MulticloudFilesystem(user)
+                        MockClients(self.user).get_clients):
+            fs = MulticloudFilesystem(self.user)
 
             with self.assertRaises(PathNotFoundError):
                 fs.move('/foo', '/bar')
@@ -180,8 +177,7 @@ class FilesystemTestCase(TestCase):
                 fs.move('/foo', '/missing/bar')
 
     def test_copy(self):
-        user = User.objects.create(email='foo@bar.org')
-        fs = MulticloudFilesystem(user)
+        fs = MulticloudFilesystem(self.user)
         fs.mkdir('/foo')
         fs.mkdir('/bar')
         fs.copy('/foo', '/bar')
@@ -192,10 +188,9 @@ class FilesystemTestCase(TestCase):
         self.assertTrue(fs.isdir('/bar/foo'))
 
     def test_copy_file(self):
-        user = User.objects.create(email='foo@bar.org')
         with mock.patch('main.models.User.get_clients',
-                        MockClients(user).get_clients):
-            fs = MulticloudFilesystem(user)
+                        MockClients(self.user).get_clients):
+            fs = MulticloudFilesystem(self.user)
 
             with BytesIO(TEST_FILE) as f:
                 fs.upload('/foo', f)
@@ -227,10 +222,9 @@ class FilesystemTestCase(TestCase):
                 fs.copy('/missing', 'bar')
 
     def test_copy_fail(self):
-        user = User.objects.create(email='foo@bar.org')
         with mock.patch('main.models.User.get_clients',
-                        MockClients(user).get_clients):
-            fs = MulticloudFilesystem(user)
+                        MockClients(self.user).get_clients):
+            fs = MulticloudFilesystem(self.user)
 
             with BytesIO(TEST_FILE) as f:
                 fs.upload('/foo', f)
@@ -241,10 +235,9 @@ class FilesystemTestCase(TestCase):
             fs.mkdir('/bar/foo')
 
     def test_info(self):
-        user = User.objects.create(email='foo@bar.org')
         with mock.patch('main.models.User.get_clients',
-                        MockClients(user).get_clients):
-            fs = MulticloudFilesystem(user)
+                        MockClients(self.user).get_clients):
+            fs = MulticloudFilesystem(self.user)
 
             with self.assertRaises(FileNotFoundError):
                 fs.info('/foo')

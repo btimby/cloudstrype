@@ -17,7 +17,7 @@ from api.views import (
 urlpatterns = [
     # Public access
     # -------------
-    url(r'^v1/clouds/', PublicCloudListView.as_view()),
+    url(r'^v1/clouds/', PublicCloudListView.as_view(), name='clouds'),
 
     # Authenticated access
     # --------------------

@@ -80,12 +80,13 @@ class NonProviderLoginTestCase(TestCase):
 
 
 class LoginTestCase(TestCase):
-    def setUp(self):
-        self.storage = OAuth2Storage.objects.create(
+    @classmethod
+    def setUpTestData(cls):
+        cls.storage = OAuth2Storage.objects.create(
             provider=BaseStorage.PROVIDER_DROPBOX)
-        self.user = User.objects.create(email='foo@bar.org')
-        self.oauth2 = OAuth2UserStorage.objects.create(
-                storage=self.storage, user=self.user)
+        cls.user = User.objects.create(email='foo@bar.org')
+        cls.oauth2 = OAuth2UserStorage.objects.create(
+                storage=cls.storage, user=cls.user)
 
     def test_login_get(self):
         r = self.client.get(reverse('login'))
@@ -112,11 +113,13 @@ class BaseLogin(object):
     Test each OAuth2 provider.
     """
 
+    @classmethod
+    def setUpTestData(cls):
+        cls.provider = OAuth2Storage.objects.create(provider=cls.PROVIDER)
+        cls.oauth2_client = get_client(cls.provider)
+
     def setUp(self):
-        self.client = Client()
-        self.provider = OAuth2Storage.objects.create(provider=self.PROVIDER)
         httpretty.enable()
-        self.oauth2_client = get_client(self.provider)
         httpretty.register_uri(
             httpretty.POST, self.oauth2_client.ACCESS_TOKEN_URL,
             body=json.dumps(ACCESS_TOKEN),
