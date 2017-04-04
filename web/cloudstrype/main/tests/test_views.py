@@ -5,7 +5,7 @@ from urllib.parse import parse_qs, urlparse
 
 import httpretty
 
-from django.test import TestCase, Client
+from django.test import TestCase
 from django.urls import reverse
 
 from main.models import User, BaseStorage, OAuth2Storage, OAuth2UserStorage

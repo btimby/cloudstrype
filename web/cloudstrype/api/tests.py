@@ -1,10 +1,14 @@
-from django.test import TestCase, Client
+from django.test import TestCase
 from django.urls import reverse
 
 
 class APITestCase(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        pass
+
     def setUp(self):
-        self.client = Client()
+        pass
 
     def test_cloud_list(self):
         r = self.client.get(reverse('api:clouds') + '?format=json')
