@@ -18,8 +18,8 @@ from rest_framework import (
 from main.fs import MulticloudFilesystem
 from main.fs.errors import DirectoryNotFoundError, FileNotFoundError
 from main.models import (
-    User, BaseStorage, OAuth2Storage, Directory, File, ChunkStorage,
-    Option, Tag,
+    User, BaseStorage, OAuth2Storage, OAuth2UserStorage, Directory, File,
+    ChunkStorage, Option, Tag,
 )
 
 
@@ -39,16 +39,15 @@ class BaseStorageSerializer(serializers.ModelSerializer):
         fields = ('name', 'size', 'used', 'chunks')
 
     def get_size(self, obj):
-        return OAuth2Storage.objects.filter(
-            token__provider=obj).aggregate(Sum('size'))['size__sum'] or 0
+        return OAuth2UserStorage.objects.filter(storage=obj).aggregate(
+            Sum('size'))['size__sum'] or 0
 
     def get_used(self, obj):
-        return OAuth2Storage.objects.filter(
-            token__provider=obj).aggregate(Sum('used'))['used__sum'] or 0
+        return OAuth2UserStorage.objects.filter(storage=obj).aggregate(
+            Sum('used'))['used__sum'] or 0
 
     def get_chunks(self, obj):
-        return ChunkStorage.objects.filter(
-            storage__token__provider=obj).count()
+        return ChunkStorage.objects.filter(storage__storage=obj).count()
 
 
 class PublicCloudListView(generics.ListAPIView):
@@ -212,8 +211,8 @@ class FileSerializer(serializers.ModelSerializer):
 
     def get_chunks(self, obj):
         # These names are a bit long...
-        n1 = 'storage__storage__token__provider__provider'
-        n2 = 'storage__storage__token'
+        n1 = 'storage__storage__storage__provider'
+        n2 = 'storage__storage__storage'
         chunks = {}
         for item in obj.chunks.values(n1).annotate(Count(n2)):
             chunks[BaseStorage.PROVIDERS[item[n1]]] = \
