@@ -348,6 +348,18 @@ class BaseUserStorage(UidModelMixin, models.Model):
     # directory ID.
     attrs = JSONField(null=True, blank=True)
 
+    def __str__(self):
+        return '<BaseUserStorage: %s/%s>' % (self.storage, self.user)
+
+    def get_client(self, *args, **kwargs):
+        for subclass in ('oauth2userstorage', 'arrayuserstorage',
+                         'basicuserstorage'):
+            try:
+                return getattr(self, subclass).get_client(*args, **kwargs)
+            except ObjectDoesNotExist:
+                continue
+        raise ValueError('Invalid BaseStorage instance')
+
 
 class ArrayUserStorage(BaseUserStorage):
     """

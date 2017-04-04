@@ -18,8 +18,8 @@ from rest_framework import (
 from main.fs import MulticloudFilesystem
 from main.fs.errors import DirectoryNotFoundError, FileNotFoundError
 from main.models import (
-    User, BaseStorage, OAuth2Storage, OAuth2UserStorage, Directory, File,
-    ChunkStorage, Option, Tag,
+    User, BaseStorage, BaseUserStorage, OAuth2Storage, OAuth2UserStorage,
+    Directory, File, ChunkStorage, Option, Tag,
 )
 
 
@@ -133,18 +133,18 @@ class OptionsView(mixins.RetrieveModelMixin, mixins.UpdateModelMixin,
         return self.update(request, *args, **kwargs)
 
 
-class OAuth2StorageSerializer(serializers.ModelSerializer):
+class BaseUserStorageSerializer(serializers.ModelSerializer):
     """
     Serialize a Cloud instance.
 
     Provides statistics for a cloud account.
     """
 
-    name = serializers.CharField(source='token.provider.name')
+    name = serializers.CharField(source='storage.name')
     chunks = serializers.SerializerMethodField()
 
     class Meta:
-        model = OAuth2Storage
+        model = BaseUserStorage
         fields = ('name', 'size', 'used', 'chunks')
 
     def get_chunks(self, obj):
@@ -160,13 +160,12 @@ class CloudListView(generics.ListAPIView):
     """
 
     permission_classes = [permissions.IsAuthenticated]
-    queryset = OAuth2Storage.objects.all()
-    serializer_class = OAuth2StorageSerializer
+    queryset = BaseUserStorage.objects.all()
+    serializer_class = BaseUserStorageSerializer
 
     def get_queryset(self):
-        queryset = OAuth2Storage.objects.filter(
-            user=self.request.user).order_by('token__provider__provider')
-        return (o for o in queryset if o.token.provider.is_storage)
+        return BaseUserStorage.objects.filter(user=self.request.user).order_by(
+            'storage__provider')
 
 
 class DirectorySerializer(serializers.ModelSerializer):
