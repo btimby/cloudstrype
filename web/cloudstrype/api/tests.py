@@ -56,13 +56,9 @@ class APITestCase(TestCase):
         self.assertEqual(200, r.status_code)
 
     def test_dirs_uid(self):
-        # Interestingly this passes since the root dir has the same integer ID
-        # as our file. We probably need to "namespace" our hashids, so that the
-        # model name is part of the hashed id.
-        #
-        # r = self.client.get(reverse('api:dirs_uid', args=(self.file.uid,)),
-        #                     {'format': 'json'})
-        # self.assertEqual(404, r.status_code)
+        r = self.client.get(reverse('api:dirs_uid', args=(self.file.uid,)),
+                            {'format': 'json'})
+        self.assertEqual(404, r.status_code)
         r = self.client.get(reverse('api:dirs_uid', args=(self.dir.uid,)),
                             {'format': 'json'})
         self.assertEqual(200, r.status_code)

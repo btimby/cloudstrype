@@ -399,7 +399,7 @@ class MulticloudFilesystem(MulticloudBase):
         kwargs = {
             'path': pathjoin(dst, dir.name),
         }
-        DirectoryQuerySet._args(kwargs)
+        DirectoryQuerySet._args(Directory, kwargs)
         for name, value in kwargs.items():
             setattr(dir, name, value)
         dir.save()

@@ -30,9 +30,6 @@ from django.utils.dateformat import format
 from hashids import Hashids
 
 
-HASHIDS = Hashids(min_length=24)
-
-
 class UidQuerySet(QuerySet):
     """
     QuerySet with uid capabilities.
@@ -41,13 +38,17 @@ class UidQuerySet(QuerySet):
     """
 
     @staticmethod
-    def _args(kwargs):
+    def _args(model, kwargs):
         uid = kwargs.pop('uid', None)
         if uid:
-            kwargs['id'] = HASHIDS.decode(uid)[0]
+            try:
+                kwargs['id'] = model.get_hashids().decode(uid)[0]
+            except IndexError:
+                # Decode problem, invalid uid...
+                raise model.DoesNotExist()
 
     def filter(self, *args, **kwargs):
-        UidQuerySet._args(kwargs)
+        UidQuerySet._args(self.model, kwargs)
         return super().filter(*args, **kwargs)
 
 
@@ -81,10 +82,18 @@ class UidModelMixin(object):
     Adds a uid property and uses UidManager by default.
     """
 
+    _hashids = None
+
+    @classmethod
+    def get_hashids(cls):
+        if cls._hashids is None:
+            cls._hashids = Hashids(min_length=24, salt=cls._meta.label)
+        return cls._hashids
+
     @property
     def uid(self):
         "Return a random-looking id."
-        return HASHIDS.encode(self.id)
+        return self.__class__.get_hashids().encode(self.id)
 
     objects = UidManager()
 
@@ -468,9 +477,9 @@ class DirectoryQuerySet(UidQuerySet):
     """
 
     @staticmethod
-    def _args(kwargs):
+    def _args(model, kwargs):
         """Convert path to name/parents."""
-        UidQuerySet._args(kwargs)
+        UidQuerySet._args(model, kwargs)
         path = kwargs.pop('path', None)
         if path:
             parents = normpath(path).split('/')
@@ -482,7 +491,7 @@ class DirectoryQuerySet(UidQuerySet):
 
     def filter(self, *args, **kwargs):
         """Filter objects using full path."""
-        DirectoryQuerySet._args(kwargs)
+        DirectoryQuerySet._args(self.model, kwargs)
         kwargs.pop('display_name', None)
         kwargs.pop('display_path', None)
         return super().filter(*args, **kwargs)
@@ -508,7 +517,7 @@ class DirectoryManager(models.Manager):
             user = kwargs['user']
             kwargs['parent'], _ = Directory.objects.get_or_create(user=user,
                                                                   path=parent)
-        DirectoryQuerySet._args(kwargs)
+        DirectoryQuerySet._args(self.model, kwargs)
         return super().create(*args, **kwargs)
 
     def get_or_create(self, *args, **kwargs):  # noqa: D402
@@ -519,7 +528,7 @@ class DirectoryManager(models.Manager):
         but ensures they are set to the requested values during save.
         """
         # It might be better to do this in save().
-        DirectoryQuerySet._args(kwargs)
+        DirectoryQuerySet._args(self.model, kwargs)
         display_name = kwargs.pop('display_name', None)
         display_path = kwargs.pop('display_path', None)
         obj, created = super().get_or_create(*args, **kwargs)
@@ -579,7 +588,8 @@ class DirectoryShare(models.Model):
 
 class FileQuerySet(UidQuerySet):
     @staticmethod
-    def _args(kwargs):
+    def _args(model, kwargs):
+        UidQuerySet._args(model, kwargs)
         path = kwargs.pop('path', None)
         if path:
             user = kwargs['user']
@@ -588,7 +598,7 @@ class FileQuerySet(UidQuerySet):
                 user=user, path=directory)
 
     def filter(self, *args, **kwargs):
-        FileQuerySet._args(kwargs)
+        FileQuerySet._args(self.model, kwargs)
         return super().filter(*args, **kwargs)
 
 
@@ -604,7 +614,7 @@ class FileManager(models.Manager):
     def create(self, *args, **kwargs):
         if 'user' not in kwargs:
             raise ValueError('User required for file creation')
-        FileQuerySet._args(kwargs)
+        FileQuerySet._args(self.model, kwargs)
         return super().create(*args, **kwargs)
 
 
