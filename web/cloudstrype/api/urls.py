@@ -27,7 +27,8 @@ urlpatterns = [
     url(r'^v1/me/options/$', OptionsView.as_view(), name='options'),
 
     # Directories
-    url(r'^v1/me/dirs/uid:(.*):$', DirectoryUidView.as_view(), name='dirs_uid'),
+    url(r'^v1/me/dirs/uid:(.*):$', DirectoryUidView.as_view(),
+        name='dirs_uid'),
     url(r'^v1/me/dirs/path:(/.*):$', DirectoryPathView.as_view(),
         name='dirs_path'),
     url(r'^v1/me/dirs/tags/', DirectoryTagView.as_view(), name='dirs_tags'),
