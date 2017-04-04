@@ -86,6 +86,7 @@ class UidModelMixin(object):
 
     @classmethod
     def get_hashids(cls):
+        # TODO: There is probably a much cleaner way to do this...
         if cls._hashids is None:
             cls._hashids = Hashids(min_length=24, salt=cls._meta.label)
         return cls._hashids
@@ -93,7 +94,7 @@ class UidModelMixin(object):
     @property
     def uid(self):
         "Return a random-looking id."
-        return self.__class__.get_hashids().encode(self.id)
+        return self.get_hashids().encode(self.id)
 
     objects = UidManager()
 

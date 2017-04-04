@@ -51,6 +51,9 @@ class APITestCase(TestCase):
         r = self.client.get(reverse('api:dirs_path', args=('/foo',)),
                             {'format': 'json'})
         self.assertEqual(200, r.status_code)
+        r = self.client.delete(reverse('api:dirs_path', args=('/bar',)),
+                               {'format': 'json'})
+        self.assertEqual(404, r.status_code)
         r = self.client.delete(reverse('api:dirs_path', args=('/foo',)),
                                {'format': 'json'})
         self.assertEqual(200, r.status_code)
@@ -62,6 +65,9 @@ class APITestCase(TestCase):
         r = self.client.get(reverse('api:dirs_uid', args=(self.dir.uid,)),
                             {'format': 'json'})
         self.assertEqual(200, r.status_code)
+        r = self.client.delete(reverse('api:dirs_uid', args=(self.file.uid,)),
+                               {'format': 'json'})
+        self.assertEqual(404, r.status_code)
         r = self.client.delete(reverse('api:dirs_uid', args=(self.dir.uid,)),
                                {'format': 'json'})
         self.assertEqual(200, r.status_code)
@@ -74,6 +80,9 @@ class APITestCase(TestCase):
                             {'format': 'json'})
         self.assertEqual(200, r.status_code)
         r = self.client.delete(reverse('api:files_path',
+                               args=('/bar/foo.txt',)), {'format': 'json'})
+        self.assertEqual(404, r.status_code)
+        r = self.client.delete(reverse('api:files_path',
                                args=('/foo/bar.txt',)), {'format': 'json'})
         self.assertEqual(200, r.status_code)
 
@@ -84,6 +93,9 @@ class APITestCase(TestCase):
         r = self.client.get(reverse('api:files_uid', args=(self.file.uid,)),
                             {'format': 'json'})
         self.assertEqual(200, r.status_code)
+        r = self.client.delete(reverse('api:files_uid', args=(self.dir.uid,)),
+                               {'format': 'json'})
+        self.assertEqual(404, r.status_code)
         r = self.client.delete(reverse('api:files_uid', args=(self.file.uid,)),
                                {'format': 'json'})
         self.assertEqual(200, r.status_code)
