@@ -716,10 +716,10 @@ class Chunk(UidModelMixin, models.Model):
 
     file = models.ManyToManyField(to=File, through='FileChunk',
                                   related_name='chunks')
-    md5 = models.CharField(max_length=32)
+    crc32 = models.IntegerField(null=False, blank=False, default=0)
 
     def __str__(self):
-        return '<Chunk %s %s>' % (self.uid, self.md5)
+        return '<Chunk %s>' % self.uid
 
 
 class FileChunkManager(models.Manager):

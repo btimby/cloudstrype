@@ -8,11 +8,11 @@ from main.models import (
     User, File, BaseStorage, OAuth2Storage, OAuth2UserStorage, Chunk,
     ChunkStorage
 )
+from main.fs import crc32
 from main.fs.clouds.dropbox import DropboxAPIClient
 from main.fs.clouds.onedrive import OnedriveAPIClient
 from main.fs.clouds.box import BoxAPIClient
 from main.fs.clouds.google import GDriveAPIClient
-
 
 TEST_CHUNK_BODY = b'Test chunk body'
 
@@ -29,7 +29,7 @@ class OAuth2APIClientTestCase(TestCase):
             storage=cls.storage, access_token='test-access_token',
             refresh_token='test-refresh_token', attrs={'root.id': '0'})
         cls.file = File.objects.create(path='/foo', user=cls.user)
-        cls.chunk = Chunk.objects.create(md5=md5(b'foo').hexdigest())
+        cls.chunk = Chunk.objects.create(crc32=crc32(b'foo'))
         cls.file.add_chunk(cls.chunk)
 
     def setUp(self):

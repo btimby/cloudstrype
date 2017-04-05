@@ -13,7 +13,7 @@ class Command(BaseCommand):
     that chunk."""
 
     def add_arguments(self, parser):
-        parser.add_argument('cloud', type=int)
+        parser.add_argument('transfer', type=int)
         parser.add_argument('--download',
                             help='Perform download, must provide chunk uid')
         parser.add_argument('--upload', action='store_true',

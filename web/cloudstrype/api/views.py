@@ -241,9 +241,9 @@ class DirectoryListingSerializer(serializers.Serializer):
     files = FileSerializer(many=True)
 
 
-class BaseFSView(views.APIView):
+class FSMixIn(object):
     """
-    Filesystem base class.
+    Filesystem mixin.
 
     Provides functionality common to all FS views.
     """
@@ -252,7 +252,7 @@ class BaseFSView(views.APIView):
         return MulticloudFilesystem(self.request.user)
 
 
-class DirectoryUidView(BaseFSView):
+class DirectoryUidView(FSMixIn, views.APIView):
     """
     Directory detail view.
 
@@ -282,7 +282,7 @@ class DirectoryUidView(BaseFSView):
             raise exceptions.NotFound(uid)
 
 
-class DirectoryPathView(BaseFSView):
+class DirectoryPathView(FSMixIn, views.APIView):
     """
     Directory detail view.
 
@@ -315,7 +315,7 @@ class DirectoryPathView(BaseFSView):
             raise exceptions.NotFound(path)
 
 
-class FileUidView(BaseFSView):
+class FileUidView(FSMixIn, views.APIView):
     """
     File detail view.
 
@@ -340,7 +340,7 @@ class FileUidView(BaseFSView):
         return response.Response(self.get_fs().delete(file.path))
 
 
-class FilePathView(BaseFSView):
+class FilePathView(FSMixIn, views.APIView):
     """
     File detail view.
 
@@ -388,7 +388,7 @@ class UrlUidFilenameUploadParser(parsers.FileUploadParser):
         return basename(id)
 
 
-class DataUidView(BaseFSView):
+class DataUidView(FSMixIn, views.APIView):
     """
     File data view.
 
@@ -419,7 +419,7 @@ class DataUidView(BaseFSView):
         return response.Response(FileSerializer(file).data)
 
 
-class DataPathView(BaseFSView):
+class DataPathView(FSMixIn, views.APIView):
     """
     File data view.
 
@@ -462,25 +462,33 @@ class TagSerializer(serializers.ModelSerializer):
         fields = ('name', )
 
 
-class TagListView(views.APIView):
+class TagListView(generics.ListCreateAPIView):
     """
-    List files with a given set of tags.
+    Tag view.
 
-    Queries Files with given set of Tags. Used to list files and additional tag
-    names in UI.
+    Provides interface for managing tag collection.
     """
 
-    def get(self, request, format=None):
-        kwargs = {}
-        if 'tag' in request.GET:
-            kwargs['name__in'] = request.GET.getlist('tag')
-        tags = Tag.objects.filter(file__user=request.user, **kwargs)
-        tags = tags.annotate(Count('file'))
-        tags = tags.values_list('name', 'file__count')
-        return response.Response({i[0]: i[1] for i in tags})
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = TagSerializer
+    queryset = Tag.objects.all()
 
 
-class DirectoryTagView(BaseFSView):
+class TagItemView(generics.RetrieveUpdateDestroyAPIView):
+    """
+    Tag view.
+
+    Provides interface for managing individual tags.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = TagSerializer
+    queryset = Tag.objects.all()
+    lookup_field = 'name'
+
+
+class DirectoryTagView(generics.ListAPIView):
     """
     File tag view.
 
@@ -488,12 +496,11 @@ class DirectoryTagView(BaseFSView):
     """
 
     permission_classes = [permissions.IsAuthenticated]
+    serializer_class = DirectorySerializer
 
-    def get(self, request, format=None):
-        tags = request.GET.get('tag')
-        return response.Response(
-            DirectorySerializer(
-                Directory.objects.filter(tag__name__in=tags)).data)
+    def get_queryset(self):
+        return Directory.objects.filter(user=self.request.user,
+                                        tags__name=self.kwargs['name'])
 
 
 class FileTagView(generics.ListAPIView):
@@ -504,12 +511,8 @@ class FileTagView(generics.ListAPIView):
     """
 
     permission_classes = [permissions.IsAuthenticated]
+    serializer_class = FileSerializer
 
     def get_queryset(self):
-        tags = []
-        return File.objects.filter(tag__name__in=tags)
-
-    def get(self, request, format=None):
-        tags = request.GET.get('tag')
-        return response.Response(
-            FileSerializer(File.objects.filter(tag__name__in=tags)).data)
+        return File.objects.filter(user=self.request.user,
+                                   tags__name=self.kwargs['name'])

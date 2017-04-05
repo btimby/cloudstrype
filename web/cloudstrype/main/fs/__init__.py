@@ -34,6 +34,7 @@ from io import BytesIO
 from os.path import join as pathjoin
 from os.path import split as pathsplit
 from hashlib import md5, sha1
+from zlib import crc32 as _crc32
 
 from django.conf import settings
 from django.db import transaction
@@ -50,6 +51,16 @@ from main.fs.errors import (
 
 REPLICAS = 2
 LOGGER = logging.getLogger(__name__)
+
+
+def twos_complement(input_value, num_bits):
+    """Calculate two's complement integer from the given input value's bits."""
+    mask = 2 ** (num_bits - 1)
+    return -(input_value & mask) + (input_value & ~mask)
+
+
+def crc32(data):
+    return twos_complement(_crc32(data), 32)
 
 
 DirectoryListing = collections.namedtuple('DirectoryListing',
@@ -213,7 +224,7 @@ class MulticloudWriter(MulticloudBase, FileLikeBase):
         Writes chunk to multiple clouds.
         """
         # Upload to N random providers where N is desired replica count.
-        chunk = Chunk.objects.create(md5=md5(data).hexdigest())
+        chunk = Chunk.objects.create(crc32=crc32(data))
         chunks_uploaded = 0
         for storage in sorted(self.storage, key=lambda k: random.random()):
             # We add one to replicas because replicas are the COPIES we write

@@ -2,7 +2,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from main.models import (
-    User, Option, OAuth2Storage, OAuth2UserStorage, File, Directory,
+    User, Option, OAuth2Storage, OAuth2UserStorage, File, Directory, Tag
 )
 
 
@@ -17,6 +17,14 @@ class APITestCase(TestCase):
             storage=cls.dropbox, user=cls.user)
         cls.dir = Directory.objects.create(path='/foo', user=cls.user)
         cls.file = File.objects.create(path='/foo/bar.txt', user=cls.user)
+        cls.tags = [
+            Tag.objects.create(name='foo'),
+            Tag.objects.create(name='bar'),
+            Tag.objects.create(name='baz'),
+        ]
+        cls.file.tags.add(cls.tags[0])
+        cls.file.tags.add(cls.tags[1])
+        cls.dir.tags.add(cls.tags[2])
 
     def setUp(self):
         self.client.force_login(self.user)
@@ -99,3 +107,27 @@ class APITestCase(TestCase):
         r = self.client.delete(reverse('api:files_uid', args=(self.file.uid,)),
                                {'format': 'json'})
         self.assertEqual(200, r.status_code)
+
+    def test_tags(self):
+        r = self.client.get(reverse('api:taglist'), {'format': 'json'})
+        self.assertEqual(200, r.status_code)
+        self.assertEqual(3, len(r.json()))
+
+        r = self.client.get(reverse('api:tagitem', args=('foo',)),
+                            {'format': 'json'})
+        self.assertEqual(200, r.status_code)
+
+        r = self.client.get(reverse('api:tagitem', args=('goo',)),
+                            {'format': 'json'})
+        self.assertEqual(404, r.status_code)
+
+    def test_taglist(self):
+        r = self.client.get(reverse('api:dirtaglist', args=('baz',)),
+                            {'format': 'json'})
+        self.assertEqual(200, r.status_code)
+        self.assertEqual(1, len(r.json()))
+
+        r = self.client.get(reverse('api:filetaglist', args=('foo',)),
+                            {'format': 'json'})
+        self.assertEqual(200, r.status_code)
+        self.assertEqual(1, len(r.json()))
