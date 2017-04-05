@@ -1,7 +1,5 @@
 import httpretty
 
-from hashlib import md5
-
 from django.test import TestCase
 
 from main.models import (
