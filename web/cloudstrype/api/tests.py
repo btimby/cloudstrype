@@ -1,9 +1,59 @@
+import mock
+import tempfile
+
 from django.test import TestCase
 from django.urls import reverse
 
+from rest_framework.test import APIClient
+
+from io import BytesIO
+
 from main.models import (
-    User, Option, OAuth2Storage, OAuth2UserStorage, File, Directory, Tag
+    User, Option, OAuth2Storage, OAuth2UserStorage, File, Directory, Tag,
 )
+from main.tests.test_fs import MockClient, MockClients
+
+
+TEST_FILE_BODY = b'Test file body.'
+
+
+class APIFSTestCase(TestCase):
+    """
+    API tests that require FS.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create(email='foo@bar.org')
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_login(self.user)
+
+    def test_upload_download(self):
+        with mock.patch('main.models.User.get_clients',
+                        MockClients(self.user).get_clients):
+            # TODO: I would like to test multipart upload as well.
+            r = self.client.post(
+                reverse('api:files_data_path', args=('/foo',)), TEST_FILE_BODY,
+                content_type="application/octet-stream")
+            self.assertEqual(200, r.status_code)
+            # TODO: I cannot figure out how to post multipart and receive JSON
+            # self.assertEqual(15, len(r.json()))
+
+            r = self.client.get(reverse('api:files_data_path', args=('/foo',)),
+                                {'format': 'json'})
+            self.assertEqual(200, r.status_code)
+            self.assertEqual(TEST_FILE_BODY,
+                             b''.join(list(r.streaming_content)))
+
+            file = File.objects.first()
+            r = self.client.get(reverse('api:files_data_uid',
+                                        args=(file.uid,)),
+                                {'format': 'json'})
+            self.assertEqual(200, r.status_code)
+            self.assertEqual(TEST_FILE_BODY,
+                             b''.join(list(r.streaming_content)))
 
 
 class APITestCase(TestCase):
