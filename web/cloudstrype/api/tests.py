@@ -1,17 +1,14 @@
 import mock
-import tempfile
 
 from django.test import TestCase
 from django.urls import reverse
 
 from rest_framework.test import APIClient
 
-from io import BytesIO
-
 from main.models import (
     User, Option, OAuth2Storage, OAuth2UserStorage, File, Directory, Tag,
 )
-from main.tests.test_fs import MockClient, MockClients
+from main.tests.test_fs import MockClients
 
 
 TEST_FILE_BODY = b'Test file body.'
