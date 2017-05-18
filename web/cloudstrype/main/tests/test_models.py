@@ -63,7 +63,7 @@ class FileTestCase(TestCase):
     def test_chunks(self):
         file = File.objects.create(
             path='/foo/bar', user=self.user,
-            directory=Directory.objects.create(path='/foo', user=self.user))
+            parent=Directory.objects.create(path='/foo', user=self.user))
 
         chunk1 = Chunk.objects.create()
         chunk2 = Chunk.objects.create()

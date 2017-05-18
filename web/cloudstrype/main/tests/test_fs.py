@@ -247,6 +247,39 @@ class FilesystemTestCase(TestCase):
 
             fs.info('/foo')
 
+    def test_is_dir_file(self):
+        with mock.patch('main.models.User.get_clients',
+                        MockClients(self.user).get_clients):
+            fs = MulticloudFilesystem(self.user)
+            self.assertTrue(fs.isdir('/'))
+            self.assertFalse(fs.isfile('/'))
+
+
+class SharingTestCase(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.usera = User.objects.create(email='foo@a.org')
+        cls.userb = User.objects.create(email='foo@b.org')
+
+    def test_listdir(self):
+        with mock.patch('main.models.User.get_clients',
+                        MockClients(self.usera).get_clients):
+            fsa = MulticloudFilesystem(self.usera)
+            with mock.patch('main.models.User.get_clients',
+                            MockClients(self.userb).get_clients):
+                fsb = MulticloudFilesystem(self.userb)
+
+                # User A creates a directory.
+                dira = fsa.mkdir('/foo')
+                # Then shares it with User B.
+                dira.share(self.userb)
+
+                self.assertTrue(fsb.isdir('/foo (foo@a.org)'))
+                self.assertFalse(fsb.isfile('/foo (foo@a.org)'))
+
+                listing = fsb.listdir('/')
+                self.assertEqual(1, len(listing.dirs))
+
 
 class GetclientTestCase(TestCase):
     def test_get_client(self):

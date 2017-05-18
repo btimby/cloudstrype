@@ -38,6 +38,7 @@ from zlib import crc32 as _crc32
 
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Q
 
 from main.models import (
     Directory, File, Chunk, ChunkStorage, DirectoryQuerySet
@@ -192,6 +193,57 @@ class MulticloudReader(MulticloudBase, FileLikeBase):
                     self._buffer[0] = self._buffer[0][bytes_needed:]
                     bytes_needed = 0
             return buff.getvalue()
+
+
+class FileInfo(object):
+    def __init__(self, obj, user):
+        self.object = obj
+        if obj.user != user:
+            # This file is being shared.
+            self.user = user
+            self.name = obj.shared_to.get(user=user).name
+            self.path = '/%s' % self.name
+        else:
+            self.user = obj.user
+            self.name = obj.name
+            self.path = obj.path
+
+    def __getattr__(self, name):
+        try:
+            return self.__getattribute__(name)
+        except AttributeError:
+            return getattr(self.object, name)
+
+
+class DirectoryInfo(FileInfo):
+    pass
+
+
+class RootInfo(DirectoryInfo):
+    """
+    Fake info for the / path.
+    """
+    def __init__(self, user):
+        self.user = user
+        self.parent = None
+        self.name = '/'
+        self.created = None
+        self.tags = []
+        self.attrs = {}
+
+
+class InfoView(object):
+    def __init__(self, objects, user, Info):
+        self.objects = objects
+        self.user = user
+        self.Info = Info
+
+    def __iter__(self):
+        for o in self.objects:
+            yield self.Info(o, self.user)
+
+    def __len__(self):
+        return len(self.objects)
 
 
 class MulticloudWriter(MulticloudBase, FileLikeBase):
@@ -385,7 +437,7 @@ class MulticloudFilesystem(MulticloudBase):
         dst, file.name = pathsplit(dst.lstrip('/'))
         if dst:
             try:
-                file.directory = \
+                file.parent = \
                     Directory.objects.get(path=dst, user=self.user)
             except Directory.DoesNotExist:
                 raise DirectoryNotFoundError(dst)
@@ -470,29 +522,86 @@ class MulticloudFilesystem(MulticloudBase):
         raise PathNotFoundError('src')
 
     def listdir(self, path, dir=None):
-        if dir is None:
+        if path == '/':
+            dir = None
+        elif dir is None:
             try:
                 dir = Directory.objects.get(path=path, user=self.user)
             except Directory.DoesNotExist:
                 raise DirectoryNotFoundError(path)
+        # List files in the current directory owned by this user.
+        dir_q = Q(parent=dir, user=self.user)
+        file_q = Q(parent=dir, user=self.user)
+        if dir is None:
+            # Only include shared files when listing '/'
+            dir_q |= Q(shared_to__user=self.user)
+            file_q |= Q(shared_to__user=self.user)
         return DirectoryListing(
-            dir, Directory.objects.filter(parent=dir, user=self.user),
-            File.objects.filter(directory=dir, user=self.user)
+            dir,
+            InfoView(Directory.objects.filter(dir_q), self.user, DirectoryInfo),
+            InfoView(File.objects.filter(file_q), self.user, FileInfo)
         )
 
     def info(self, path, file=None):
+        if path == '/':
+            return RootInfo(self.user)
         if file is None:
+            dir, name = pathsplit(path.lstrip('/'))
+            dir = dir if dir else None
+            if dir:
+                try:
+                    dir = Directory.objects.get(path=dir, user=self.user)
+                except Directory.DoesNotExist:
+                    raise FileNotFoundError(path)
+                else:
+                    file_q = Q(parent=dir, name=name, user=self.user)
+            else:
+                file_q = Q(parent=dir, name=name, user=self.user)
+                # Looking in root, it could be shared...
+                file_q |= Q(shared_to__name=name, shared_to__user=self.user)
             try:
-                file = File.objects.get(path=path, user=self.user)
+                file = File.objects.get(file_q)
             except File.DoesNotExist:
                 raise FileNotFoundError(path)
-        return file
+        return FileInfo(file, self.user)
 
     def isdir(self, path):
-        return Directory.objects.filter(path=path, user=self.user).exists()
+        if path == '/':
+            return True
+        dir, name = pathsplit(path.lstrip('/'))
+        dir = dir if dir else None
+        if dir:
+            try:
+                dir = Directory.objects.get(path=dir, user=self.user)
+            except Directory.DoesNotExist:
+                return False
+            else:
+                dir_q = Q(parent=dir, name=name, user=self.user)
+        else:
+            dir_q = Q(parent=dir, name=name, user=self.user)
+            # Looking in root, it could be shared...
+            dir_q |= Q(shared_to__name=name, shared_to__user=self.user)
+        return Directory.objects.filter(dir_q).exists()
 
     def isfile(self, path):
-        return File.objects.filter(path=path, user=self.user).exists()
+        if path == '/':
+            return False
+        dir, name = pathsplit(path.lstrip('/'))
+        dir = dir if dir else None
+        if dir:
+            try:
+                dir = Directory.objects.get(path=dir, user=self.user)
+            except Directory.DoesNotExist:
+                return False
+            else:
+                file_q = Q(parent=dir, name=name, user=self.user)
+        else:
+            file_q = Q(parent=dir, name=name, user=self.user)
+            # Looking in root, it could be shared...
+            file_q |= Q(shared_to__name=name, shared_to__user=self.user)
+        return File.objects.filter(file_q).exists()
 
     def exists(self, path):
+        if path == '/':
+            return True
         return self.isdir(path) or self.isfile(path)

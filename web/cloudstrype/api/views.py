@@ -214,12 +214,6 @@ class FileSerializer(serializers.ModelSerializer):
                 item['%s__count' % n2]
         return chunks
 
-    def get_display_name(self, obj):
-        return obj.name
-
-    def get_display_path(self, obj):
-        return obj.path
-
     def get_tags(self, obj):
         return obj.tags.all().values_list('name', flat=True)
 

@@ -562,6 +562,17 @@ class Directory(UidModelMixin, models.Model):
         parent_path = self.parent.path if self.parent else '/'
         return pathjoin(parent_path, self.name)
 
+    def share(self, user):
+        """
+        Share the directory with another user.
+        """
+        # The shared directory will show up in the receiving user's "root".
+        name = self.name + ' (%s)' % self.user.email
+        share = DirectoryShare.objects.create(
+            user=user, directory=self, name=name)
+        user.shared_directories.add(share)
+        return share
+
 
 class DirectoryShare(models.Model):
     """
@@ -586,12 +597,12 @@ class FileQuerySet(UidQuerySet):
         UidQuerySet._args(model, kwargs)
         path = kwargs.pop('path', None)
         if path:
-            directory, kwargs['name'] = pathsplit(path.lstrip('/'))
-            directory = directory if directory else None
-            if directory:
-                directory, _ = Directory.objects.get_or_create(
-                    user=kwargs['user'], path=directory)
-            kwargs['directory'] = directory
+            parent, kwargs['name'] = pathsplit(path.lstrip('/'))
+            parent = parent if parent else None
+            if parent:
+                parent, _ = Directory.objects.get_or_create(
+                    user=kwargs['user'], path=parent)
+            kwargs['parent'] = parent
 
     def filter(self, *args, **kwargs):
         FileQuerySet._args(self.model, kwargs)
@@ -622,12 +633,12 @@ class File(UidModelMixin, models.Model):
     """
 
     class Meta:
-        unique_together = ('directory', 'name')
+        unique_together = ('parent', 'name')
 
     user = models.ForeignKey(User, related_name='files',
                              on_delete=models.CASCADE)
-    directory = models.ForeignKey(Directory, null=True, related_name='files',
-                                  on_delete=models.CASCADE)
+    parent = models.ForeignKey(Directory, null=True, related_name='files',
+                               on_delete=models.CASCADE)
     name = models.CharField(max_length=255)
     size = models.IntegerField(default=0)
     md5 = models.CharField(max_length=32)
@@ -655,7 +666,7 @@ class File(UidModelMixin, models.Model):
 
     @property
     def path(self):
-        parent_path = self.directory.path if self.directory else '/'
+        parent_path = self.parent.path if self.parent else '/'
         return pathjoin(parent_path, self.name)
 
     @property
@@ -670,6 +681,17 @@ class File(UidModelMixin, models.Model):
             ).aggregate(Max('serial'))['serial__max'] or 0) + 1
         fc.save()
         return fc
+
+    def share(self, user):
+        """
+        Share the directory with another user.
+        """
+        # The shared directory will show up in the receiving user's "root".
+        name = self.name + ' (%s)' % self.user.email
+        share = FileShare.objects.create(
+            user=user, file=self, name=name)
+        user.shared_directories.add(share)
+        return share
 
 
 class FileStat(models.Model):
