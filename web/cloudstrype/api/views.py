@@ -15,7 +15,9 @@ from rest_framework import (
     mixins
 )
 
-from main.fs import MulticloudFilesystem
+from main.fs import (
+    MulticloudFilesystem, InfoView, DirInfo, FileInfo
+)
 from main.fs.errors import DirectoryNotFoundError, FileNotFoundError
 from main.models import (
     User, BaseStorage, BaseUserStorage, OAuth2Storage, OAuth2UserStorage,
@@ -177,16 +179,21 @@ class DirectorySerializer(serializers.ModelSerializer):
 
     mime = serializers.SerializerMethodField()
     tags = serializers.SerializerMethodField()
+    path = serializers.SerializerMethodField()
 
     class Meta:
         model = Directory
-        fields = ('uid', 'name', 'path', 'mime', 'created', 'tags', 'attrs')
+        fields = ('uid', 'name', 'path', 'mime', 'created', 'tags', 'attrs',
+                  'shared_with')
 
     def get_mime(self, obj):
         return 'application/x-directory'
 
     def get_tags(self, obj):
         return obj.tags.all().values_list('name', flat=True)
+
+    def get_path(self, obj):
+        return obj.path
 
 
 class FileSerializer(serializers.ModelSerializer):
@@ -198,11 +205,13 @@ class FileSerializer(serializers.ModelSerializer):
 
     chunks = serializers.SerializerMethodField()
     tags = serializers.SerializerMethodField()
+    path = serializers.SerializerMethodField()
 
     class Meta:
         model = File
         fields = ('uid', 'name', 'extension', 'path', 'size', 'chunks', 'md5',
-                  'sha1', 'mime', 'created', 'raid_level', 'tags', 'attrs')
+                  'sha1', 'mime', 'created', 'raid_level', 'tags', 'attrs',
+                  'shared_with')
 
     def get_chunks(self, obj):
         # These names are a bit long...
@@ -216,6 +225,9 @@ class FileSerializer(serializers.ModelSerializer):
 
     def get_tags(self, obj):
         return obj.tags.all().values_list('name', flat=True)
+
+    def get_path(self, obj):
+        return obj.path
 
 
 class DirectoryListingSerializer(serializers.Serializer):
@@ -256,7 +268,8 @@ class DirectoryUidView(FSMixIn, views.APIView):
             dir = Directory.objects.get(uid=uid, user=request.user)
         except Directory.DoesNotExist:
             raise exceptions.NotFound(uid)
-        dir, dirs, files = self.get_fs().listdir(dir.path, dir=dir)
+        dir, dirs, files = self.get_fs().listdir(dir.get_path(request.user),
+                                                 dir=dir)
         return response.Response(DirectoryListingSerializer({
             'info': dir, 'dirs': dirs, 'files': files
         }).data)
@@ -267,7 +280,7 @@ class DirectoryUidView(FSMixIn, views.APIView):
         except Directory.DoesNotExist:
             raise exceptions.NotFound(uid)
         try:
-            return response.Response(self.get_fs().rmdir(dir.path))
+            return response.Response(self.get_fs().rmdir(dir.get_path(request.user)))
         except DirectoryNotFoundError:
             raise exceptions.NotFound(uid)
 
@@ -320,14 +333,15 @@ class FileUidView(FSMixIn, views.APIView):
         except File.DoesNotExist:
             raise exceptions.NotFound(uid)
         return response.Response(
-            FileSerializer(self.get_fs().info(file.path, file=file)).data)
+            FileSerializer(self.get_fs().info(file.get_path(request.user),
+                                              file=file)).data)
 
     def delete(self, request, uid, format=None):
         try:
             file = File.objects.get(uid=uid, user=request.user)
         except File.DoesNotExist:
             raise exceptions.NotFound(uid)
-        return response.Response(self.get_fs().delete(file.path))
+        return response.Response(self.get_fs().delete(file.get_path(request.user)))
 
 
 class FilePathView(FSMixIn, views.APIView):
@@ -342,7 +356,8 @@ class FilePathView(FSMixIn, views.APIView):
     def get(self, request, path, format=None):
         try:
             return response.Response(
-                FileSerializer(self.get_fs().info(path)).data)
+                FileSerializer(FileInfo(self.get_fs().info(path),
+                                        request.user)).data)
         except FileNotFoundError:
             raise exceptions.NotFound(path)
 
@@ -393,8 +408,9 @@ class DataUidView(FSMixIn, views.APIView):
             file = File.objects.get(uid=uid, user=request.user)
         except File.DoesNotExist:
             raise exceptions.NotFound(uid)
-        response = StreamingHttpResponse(self.get_fs().download(file.path),
-                                         content_type=file.mime)
+        response = StreamingHttpResponse(
+            self.get_fs().download(file.get_path(request.user)),
+            content_type=file.mime)
         if request.GET.get('download', None):
             response['Content-Disposition'] = \
                 'attachment; filename="%s"' % file.name
@@ -405,7 +421,7 @@ class DataUidView(FSMixIn, views.APIView):
             file = File.objects.get(uid=uid, user=request.user)
         except File.DoesNotExist:
             raise exceptions.NotFound(uid)
-        file = self.get_fs().upload(file.path, f=request.data['file'])
+        file = self.get_fs().upload(file.get_path(request.user), f=request.data['file'])
         return response.Response(FileSerializer(file).data)
 
 
@@ -489,8 +505,11 @@ class DirectoryTagView(generics.ListAPIView):
     serializer_class = DirectorySerializer
 
     def get_queryset(self):
-        return Directory.objects.filter(user=self.request.user,
-                                        tags__name=self.kwargs['name'])
+        return InfoView(
+            Directory.objects.filter(user=self.request.user,
+                                     tags__name=self.kwargs['name']),
+            self.request.user,
+            DirInfo)
 
 
 class FileTagView(generics.ListAPIView):
@@ -504,5 +523,8 @@ class FileTagView(generics.ListAPIView):
     serializer_class = FileSerializer
 
     def get_queryset(self):
-        return File.objects.filter(user=self.request.user,
-                                   tags__name=self.kwargs['name'])
+        return InfoView(
+            File.objects.filter(user=self.request.user,
+                                tags__name=self.kwargs['name']),
+            self.request.user,
+            FileInfo)

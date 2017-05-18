@@ -195,31 +195,7 @@ class MulticloudReader(MulticloudBase, FileLikeBase):
             return buff.getvalue()
 
 
-class FileInfo(object):
-    def __init__(self, obj, user):
-        self.object = obj
-        if obj.user != user:
-            # This file is being shared.
-            self.user = user
-            self.name = obj.shared_to.get(user=user).name
-            self.path = '/%s' % self.name
-        else:
-            self.user = obj.user
-            self.name = obj.name
-            self.path = obj.path
-
-    def __getattr__(self, name):
-        try:
-            return self.__getattribute__(name)
-        except AttributeError:
-            return getattr(self.object, name)
-
-
-class DirectoryInfo(FileInfo):
-    pass
-
-
-class RootInfo(DirectoryInfo):
+class RootInfo(object):
     """
     Fake info for the / path.
     """
@@ -230,20 +206,6 @@ class RootInfo(DirectoryInfo):
         self.created = None
         self.tags = []
         self.attrs = {}
-
-
-class InfoView(object):
-    def __init__(self, objects, user, Info):
-        self.objects = objects
-        self.user = user
-        self.Info = Info
-
-    def __iter__(self):
-        for o in self.objects:
-            yield self.Info(o, self.user)
-
-    def __len__(self):
-        return len(self.objects)
 
 
 class MulticloudWriter(MulticloudBase, FileLikeBase):
@@ -350,6 +312,57 @@ class MulticloudWriter(MulticloudBase, FileLikeBase):
         super().close()
 
 
+class FileInfo(object):
+    def __init__(self, obj, user):
+        self.object = obj
+        if obj.user != user:
+            # This file is being shared.
+            self.user = user
+            self.name = obj.get_name(user)
+            self.path = obj.get_path(user)
+        else:
+            self.user = obj.user
+            self.name = obj.get_name(user)
+            self.path = obj.get_path(user)
+
+    def __getattr__(self, name):
+        try:
+            return self.__getattribute__(name)
+        except AttributeError:
+            return getattr(self.object, name)
+
+
+class DirInfo(FileInfo):
+    pass
+
+
+class RootInfo(DirInfo):
+    """
+    Fake info for the / path.
+    """
+    def __init__(self, user):
+        self.user = user
+        self.parent = None
+        self.name = '/'
+        self.created = None
+        self.tags = []
+        self.attrs = {}
+
+
+class InfoView(object):
+    def __init__(self, objects, user, Info):
+        self.objects = objects
+        self.user = user
+        self.Info = Info
+
+    def __iter__(self):
+        for o in self.objects:
+            yield self.Info(o, self.user)
+
+    def __len__(self):
+        return len(self.objects)
+
+
 class MulticloudFilesystem(MulticloudBase):
     def __init__(self, user, chunk_size=settings.CLOUDSTRYPE_CHUNK_SIZE,
                  replicas=0):
@@ -391,7 +404,7 @@ class MulticloudFilesystem(MulticloudBase):
                               replicas=self.replicas) as out:
             for chunk in chunker(f, chunk_size=self.chunk_size):
                 out.write(chunk)
-        return file
+        return FileInfo(file, self.user)
 
     @transaction.atomic
     def delete(self, path):
@@ -422,7 +435,7 @@ class MulticloudFilesystem(MulticloudBase):
     def mkdir(self, path):
         if self.isfile(path):
             raise FileConflictError(path)
-        return Directory.objects.create(path=path, user=self.user)
+        return DirInfo(Directory.objects.create(path=path, user=self.user), self.user)
 
     def rmdir(self, path):
         try:
@@ -466,12 +479,12 @@ class MulticloudFilesystem(MulticloudBase):
     def move(self, src, dst):
         try:
             file = File.objects.get(path=src, user=self.user)
-            return self._move_file(file, dst)
+            return FileInfo(self._move_file(file, dst), self.user)
         except File.DoesNotExist:
             pass
         try:
             dir = Directory.objects.get(path=src, user=self.user)
-            return self._move_dir(dir, dst)
+            return DirInfo(self._move_dir(dir, dst), self.user)
         except Directory.DoesNotExist:
             pass
         raise PathNotFoundError(src)
@@ -500,23 +513,23 @@ class MulticloudFilesystem(MulticloudBase):
         # Clone dir first.
         dstdir = Directory.objects.create(path=dst, user=self.user)
         # Then copy children recursively.
-        _, dirs, files = self.listdir(srcdir.path, dir=srcdir)
+        _, dirs, files = self.listdir(srcdir.get_path(self.user), dir=srcdir)
         for subdir in dirs:
-            self._copy_dir(subdir, dstdir.path)
+            self._copy_dir(subdir, dstdir.get_path(self.user))
         for subfile in files:
-            self._copy_file(subfile, dstdir.path)
+            self._copy_file(subfile, dstdir.get_path(self.user))
         return dstdir
 
     @transaction.atomic
     def copy(self, src, dst):
         try:
             file = File.objects.get(path=src, user=self.user)
-            return self._copy_file(file, dst)
+            return FileInfo(self._copy_file(file, dst), self.user)
         except File.DoesNotExist:
             pass
         try:
             dir = Directory.objects.get(path=src, user=self.user)
-            return self._copy_dir(dir, dst)
+            return DirInfo(self._copy_dir(dir, dst), self.user)
         except Directory.DoesNotExist:
             pass
         raise PathNotFoundError('src')
@@ -534,12 +547,13 @@ class MulticloudFilesystem(MulticloudBase):
         file_q = Q(parent=dir, user=self.user)
         if dir is None:
             # Only include shared files when listing '/'
-            dir_q |= Q(shared_to__user=self.user)
-            file_q |= Q(shared_to__user=self.user)
+            dir_q |= Q(shared_with__user=self.user)
+            file_q |= Q(shared_with__user=self.user)
+        dir = DirInfo(dir, self.user) if dir else RootInfo(self.user)
         return DirectoryListing(
             dir,
             InfoView(Directory.objects.filter(dir_q), self.user,
-                     DirectoryInfo),
+                     DirInfo),
             InfoView(File.objects.filter(file_q), self.user, FileInfo)
         )
 
@@ -559,7 +573,7 @@ class MulticloudFilesystem(MulticloudBase):
             else:
                 file_q = Q(parent=dir, name=name, user=self.user)
                 # Looking in root, it could be shared...
-                file_q |= Q(shared_to__name=name, shared_to__user=self.user)
+                file_q |= Q(shared_with__name=name, shared_with__user=self.user)
             try:
                 file = File.objects.get(file_q)
             except File.DoesNotExist:
@@ -576,13 +590,9 @@ class MulticloudFilesystem(MulticloudBase):
                 dir = Directory.objects.get(path=dir, user=self.user)
             except Directory.DoesNotExist:
                 return False
-            else:
-                dir_q = Q(parent=dir, name=name, user=self.user)
-        else:
-            dir_q = Q(parent=dir, name=name, user=self.user)
-            # Looking in root, it could be shared...
-            dir_q |= Q(shared_to__name=name, shared_to__user=self.user)
-        return Directory.objects.filter(dir_q).exists()
+        dirs, _ = Directory.objects.children_of(dir, self.user, dirs_only=True,
+                                                name=name)
+        return dirs.exists()
 
     def isfile(self, path):
         if path == '/':
@@ -599,7 +609,7 @@ class MulticloudFilesystem(MulticloudBase):
         else:
             file_q = Q(parent=dir, name=name, user=self.user)
             # Looking in root, it could be shared...
-            file_q |= Q(shared_to__name=name, shared_to__user=self.user)
+            file_q |= Q(shared_with__name=name, shared_with__user=self.user)
         return File.objects.filter(file_q).exists()
 
     def exists(self, path):

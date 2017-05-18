@@ -23,12 +23,12 @@ class DirectoryTestCase(TestCase):
             Directory.objects.create(path='/foobar')
 
         dir1 = Directory.objects.create(path='/foobar', user=self.user)
-        self.assertEqual('/foobar', dir1.path)
+        self.assertEqual('/foobar', dir1.get_path(self.user))
         self.assertTrue(str(dir1).startswith('<'))
         self.assertTrue(str(dir1).endswith('>'))
 
         dir2 = Directory.objects.create(path='/foobar/foo/bar', user=self.user)
-        self.assertEqual('/foobar/foo/bar', dir2.path)
+        self.assertEqual('/foobar/foo/bar', dir2.get_path(self.user))
 
         dir1.delete()
 

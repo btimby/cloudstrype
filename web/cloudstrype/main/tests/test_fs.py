@@ -66,7 +66,7 @@ class FilesystemTestCase(TestCase):
             with BytesIO(TEST_FILE) as f:
                 file = fs.upload('/foo', f)
 
-            self.assertEqual('/foo', file.path)
+            self.assertEqual('/foo', file.get_path(self.user))
 
             with fs.download('/foo') as f:
                 self.assertEqual(TEST_FILE, f.read())
@@ -90,7 +90,7 @@ class FilesystemTestCase(TestCase):
 
             mock_clients.clients[2].data.clear()
 
-            self.assertEqual('/foo', file.path)
+            self.assertEqual('/foo', file.get_path(self.user))
 
             with BytesIO() as o:
                 with fs.download('/foo') as f:
@@ -105,7 +105,7 @@ class FilesystemTestCase(TestCase):
     def test_mkdir(self):
         fs = MulticloudFilesystem(self.user)
         dir = fs.mkdir('/foo')
-        self.assertEqual('/foo', dir.path)
+        self.assertEqual('/foo', dir.get_path(self.user))
         fs.rmdir('/foo')
         with self.assertRaises(DirectoryNotFoundError):
             fs.rmdir('/foo')

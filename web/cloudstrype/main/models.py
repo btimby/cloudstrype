@@ -21,6 +21,7 @@ from django.contrib.postgres.search import SearchVectorField
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import models, transaction
 from django.db.models import Max
+from django.db.models import Q
 from django.db.models.query import QuerySet
 from django.utils.translation import ugettext as _
 from django.utils import timezone
@@ -532,6 +533,23 @@ class DirectoryManager(models.Manager):
         DirectoryQuerySet._args(self.model, kwargs)
         return super().get_or_create(*args, **kwargs)
 
+    def children_of(self, dir, user=None, dirs_only=False, name=None):
+        if user is None:
+            user = dir.user
+
+        dir_q_kwargs = {'parent': dir, 'user': user}
+        if name:
+            dir_q_kwargs['name'] = name
+        dir_q = Q(**dir_q_kwargs)
+
+        dir_q_kwargs = {'shared_with__parent': dir, 'shared_with__user': user}
+        if name:
+            dir_q_kwargs['shared_with__name'] = name
+        dir_q |= Q(**dir_q_kwargs)
+
+        return self.filter(dir_q), File.objects.none() if dirs_only else \
+            File.objects.children_of(dir, user, name=name)
+
 
 class Directory(UidModelMixin, models.Model):
     """
@@ -555,12 +573,16 @@ class Directory(UidModelMixin, models.Model):
     objects = DirectoryManager()
 
     def __str__(self):
-        return '<Directory: %s>' % self.path
+        return '<Directory: %s>' % self.name
 
-    @property
-    def path(self):
-        parent_path = self.parent.path if self.parent else '/'
-        return pathjoin(parent_path, self.name)
+    def get_name(self, user):
+        if self.user == user:
+            return self.name
+        return self.shared_with.filter(user=user).name
+
+    def get_path(self, user):
+        parent_path = self.parent.get_path(user) if self.parent else '/'
+        return pathjoin(parent_path, self.get_name(user))
 
     def share(self, user):
         """
@@ -585,9 +607,12 @@ class DirectoryShare(models.Model):
         unique_together = ('directory', 'user')
 
     directory = models.ForeignKey(Directory, on_delete=models.CASCADE,
-                                  related_name='shared_to')
+                                  related_name='shared_with')
     user = models.ForeignKey(User, on_delete=models.CASCADE,
                              related_name='shared_directories')
+    parent = models.ForeignKey(Directory, null=True,
+                               related_name='shared_dirs',
+                               on_delete=models.SET_NULL)
     name = models.CharField(max_length=255)
 
 
@@ -624,6 +649,13 @@ class FileManager(models.Manager):
         FileQuerySet._args(self.model, kwargs)
         return super().create(*args, **kwargs)
 
+    def children_of(self, dir, user=None):
+        if user is None:
+            user = dir.user
+        file_q = Q(parent=dir, user=user)
+        file_q |= Q(shared_with__parent=dir, shared_with__user=user)
+        return self.filter(file_q)
+
 
 class File(UidModelMixin, models.Model):
     """
@@ -653,7 +685,7 @@ class File(UidModelMixin, models.Model):
     objects = FileManager()
 
     def __str__(self):
-        return '<File: %s>' % self.path
+        return '<File: %s>' % self.name
 
     def save(self, *args, **kwargs):
         if not self.mime:
@@ -665,13 +697,17 @@ class File(UidModelMixin, models.Model):
         return super().save(*args, **kwargs)
 
     @property
-    def path(self):
-        parent_path = self.parent.path if self.parent else '/'
-        return pathjoin(parent_path, self.name)
-
-    @property
     def extension(self):
         return splitext(self.name)[1]
+
+    def get_name(self, user):
+        if self.user == user:
+            return self.name
+        return self.shared_with.filter(user=user).name
+
+    def get_path(self, user):
+        parent_path = self.parent.get_path(user) if self.parent else '/'
+        return pathjoin(parent_path, self.get_name(user))
 
     @transaction.atomic
     def add_chunk(self, chunk):
@@ -718,9 +754,12 @@ class FileShare(models.Model):
         unique_together = ('file', 'user')
 
     file = models.ForeignKey(File, on_delete=models.CASCADE,
-                             related_name='shared_to')
+                             related_name='shared_with')
     user = models.ForeignKey(User, on_delete=models.CASCADE,
                              related_name='shared_files')
+    parent = models.ForeignKey(Directory, null=True,
+                               related_name='shared_files',
+                               on_delete=models.SET_NULL)
     name = models.CharField(max_length=255)
 
 
@@ -773,7 +812,7 @@ class FileChunk(models.Model):
     objects = FileChunkManager()
 
     def __str__(self):
-        return '<FileChunk %s[%s]>' % (self.file.path, self.serial)
+        return '<FileChunk %s[%s]>' % (self.file.name, self.serial)
 
 
 class ChunkStorage(models.Model):
