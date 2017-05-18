@@ -538,7 +538,8 @@ class MulticloudFilesystem(MulticloudBase):
             file_q |= Q(shared_to__user=self.user)
         return DirectoryListing(
             dir,
-            InfoView(Directory.objects.filter(dir_q), self.user, DirectoryInfo),
+            InfoView(Directory.objects.filter(dir_q), self.user,
+                     DirectoryInfo),
             InfoView(File.objects.filter(file_q), self.user, FileInfo)
         )
 
