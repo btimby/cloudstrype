@@ -280,7 +280,8 @@ class DirectoryUidView(FSMixIn, views.APIView):
         except Directory.DoesNotExist:
             raise exceptions.NotFound(uid)
         try:
-            return response.Response(self.get_fs().rmdir(dir.get_path(request.user)))
+            return response.Response(
+                self.get_fs().rmdir(dir.get_path(request.user)))
         except DirectoryNotFoundError:
             raise exceptions.NotFound(uid)
 
@@ -341,7 +342,8 @@ class FileUidView(FSMixIn, views.APIView):
             file = File.objects.get(uid=uid, user=request.user)
         except File.DoesNotExist:
             raise exceptions.NotFound(uid)
-        return response.Response(self.get_fs().delete(file.get_path(request.user)))
+        return response.Response(
+            self.get_fs().delete(file.get_path(request.user)))
 
 
 class FilePathView(FSMixIn, views.APIView):
@@ -421,7 +423,8 @@ class DataUidView(FSMixIn, views.APIView):
             file = File.objects.get(uid=uid, user=request.user)
         except File.DoesNotExist:
             raise exceptions.NotFound(uid)
-        file = self.get_fs().upload(file.get_path(request.user), f=request.data['file'])
+        file = self.get_fs().upload(
+            file.get_path(request.user), f=request.data['file'])
         return response.Response(FileSerializer(file).data)
 
 

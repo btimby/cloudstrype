@@ -68,6 +68,57 @@ DirectoryListing = collections.namedtuple('DirectoryListing',
                                           ('dir', 'dirs', 'files'))
 
 
+class FileInfo(object):
+    def __init__(self, obj, user):
+        self.object = obj
+        if obj.user != user:
+            # This file is being shared.
+            self.user = user
+            self.name = obj.get_name(user)
+            self.path = obj.get_path(user)
+        else:
+            self.user = obj.user
+            self.name = obj.get_name(user)
+            self.path = obj.get_path(user)
+
+    def __getattr__(self, name):
+        try:
+            return self.__getattribute__(name)
+        except AttributeError:
+            return getattr(self.object, name)
+
+
+class DirInfo(FileInfo):
+    pass
+
+
+class RootInfo(DirInfo):
+    """
+    Fake info for the / path.
+    """
+    def __init__(self, user):
+        self.user = user
+        self.parent = None
+        self.name = '/'
+        self.created = None
+        self.tags = []
+        self.attrs = {}
+
+
+class InfoView(object):
+    def __init__(self, objects, user, Info):
+        self.objects = objects
+        self.user = user
+        self.Info = Info
+
+    def __iter__(self):
+        for o in self.objects:
+            yield self.Info(o, self.user)
+
+    def __len__(self):
+        return len(self.objects)
+
+
 class MulticloudBase(object):
     """
     Base class for interacting with multiple clouds.
@@ -195,19 +246,6 @@ class MulticloudReader(MulticloudBase, FileLikeBase):
             return buff.getvalue()
 
 
-class RootInfo(object):
-    """
-    Fake info for the / path.
-    """
-    def __init__(self, user):
-        self.user = user
-        self.parent = None
-        self.name = '/'
-        self.created = None
-        self.tags = []
-        self.attrs = {}
-
-
 class MulticloudWriter(MulticloudBase, FileLikeBase):
     """
     File-like object that writes to multiple clouds.
@@ -312,57 +350,6 @@ class MulticloudWriter(MulticloudBase, FileLikeBase):
         super().close()
 
 
-class FileInfo(object):
-    def __init__(self, obj, user):
-        self.object = obj
-        if obj.user != user:
-            # This file is being shared.
-            self.user = user
-            self.name = obj.get_name(user)
-            self.path = obj.get_path(user)
-        else:
-            self.user = obj.user
-            self.name = obj.get_name(user)
-            self.path = obj.get_path(user)
-
-    def __getattr__(self, name):
-        try:
-            return self.__getattribute__(name)
-        except AttributeError:
-            return getattr(self.object, name)
-
-
-class DirInfo(FileInfo):
-    pass
-
-
-class RootInfo(DirInfo):
-    """
-    Fake info for the / path.
-    """
-    def __init__(self, user):
-        self.user = user
-        self.parent = None
-        self.name = '/'
-        self.created = None
-        self.tags = []
-        self.attrs = {}
-
-
-class InfoView(object):
-    def __init__(self, objects, user, Info):
-        self.objects = objects
-        self.user = user
-        self.Info = Info
-
-    def __iter__(self):
-        for o in self.objects:
-            yield self.Info(o, self.user)
-
-    def __len__(self):
-        return len(self.objects)
-
-
 class MulticloudFilesystem(MulticloudBase):
     def __init__(self, user, chunk_size=settings.CLOUDSTRYPE_CHUNK_SIZE,
                  replicas=0):
@@ -435,7 +422,8 @@ class MulticloudFilesystem(MulticloudBase):
     def mkdir(self, path):
         if self.isfile(path):
             raise FileConflictError(path)
-        return DirInfo(Directory.objects.create(path=path, user=self.user), self.user)
+        return DirInfo(
+            Directory.objects.create(path=path, user=self.user), self.user)
 
     def rmdir(self, path):
         try:
@@ -573,7 +561,8 @@ class MulticloudFilesystem(MulticloudBase):
             else:
                 file_q = Q(parent=dir, name=name, user=self.user)
                 # Looking in root, it could be shared...
-                file_q |= Q(shared_with__name=name, shared_with__user=self.user)
+                file_q |= Q(shared_with__name=name,
+                            shared_with__user=self.user)
             try:
                 file = File.objects.get(file_q)
             except File.DoesNotExist:
