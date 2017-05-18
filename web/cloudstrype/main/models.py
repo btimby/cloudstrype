@@ -578,7 +578,7 @@ class Directory(UidModelMixin, models.Model):
     def get_name(self, user):
         if self.user == user:
             return self.name
-        return self.shared_with.filter(user=user).name
+        return self.shared_with.get(user=user).name
 
     def get_path(self, user):
         parent_path = self.parent.get_path(user) if self.parent else '/'
@@ -649,11 +649,20 @@ class FileManager(models.Manager):
         FileQuerySet._args(self.model, kwargs)
         return super().create(*args, **kwargs)
 
-    def children_of(self, dir, user=None):
+    def children_of(self, dir, user=None, name=None):
         if user is None:
             user = dir.user
-        file_q = Q(parent=dir, user=user)
-        file_q |= Q(shared_with__parent=dir, shared_with__user=user)
+
+        file_q_kwargs = {'parent': dir, 'user': user}
+        if name:
+            file_q_kwargs['name'] = name
+        file_q = Q(**file_q_kwargs)
+
+        file_q_kwargs = {'shared_with__parent': dir, 'shared_with__user': user}
+        if name:
+            file_q_kwargs['shared_with__name'] = name
+        file_q |= Q(**file_q_kwargs)
+
         return self.filter(file_q)
 
 
@@ -665,7 +674,7 @@ class File(UidModelMixin, models.Model):
     """
 
     class Meta:
-        unique_together = ('parent', 'name')
+        unique_together = ('parent', 'name', 'version')
 
     user = models.ForeignKey(User, related_name='files',
                              on_delete=models.CASCADE)
@@ -680,6 +689,7 @@ class File(UidModelMixin, models.Model):
     created = models.DateTimeField(null=False, default=timezone.now)
     tags = models.ManyToManyField(Tag)
     attrs = JSONField(null=True, blank=True)
+    version = models.IntegerField(null=False, blank=False, default=0)
     search = SearchVectorField(null=True, blank=True, editable=False)
 
     objects = FileManager()
@@ -703,7 +713,7 @@ class File(UidModelMixin, models.Model):
     def get_name(self, user):
         if self.user == user:
             return self.name
-        return self.shared_with.filter(user=user).name
+        return self.shared_with.get(user=user).name
 
     def get_path(self, user):
         parent_path = self.parent.get_path(user) if self.parent else '/'
@@ -728,6 +738,16 @@ class File(UidModelMixin, models.Model):
             user=user, file=self, name=name)
         user.shared_directories.add(share)
         return share
+
+
+class FileVersion(models.Model):
+    class Meta:
+        indexes = [
+            models.Index(fields=['file', 'version']),
+        ]
+
+    file = models.OneToOneField(File)
+    version = models.IntegerField(null=False, blank=False)
 
 
 class FileStat(models.Model):
@@ -775,6 +795,7 @@ class Chunk(UidModelMixin, models.Model):
     file = models.ManyToManyField(to=File, through='FileChunk',
                                   related_name='chunks')
     crc32 = models.IntegerField(null=False, blank=False, default=0)
+    md5 = models.CharField(null=False, blank=False, max_length=32)
 
     def __str__(self):
         return '<Chunk %s>' % self.uid

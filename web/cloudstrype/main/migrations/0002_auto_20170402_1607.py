@@ -14,23 +14,8 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.AlterField(
-            model_name='arrayuserstorage',
-            name='name',
-            field=models.UUIDField(default=uuid.uuid4),
-        ),
-        migrations.AlterField(
-            model_name='filechunk',
-            name='chunk',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='filechunks', to='main.Chunk'),
-        ),
-        migrations.AlterField(
-            model_name='filechunk',
-            name='file',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='filechunks', to='main.File'),
-        ),
         migrations.RunSQL([
-            "CREATE FUNCTION main_file_trigger() RETURNS trigger AS $$"
+            "CREATE FUNCTION main_file_search() RETURNS trigger AS $$"
             "begin"
             "  new.search :="
             "     setweight(to_tsvector('pg_catalog.english', coalesce(new.name,'')), 'A');"
@@ -38,10 +23,10 @@ class Migration(migrations.Migration):
             "end"
             "$$ LANGUAGE plpgsql"
         ,
-            "CREATE TRIGGER main_file_update BEFORE INSERT OR UPDATE"
-            "    ON main_file FOR EACH ROW EXECUTE PROCEDURE main_file_trigger()"
+            "CREATE TRIGGER main_file_search_trigger BEFORE INSERT OR UPDATE"
+            "    ON main_file FOR EACH ROW EXECUTE PROCEDURE main_file_search()"
         ,
-            "CREATE FUNCTION main_directory_trigger() RETURNS trigger AS $$"
+            "CREATE FUNCTION main_directory_search() RETURNS trigger AS $$"
             "begin"
             "  new.search :="
             "     setweight(to_tsvector('pg_catalog.english', coalesce(new.name,'')), 'A');"
@@ -49,12 +34,12 @@ class Migration(migrations.Migration):
             "end"
             "$$ LANGUAGE plpgsql"
         ,
-            "CREATE TRIGGER main_directory_update BEFORE INSERT OR UPDATE"
-            "    ON main_directory FOR EACH ROW EXECUTE PROCEDURE main_directory_trigger()"
+            "CREATE TRIGGER main_directory_search_trigger BEFORE INSERT OR UPDATE"
+            "    ON main_directory FOR EACH ROW EXECUTE PROCEDURE main_directory_search()"
         ], [
-            "DROP FUNCTION main_directory_trigger()",
-            "DROP TRIGGER main_directory_update ON main_directory",
-            "DROP FUNCTION main_file_trigger()",
-            "DROP TRIGGER main_file_update ON main_file",
+            "DROP FUNCTION main_directory_search()",
+            "DROP TRIGGER main_directory_search_trigger ON main_directory",
+            "DROP FUNCTION main_file_search()",
+            "DROP TRIGGER main_file_search_trigger ON main_file",
         ]),
     ]

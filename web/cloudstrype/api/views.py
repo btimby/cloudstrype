@@ -18,7 +18,9 @@ from rest_framework import (
 from main.fs import (
     MulticloudFilesystem, InfoView, DirInfo, FileInfo
 )
-from main.fs.errors import DirectoryNotFoundError, FileNotFoundError
+from main.fs.errors import (
+    DirectoryNotFoundError, FileNotFoundError, PathNotFoundError
+)
 from main.models import (
     User, BaseStorage, BaseUserStorage, OAuth2Storage, OAuth2UserStorage,
     Directory, File, ChunkStorage, Option, Tag,
@@ -281,7 +283,7 @@ class DirectoryUidView(FSMixIn, views.APIView):
             raise exceptions.NotFound(uid)
         try:
             return response.Response(
-                self.get_fs().rmdir(dir.get_path(request.user)))
+                self.get_fs().rmdir(dir.get_path(request.user), dir=dir))
         except DirectoryNotFoundError:
             raise exceptions.NotFound(uid)
 
@@ -299,9 +301,7 @@ class DirectoryPathView(FSMixIn, views.APIView):
         try:
             dir, dirs, files = self.get_fs().listdir(path)
         except DirectoryNotFoundError:
-            if path != '/':
-                raise exceptions.NotFound()
-            dir, dirs, files = Directory(path='/'), [], []
+            raise exceptions.NotFound()
         return response.Response(DirectoryListingSerializer({
             'info': dir, 'dirs': dirs, 'files': files
         }).data)
@@ -343,7 +343,7 @@ class FileUidView(FSMixIn, views.APIView):
         except File.DoesNotExist:
             raise exceptions.NotFound(uid)
         return response.Response(
-            self.get_fs().delete(file.get_path(request.user)))
+            self.get_fs().delete(file.get_path(request.user), file=file))
 
 
 class FilePathView(FSMixIn, views.APIView):
@@ -360,7 +360,7 @@ class FilePathView(FSMixIn, views.APIView):
             return response.Response(
                 FileSerializer(FileInfo(self.get_fs().info(path),
                                         request.user)).data)
-        except FileNotFoundError:
+        except PathNotFoundError:
             raise exceptions.NotFound(path)
 
     def delete(self, request, path, format=None):
@@ -411,7 +411,7 @@ class DataUidView(FSMixIn, views.APIView):
         except File.DoesNotExist:
             raise exceptions.NotFound(uid)
         response = StreamingHttpResponse(
-            self.get_fs().download(file.get_path(request.user)),
+            self.get_fs().download(file.get_path(request.user), file=file),
             content_type=file.mime)
         if request.GET.get('download', None):
             response['Content-Disposition'] = \

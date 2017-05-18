@@ -38,7 +38,6 @@ from zlib import crc32 as _crc32
 
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Q
 
 from main.models import (
     Directory, File, Chunk, ChunkStorage, DirectoryQuerySet
@@ -69,6 +68,9 @@ DirectoryListing = collections.namedtuple('DirectoryListing',
 
 
 class FileInfo(object):
+    isfile = True
+    isdir = False
+
     def __init__(self, obj, user):
         self.object = obj
         if obj.user != user:
@@ -89,7 +91,8 @@ class FileInfo(object):
 
 
 class DirInfo(FileInfo):
-    pass
+    isfile = False
+    isdir = True
 
 
 class RootInfo(DirInfo):
@@ -359,17 +362,18 @@ class MulticloudFilesystem(MulticloudBase):
         self.level = user.get_option('raid_level', 0)
         self.replicas = user.get_option('raid_replicas', replicas)
 
-    def download(self, path):
+    def download(self, path, file=None):
         """
         Download from multiple storage.
 
         Uses Metastore backend to resolve path to a series of chunks. Returns a
         MulticloudReader that can read these chunks in order.
         """
-        try:
-            file = File.objects.get(path=path, user=self.user)
-        except File.DoesNotExist:
-            raise FileNotFoundError(path)
+        if file is None:
+            try:
+                file = File.objects.get(path=path, user=self.user)
+            except File.DoesNotExist:
+                raise FileNotFoundError(path)
         return MulticloudReader(self.user, self.storage, file)
 
     @transaction.atomic
@@ -394,7 +398,7 @@ class MulticloudFilesystem(MulticloudBase):
         return FileInfo(file, self.user)
 
     @transaction.atomic
-    def delete(self, path):
+    def delete(self, path, file=None):
         """
         Delete from multiple storage.
 
@@ -404,10 +408,11 @@ class MulticloudFilesystem(MulticloudBase):
         Uses Metastore backend to resolve path to a series of chunks. Deletes
         the chunks from cloud providers and Metastore backend.
         """
-        try:
-            file = File.objects.get(path=path, user=self.user)
-        except File.DoesNotExist:
-            raise FileNotFoundError(path)
+        if file is None:
+            try:
+                file = File.objects.get(path=path, user=self.user)
+            except File.DoesNotExist:
+                raise FileNotFoundError(path)
         # We do not care about order...
         for chunk in Chunk.objects.filter(filechunks__file=file):
             for storage in chunk.storage.all():
@@ -419,17 +424,21 @@ class MulticloudFilesystem(MulticloudBase):
                     continue
         file.delete()
 
+    @transaction.atomic
     def mkdir(self, path):
         if self.isfile(path):
             raise FileConflictError(path)
         return DirInfo(
             Directory.objects.create(path=path, user=self.user), self.user)
 
-    def rmdir(self, path):
-        try:
-            Directory.objects.get(path=path, user=self.user).delete()
-        except Directory.DoesNotExist:
-            raise DirectoryNotFoundError(path)
+    @transaction.atomic
+    def rmdir(self, path, dir=None):
+        if dir is None:
+            try:
+                dir = Directory.objects.get(path=path, user=self.user)
+            except Directory.DoesNotExist:
+                raise DirectoryNotFoundError(path)
+        dir.delete()
 
     @transaction.atomic
     def _move_file(self, file, dst):
@@ -530,76 +539,46 @@ class MulticloudFilesystem(MulticloudBase):
                 dir = Directory.objects.get(path=path, user=self.user)
             except Directory.DoesNotExist:
                 raise DirectoryNotFoundError(path)
-        # List files in the current directory owned by this user.
-        dir_q = Q(parent=dir, user=self.user)
-        file_q = Q(parent=dir, user=self.user)
-        if dir is None:
-            # Only include shared files when listing '/'
-            dir_q |= Q(shared_with__user=self.user)
-            file_q |= Q(shared_with__user=self.user)
+        dirs, files = Directory.objects.children_of(dir, self.user)
         dir = DirInfo(dir, self.user) if dir else RootInfo(self.user)
         return DirectoryListing(
             dir,
-            InfoView(Directory.objects.filter(dir_q), self.user,
-                     DirInfo),
-            InfoView(File.objects.filter(file_q), self.user, FileInfo)
+            InfoView(dirs, self.user, DirInfo),
+            InfoView(files, self.user, FileInfo)
         )
 
-    def info(self, path, file=None):
+    def info(self, path, file=None, dir=None):
         if path == '/':
             return RootInfo(self.user)
-        if file is None:
-            dir, name = pathsplit(path.lstrip('/'))
-            dir = dir if dir else None
-            if dir:
-                try:
-                    dir = Directory.objects.get(path=dir, user=self.user)
-                except Directory.DoesNotExist:
-                    raise FileNotFoundError(path)
-                else:
-                    file_q = Q(parent=dir, name=name, user=self.user)
-            else:
-                file_q = Q(parent=dir, name=name, user=self.user)
-                # Looking in root, it could be shared...
-                file_q |= Q(shared_with__name=name,
-                            shared_with__user=self.user)
+        if file is not None:
+            return FileInfo(file, self.user)
+        if dir is not None:
+            return DirInfo(dir, self.user)
+        dir, name = pathsplit(path.lstrip('/'))
+        dir = dir if dir else None
+        if dir:
             try:
-                file = File.objects.get(file_q)
-            except File.DoesNotExist:
-                raise FileNotFoundError(path)
-        return FileInfo(file, self.user)
+                dir = Directory.objects.get(path=dir, user=self.user)
+            except Directory.DoesNotExist:
+                raise PathNotFoundError(path)
+        dirs, files = Directory.objects.children_of(dir, self.user, name=name)
+        if dirs.first():
+            return DirInfo(dirs.first(), self.user)
+        if files.first():
+            return FileInfo(files.first(), self.user)
+        raise PathNotFoundError(path)
 
     def isdir(self, path):
-        if path == '/':
-            return True
-        dir, name = pathsplit(path.lstrip('/'))
-        dir = dir if dir else None
-        if dir:
-            try:
-                dir = Directory.objects.get(path=dir, user=self.user)
-            except Directory.DoesNotExist:
-                return False
-        dirs, _ = Directory.objects.children_of(dir, self.user, dirs_only=True,
-                                                name=name)
-        return dirs.exists()
+        try:
+            return self.info(path).isdir
+        except PathNotFoundError:
+            return False
 
     def isfile(self, path):
-        if path == '/':
+        try:
+            return self.info(path).isfile
+        except PathNotFoundError:
             return False
-        dir, name = pathsplit(path.lstrip('/'))
-        dir = dir if dir else None
-        if dir:
-            try:
-                dir = Directory.objects.get(path=dir, user=self.user)
-            except Directory.DoesNotExist:
-                return False
-            else:
-                file_q = Q(parent=dir, name=name, user=self.user)
-        else:
-            file_q = Q(parent=dir, name=name, user=self.user)
-            # Looking in root, it could be shared...
-            file_q |= Q(shared_with__name=name, shared_with__user=self.user)
-        return File.objects.filter(file_q).exists()
 
     def exists(self, path):
         if path == '/':

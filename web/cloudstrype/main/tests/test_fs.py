@@ -239,7 +239,7 @@ class FilesystemTestCase(TestCase):
                         MockClients(self.user).get_clients):
             fs = MulticloudFilesystem(self.user)
 
-            with self.assertRaises(FileNotFoundError):
+            with self.assertRaises(PathNotFoundError):
                 fs.info('/foo')
 
             with BytesIO(TEST_FILE) as f:
