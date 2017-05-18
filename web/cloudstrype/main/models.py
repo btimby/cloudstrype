@@ -16,9 +16,7 @@ from os.path import split as pathsplit
 from django.contrib.auth.base_user import (
     AbstractBaseUser, BaseUserManager
 )
-from django.contrib.postgres.fields import (
-    JSONField, ArrayField
-)
+from django.contrib.postgres.fields import JSONField
 from django.contrib.postgres.search import SearchVectorField
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import models, transaction
