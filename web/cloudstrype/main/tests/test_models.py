@@ -24,8 +24,8 @@ class DirectoryTestCase(TestCase):
 
         dir1 = Directory.objects.create(path='/foobar', user=self.user)
         self.assertEqual('/foobar', dir1.path)
-        self.assertEqual('<', str(dir1)[0])
-        self.assertEqual('>', str(dir1)[-1])
+        self.assertTrue(str(dir1).startswith('<'))
+        self.assertTrue(str(dir1).endswith('>'))
 
         dir2 = Directory.objects.create(path='/foobar/foo/bar', user=self.user)
         self.assertEqual('/foobar/foo/bar', dir2.path)
@@ -49,15 +49,15 @@ class FileTestCase(TestCase):
         self.assertEqual(file1, File.objects.get(uid=file1.uid))
 
         self.assertEqual('.txt', file1.extension)
-        self.assertEqual('<', str(file1)[0])
-        self.assertEqual('>', str(file1)[-1])
+        self.assertTrue(str(file1).startswith('<'))
+        self.assertTrue(str(file1).endswith('>'))
 
-        self.assertEqual(2, Directory.objects.all().count())
+        self.assertEqual(1, Directory.objects.all().count())
         self.assertEqual(1, File.objects.all().count())
 
         dir1.delete()
 
-        self.assertEqual(1, Directory.objects.all().count())
+        self.assertEqual(0, Directory.objects.all().count())
         self.assertEqual(0, File.objects.all().count())
 
     def test_chunks(self):
@@ -69,11 +69,11 @@ class FileTestCase(TestCase):
         chunk2 = Chunk.objects.create()
         filechunk1 = file.add_chunk(chunk1)
 
-        self.assertEqual('<', str(chunk1)[0])
-        self.assertEqual('>', str(chunk1)[-1])
+        self.assertTrue(str(chunk1).startswith('<'))
+        self.assertTrue(str(chunk1).endswith('>'))
 
-        self.assertEqual('<', str(filechunk1)[0])
-        self.assertEqual('>', str(filechunk1)[-1])
+        self.assertTrue(str(filechunk1).startswith('<'))
+        self.assertTrue(str(filechunk1).endswith('>'))
 
         storage = BaseStorage.objects.create(
             provider=BaseStorage.PROVIDER_DROPBOX)
@@ -106,8 +106,8 @@ class UserTestCase(TestCase):
         self.assertEqual(False, user.is_staff)
         self.assertEqual('Foo', user.first_name)
 
-        self.assertEqual('<', str(user)[0])
-        self.assertEqual('>', str(user)[-1])
+        self.assertTrue(str(user).startswith('<'))
+        self.assertTrue(str(user).endswith('>'))
 
         # http://stackoverflow.com/questions/21458387/transactionmanagementerror-you-cant-execute-queries-until-the-end-of-the-atom  # noqa
         with transaction.atomic():
@@ -150,14 +150,14 @@ class UserStorageTestCase(TestCase):
         storage = BaseStorage.objects.create(
             provider=BaseStorage.PROVIDER_DROPBOX)
 
-        self.assertEqual('<', str(storage)[0])
-        self.assertEqual('>', str(storage)[-1])
+        self.assertTrue(str(storage).startswith('<'))
+        self.assertTrue(str(storage).endswith('>'))
 
         oauth2 = OAuth2UserStorage.objects.create(storage=storage,
                                                   user=self.user)
 
-        self.assertEqual('<', str(oauth2)[0])
-        self.assertEqual('>', str(oauth2)[-1])
+        self.assertTrue(str(oauth2).startswith('<'))
+        self.assertTrue(str(oauth2).endswith('>'))
 
         kwargs = {
             'access_token': 'AAAA',
@@ -179,8 +179,8 @@ class UserStorageTestCase(TestCase):
         array = ArrayUserStorage.objects.create(storage=storage,
                                                 user=self.user)
 
-        self.assertEqual('<', str(array)[0])
-        self.assertEqual('>', str(array)[-1])
+        self.assertTrue(str(array).startswith('<'))
+        self.assertTrue(str(array).endswith('>'))
 
         # Name should have usable default (is system-provided).
         self.assertIsNotNone(array.name)
@@ -198,8 +198,8 @@ class UserStorageTestCase(TestCase):
                                                 username='foo',
                                                 password='bar')
 
-        self.assertEqual('<', str(basic)[0])
-        self.assertEqual('>', str(basic)[-1])
+        self.assertTrue(str(basic).startswith('<'))
+        self.assertTrue(str(basic).endswith('>'))
 
         obj = basic.get_client()
         # Not yet implemented, stub test.
@@ -215,8 +215,9 @@ class StorageTestCase(TestCase):
         storage = ArrayStorage.objects.create(
             provider=BaseStorage.PROVIDER_ARRAY)
 
-        self.assertEqual('<', str(storage)[0])
-        self.assertEqual('>', str(storage)[-1])
+        self.assertTrue(str(storage).startswith('<'))
+        self.assertTrue(str(storage).endswith('>'))
+
         with self.assertRaises(NotImplementedError):
             storage.get_client()
 
@@ -225,8 +226,8 @@ class StorageTestCase(TestCase):
             provider=BaseStorage.PROVIDER_DROPBOX, client_id='id',
             client_secret='secret')
 
-        self.assertEqual('<', str(storage)[0])
-        self.assertEqual('>', str(storage)[-1])
+        self.assertTrue(str(storage).startswith('<'))
+        self.assertTrue(str(storage).endswith('>'))
 
         obj = storage.get_client('https://redirect.org/')
         self.assertIsInstance(obj, BaseOAuth2APIClient)
@@ -235,7 +236,8 @@ class StorageTestCase(TestCase):
         storage = BasicStorage.objects.create(
             provider=BaseStorage.PROVIDER_BASIC)
 
-        self.assertEqual('<', str(storage)[0])
-        self.assertEqual('>', str(storage)[-1])
+        self.assertTrue(str(storage).startswith('<'))
+        self.assertTrue(str(storage).endswith('>'))
+
         with self.assertRaises(NotImplementedError):
             storage.get_client()

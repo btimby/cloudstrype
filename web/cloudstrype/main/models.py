@@ -483,18 +483,21 @@ class DirectoryQuerySet(UidQuerySet):
         UidQuerySet._args(model, kwargs)
         path = kwargs.pop('path', None)
         if path:
-            parents = normpath(path).split('/')
-            name = parents.pop()
-            kwargs['name'] = name.lower()
-            kwargs['display_name'] = name
-            kwargs['display_path'] = path
-            kwargs['parents'] = [p.lower() for p in parents]
+            parents = normpath(path.lstrip('/')).split('/')
+            kwargs['name'] = parents.pop()
+            obj = None
+            for part in parents:
+                obj = Directory.objects.get(name=part, parent=obj)
+            kwargs['parent'] = obj
 
     def filter(self, *args, **kwargs):
         """Filter objects using full path."""
-        DirectoryQuerySet._args(self.model, kwargs)
-        kwargs.pop('display_name', None)
-        kwargs.pop('display_path', None)
+        try:
+            DirectoryQuerySet._args(self.model, kwargs)
+        except Directory.DoesNotExist:
+            # We failed to find a parent for the given path, thus it cannot
+            # exist.
+            return super().none()
         return super().filter(*args, **kwargs)
 
 
@@ -512,31 +515,24 @@ class DirectoryManager(models.Manager):
     def create(self, *args, **kwargs):
         if 'user' not in kwargs:
             raise ValueError('User required for directory creation')
+        # Preserve this arg (_args() pops it...)
         path = kwargs.get('path', None)
-        parent = dirname(path)
-        if parent:
-            user = kwargs['user']
-            kwargs['parent'], _ = Directory.objects.get_or_create(user=user,
-                                                                  path=parent)
-        DirectoryQuerySet._args(self.model, kwargs)
+        try:
+            DirectoryQuerySet._args(self.model, kwargs)
+        except Directory.DoesNotExist:
+            # Parent missing, create...
+            parent = dirname(path.lstrip('/'))
+            kwargs['parent'], _ = Directory.objects.get_or_create(
+                user=kwargs['user'], path=parent)
         return super().create(*args, **kwargs)
 
     def get_or_create(self, *args, **kwargs):  # noqa: D402
         """
         Override default get_or_create().
-
-        Does not include display_name and display_path in the query portion,
-        but ensures they are set to the requested values during save.
         """
         # It might be better to do this in save().
         DirectoryQuerySet._args(self.model, kwargs)
-        display_name = kwargs.pop('display_name', None)
-        display_path = kwargs.pop('display_path', None)
-        obj, created = super().get_or_create(*args, **kwargs)
-        if created:
-            obj.display_name = display_name
-            obj.display_path = display_path
-        return obj, created
+        return super().get_or_create(*args, **kwargs)
 
 
 class Directory(UidModelMixin, models.Model):
@@ -547,15 +543,12 @@ class Directory(UidModelMixin, models.Model):
     """
 
     class Meta:
-        unique_together = ('user', 'name', 'parents')
+        unique_together = ('user', 'name', 'parent')
 
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     parent = models.ForeignKey('self', null=True, related_name='dirs',
                                on_delete=models.CASCADE)
     name = models.CharField(max_length=255)
-    display_name = models.CharField(max_length=45)
-    display_path = models.TextField()
-    parents = ArrayField(models.CharField(max_length=45))
     created = models.DateTimeField(null=False, default=timezone.now)
     tags = models.ManyToManyField(Tag)
     attrs = JSONField(null=True, blank=True)
@@ -568,7 +561,8 @@ class Directory(UidModelMixin, models.Model):
 
     @property
     def path(self):
-        return '/%s' % self.display_path.lstrip('/')
+        parent_path = self.parent.path if self.parent else '/'
+        return pathjoin(parent_path, self.name)
 
 
 class DirectoryShare(models.Model):
@@ -585,6 +579,7 @@ class DirectoryShare(models.Model):
                                   related_name='shared_to')
     user = models.ForeignKey(User, on_delete=models.CASCADE,
                              related_name='shared_directories')
+    name = models.CharField(max_length=255)
 
 
 class FileQuerySet(UidQuerySet):
@@ -593,10 +588,12 @@ class FileQuerySet(UidQuerySet):
         UidQuerySet._args(model, kwargs)
         path = kwargs.pop('path', None)
         if path:
-            user = kwargs['user']
-            directory, kwargs['name'] = pathsplit(path)
-            kwargs['directory'], _ = Directory.objects.get_or_create(
-                user=user, path=directory)
+            directory, kwargs['name'] = pathsplit(path.lstrip('/'))
+            directory = directory if directory else None
+            if directory:
+                directory, _ = Directory.objects.get_or_create(
+                    user=kwargs['user'], path=directory)
+            kwargs['directory'] = directory
 
     def filter(self, *args, **kwargs):
         FileQuerySet._args(self.model, kwargs)
@@ -631,7 +628,7 @@ class File(UidModelMixin, models.Model):
 
     user = models.ForeignKey(User, related_name='files',
                              on_delete=models.CASCADE)
-    directory = models.ForeignKey(Directory, related_name='files',
+    directory = models.ForeignKey(Directory, null=True, related_name='files',
                                   on_delete=models.CASCADE)
     name = models.CharField(max_length=255)
     size = models.IntegerField(default=0)
@@ -660,7 +657,8 @@ class File(UidModelMixin, models.Model):
 
     @property
     def path(self):
-        return pathjoin(self.directory.path, self.name)
+        parent_path = self.directory.path if self.directory else '/'
+        return pathjoin(parent_path, self.name)
 
     @property
     def extension(self):
@@ -703,6 +701,7 @@ class FileShare(models.Model):
                              related_name='shared_to')
     user = models.ForeignKey(User, on_delete=models.CASCADE,
                              related_name='shared_files')
+    name = models.CharField(max_length=255)
 
 
 class Chunk(UidModelMixin, models.Model):

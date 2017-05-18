@@ -180,8 +180,7 @@ class DirectorySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Directory
-        fields = ('uid', 'name', 'display_name', 'path', 'display_path',
-                  'parents', 'mime', 'created', 'tags', 'attrs')
+        fields = ('uid', 'name', 'path', 'mime', 'created', 'tags', 'attrs')
 
     def get_mime(self, obj):
         return 'application/x-directory'
@@ -198,15 +197,12 @@ class FileSerializer(serializers.ModelSerializer):
     """
 
     chunks = serializers.SerializerMethodField()
-    display_name = serializers.SerializerMethodField()
-    display_path = serializers.SerializerMethodField()
     tags = serializers.SerializerMethodField()
 
     class Meta:
         model = File
-        fields = ('uid', 'name', 'display_name', 'extension', 'path',
-                  'display_path', 'size', 'chunks', 'md5', 'sha1', 'mime',
-                  'created', 'raid_level', 'tags', 'attrs')
+        fields = ('uid', 'name', 'extension', 'path', 'size', 'chunks', 'md5',
+                  'sha1', 'mime', 'created', 'raid_level', 'tags', 'attrs')
 
     def get_chunks(self, obj):
         # These names are a bit long...

@@ -306,13 +306,6 @@ class MulticloudFilesystem(MulticloudBase):
         self.chunk_size = chunk_size
         self.level = user.get_option('raid_level', 0)
         self.replicas = user.get_option('raid_replicas', replicas)
-        self._ensure_root()
-
-    def _ensure_root(self):
-        # Do this upfront so that fs operations can assume that a root
-        # directory exists.
-        root, _ = Directory.objects.get_or_create(user=self.user, path='/',
-                                                  display_path='/')
 
     def download(self, path):
         """
@@ -389,12 +382,13 @@ class MulticloudFilesystem(MulticloudBase):
     def _move_file(self, file, dst):
         if self.isdir(dst):
             raise DirectoryConflictError(dst)
-        dst, file.name = pathsplit(dst)
-        try:
-            file.directory = \
-                Directory.objects.get(path=dst, user=self.user)
-        except Directory.DoesNotExist:
-            raise DirectoryNotFoundError(dst)
+        dst, file.name = pathsplit(dst.lstrip('/'))
+        if dst:
+            try:
+                file.directory = \
+                    Directory.objects.get(path=dst, user=self.user)
+            except Directory.DoesNotExist:
+                raise DirectoryNotFoundError(dst)
         file.save()
         return file
 
