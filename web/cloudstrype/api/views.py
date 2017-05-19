@@ -23,7 +23,7 @@ from main.fs.errors import (
 )
 from main.models import (
     User, BaseStorage, BaseUserStorage, OAuth2Storage, OAuth2UserStorage,
-    Directory, File, ChunkStorage, Option, Tag, AllFile
+    Directory, File, ChunkStorage, Option, Tag, FileVersion
 )
 
 
@@ -213,12 +213,13 @@ class FileSerializer(serializers.ModelSerializer):
     path = serializers.SerializerMethodField()
     extension = serializers.SerializerMethodField()
     raid_level = serializers.SerializerMethodField()
+    version = serializers.SerializerMethodField()
 
     class Meta:
         model = File
         fields = ('uid', 'name', 'extension', 'path', 'size', 'md5', 'sha1',
                   'mime', 'created', 'raid_level', 'tags', 'attrs',
-                  'shared_with')
+                  'shared_with', 'version', 'versions')
 
     def get_chunks(self, obj):
         # These names are a bit long...
@@ -248,6 +249,21 @@ class FileSerializer(serializers.ModelSerializer):
         # instance, we must fake it.
         return obj.raid_level
 
+    def get_version(self, obj):
+        return obj.version.uid
+
+
+class FileVersionSerializer(serializers.ModelSerializer):
+    """
+    Serialize a File version.
+
+    Provides details about a version of a file.
+    """
+
+    class Meta:
+        model = FileVersion
+        fields = ('uid', 'size', 'md5', 'sha1', 'mime', 'created')
+
 
 class DirectoryListingSerializer(serializers.Serializer):
     """
@@ -262,7 +278,7 @@ class DirectoryListingSerializer(serializers.Serializer):
     files = FileSerializer(many=True)
 
 
-class FSMixIn(object):
+class FSMixin(object):
     """
     Filesystem mixin.
 
@@ -273,7 +289,7 @@ class FSMixIn(object):
         return MulticloudFilesystem(self.request.user)
 
 
-class DirectoryUidView(FSMixIn, views.APIView):
+class DirectoryUidView(FSMixin, views.APIView):
     """
     Directory detail view.
 
@@ -305,7 +321,7 @@ class DirectoryUidView(FSMixIn, views.APIView):
             raise exceptions.NotFound(uid)
 
 
-class DirectoryPathView(FSMixIn, views.APIView):
+class DirectoryPathView(FSMixin, views.APIView):
     """
     Directory detail view.
 
@@ -336,7 +352,7 @@ class DirectoryPathView(FSMixIn, views.APIView):
             raise exceptions.NotFound(path)
 
 
-class FileUidView(FSMixIn, views.APIView):
+class FileUidView(FSMixin, views.APIView):
     """
     File detail view.
 
@@ -363,7 +379,7 @@ class FileUidView(FSMixIn, views.APIView):
             self.get_fs().delete(file.get_path(request.user), file=file))
 
 
-class FilePathView(FSMixIn, views.APIView):
+class FilePathView(FSMixin, views.APIView):
     """
     File detail view.
 
@@ -412,7 +428,7 @@ class UrlUidFilenameUploadParser(parsers.FileUploadParser):
         return basename(id)
 
 
-class DataUidView(FSMixIn, views.APIView):
+class DataUidView(FSMixin, views.APIView):
     """
     File data view.
 
@@ -445,7 +461,7 @@ class DataUidView(FSMixIn, views.APIView):
         return response.Response(FileSerializer(file).data)
 
 
-class DataPathView(FSMixIn, views.APIView):
+class DataPathView(FSMixin, views.APIView):
     """
     File data view.
 
@@ -457,12 +473,13 @@ class DataPathView(FSMixIn, views.APIView):
     parser_classes = (UrlUidFilenameUploadParser,)
 
     def get(self, request, path, format=None):
+        fs = self.get_fs()
         try:
-            file = File.objects.get(path=path, user=request.user)
-        except File.DoesNotExist:
+            file = fs.info(path).obj
+        except FileNotFoundError:
             raise exceptions.NotFound(path)
         try:
-            response = StreamingHttpResponse(self.get_fs().download(path),
+            response = StreamingHttpResponse(fs.download(path, file=file),
                                              content_type=file.mime)
         except FileNotFoundError:
             raise exceptions.NotFound(path)
@@ -474,6 +491,44 @@ class DataPathView(FSMixIn, views.APIView):
     def post(self, request, path, format=None):
         file = self.get_fs().upload(path, f=request.data['file'])
         return response.Response(FileSerializer(file).data)
+
+
+class FileVersionUidView(FSMixin, views.APIView):
+    def get(self, request, uid, format=None):
+        try:
+            file = File.objects.get(uid=uid)
+        except File.DoesNotExist:
+            raise exceptions.NotFound(uid)
+        return response.Response(
+            FileVersionSerializer(file.versions.all(), many=True).data)
+
+
+class FileVersionPathView(FSMixin, views.APIView):
+    def get(self, request, path, format=None):
+        fs = self.get_fs()
+        try:
+            file = fs.info(path).obj
+        except FileNotFoundError:
+            raise exceptions.NotFound(path)
+        return response.Response(
+            FileVersionSerializer(file.versions.all(), many=True).data)
+
+
+class FileVersionDataUidView(FSMixin, views.APIView):
+    def get(self, request, uid, format=None):
+        try:
+            version = FileVersion.objects.get(uid=uid)
+        except FileVersion.DoesNotExist:
+            raise exceptions.NotFound(uid)
+        file = version.file
+        response = StreamingHttpResponse(
+            self.get_fs().download(file.get_path(request.user), file=file,
+                                   version=version),
+            content_type=version.mime)
+        if request.GET.get('download', None):
+            response['Content-Disposition'] = \
+                'attachment; filename="%s"' % file.name
+        return response
 
 
 class TagSerializer(serializers.ModelSerializer):

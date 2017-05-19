@@ -254,6 +254,27 @@ class FilesystemTestCase(TestCase):
             self.assertTrue(fs.isdir('/'))
             self.assertFalse(fs.isfile('/'))
 
+    def test_file_version(self):
+        with mock.patch('main.models.User.get_clients',
+                        MockClients(self.user).get_clients):
+            fs = MulticloudFilesystem(self.user)
+
+            with BytesIO(TEST_FILE) as f:
+                fi = fs.upload('/foo', f)
+
+            with BytesIO(TEST_FILE) as f:
+                fi = fs.upload('/foo', f)
+
+            # Two versions of the file should be produced.
+            self.assertEqual(2, fi.obj.versions.count())
+
+            # Both versions should share chunks
+            v1, v2 = fi.obj.versions.all()
+            self.assertEqual(
+                [c.uid for c in v1.chunks.all()],
+                [c.uid for c in v2.chunks.all()],
+            )
+
 
 class SharingTestCase(TestCase):
     @classmethod

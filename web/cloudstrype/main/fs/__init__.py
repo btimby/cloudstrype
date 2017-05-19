@@ -72,7 +72,7 @@ class FileInfo(object):
     isdir = False
 
     def __init__(self, obj, user=None):
-        self.object = obj
+        self.obj = obj
         if obj.user != user:
             if user is None:
                 user = obj.user
@@ -91,7 +91,7 @@ class FileInfo(object):
         try:
             return self.__getattribute__(name)
         except AttributeError:
-            return getattr(self.object, name)
+            return getattr(self.obj, name)
 
 
 class DirInfo(FileInfo):
@@ -381,7 +381,7 @@ class MulticloudFilesystem(MulticloudBase):
         self.level = user.get_option('raid_level', 0)
         self.replicas = user.get_option('raid_replicas', replicas)
 
-    def download(self, path, file=None):
+    def download(self, path, file=None, version=None):
         """
         Download from multiple storage.
 
@@ -393,7 +393,9 @@ class MulticloudFilesystem(MulticloudBase):
                 file = File.objects.get(path=path, user=self.user)
             except File.DoesNotExist:
                 raise FileNotFoundError(path)
-        return MulticloudReader(self.user, self.storage, file.version)
+        if version is None:
+            version = file.version
+        return MulticloudReader(self.user, self.storage, version)
 
     @transaction.atomic
     def upload(self, path, f):

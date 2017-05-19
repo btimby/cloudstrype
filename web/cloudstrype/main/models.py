@@ -3,6 +3,7 @@ Data models.
 
 This file contains the models that pertain to the whole application.
 """
+import functools
 import uuid
 import mimetypes
 
@@ -27,6 +28,24 @@ from django.utils.translation import ugettext as _
 from django.utils import timezone
 from django.utils.dateformat import format
 from hashids import Hashids
+
+
+def SET_FIELD(field_name, value):
+    """
+    Delete option.
+
+    Like django.db.models.SET but sets a field OTHER than the fk.
+    """
+    if callable(value):
+        def set_on_delete(collector, field, sub_objs, using):
+            field = field.model._meta.get_field(field_name)
+            collector.add_field_update(field, value(), sub_objs)
+    else:
+        def set_on_delete(collector, field, sub_objs, using):
+            field = field.model._meta.get_field(field_name)
+            collector.add_field_update(field, value, sub_objs)
+    set_on_delete.deconstruct = lambda: ('SET_FIELD', (field_name, value,), {})
+    return set_on_delete
 
 
 class UidQuerySet(QuerySet):
@@ -622,6 +641,15 @@ class DirectoryShare(models.Model):
 
 
 class FileQuerySet(UidQuerySet):
+    # Delete the objects using their delete() method. Make sure to 
+    def delete(self):
+        for m in self:
+            m.delete()
+        self._result_cache = None
+
+    delete.alters_data = True
+    delete.queryset_only = True
+
     @staticmethod
     def _args(model, kwargs):
         UidQuerySet._args(model, kwargs)
@@ -682,6 +710,9 @@ class FileManager(models.Manager):
 
         return self.filter(file_q)
 
+    def delete(self):
+        return self.get_queryset().delete()
+
 
 class AllFile(models.Model):
     """
@@ -702,15 +733,24 @@ class AllFile(models.Model):
         # commented out) and leave this attr.
         db_table = 'main_file'
 
-    user = models.ForeignKey(User, related_name='all_files',
-                             on_delete=models.CASCADE)
-    parent = models.ForeignKey(Directory, null=True, related_name='all_files',
-                               on_delete=models.CASCADE)
+    user = models.ForeignKey(User, related_name='+',
+                             on_delete=models.DO_NOTHING)
+    # If the parent directory is deleted, set parent to NULL, this is done
+    # because we soft-delete files, thus the file instance stays and we need
+    # to maintain referential integrity. This must be done here for two reasons:
+    #
+    # 1. We need to do two things, and on_delete supports only one. We do the
+    #    other thing in the File model.
+    # 2. Since we cannot control the order of fields being set, once the
+    #    soft-delete is performed by File, we cannot set parent to NULL using
+    #    that model, as the instance vanishes from it's backing view.
+    parent = models.ForeignKey(Directory, null=True, related_name='+',
+                               on_delete=models.SET_NULL)
     version = models.ForeignKey('FileVersion', null=False, blank=False,
-                                related_name='all_current_of')
+                                related_name='+')
     name = models.CharField(max_length=255)
     created = models.DateTimeField(null=False, default=timezone.now)
-    tags = models.ManyToManyField(Tag, through='AllFileTag')
+    tags = models.ManyToManyField(Tag, through='AllFileTag', related_name='+')
     attrs = JSONField(null=True, blank=True)
     search = SearchVectorField(null=True, blank=True, editable=False)
     deleted = models.DateTimeField(null=True)
@@ -722,8 +762,8 @@ class File(UidModelMixin, models.Model):
     """
     File model.
 
-    Represents a file in the FS. This table is presented as two views via the
-    models LiveFile and DeadFile.
+    Represents a file in the FS. Backed by a view that filters out deleted IS
+    NOT NULL.
     """
 
     class Meta:
@@ -733,16 +773,15 @@ class File(UidModelMixin, models.Model):
 
     user = models.ForeignKey(User, related_name='files',
                              on_delete=models.CASCADE)
+    # If the parent directory is deleted, soft-delete this file. It's parent is
+    # set to NULL in the AllFile model.
     parent = models.ForeignKey(Directory, null=True, related_name='files',
-                               on_delete=models.CASCADE)
+                               on_delete=SET_FIELD('deleted', timezone.now))
     version = models.ForeignKey('FileVersion', null=False, blank=False,
-                                related_name='current_of')
+                                related_name='current_of',
+                                on_delete=models.PROTECT)
     name = models.CharField(max_length=255)
     created = models.DateTimeField(null=False, default=timezone.now)
-    # TODO: is there another way? This field is M2M, so djanog make assumptions
-    # about the table that handles the relationship. They are wrong since the
-    # relationship is actually with AllFile (main_file). Perhaps a through
-    # table?
     tags = models.ManyToManyField(Tag, through='FileTag')
     attrs = JSONField(null=True, blank=True)
     search = SearchVectorField(null=True, blank=True, editable=False)
@@ -784,21 +823,20 @@ class File(UidModelMixin, models.Model):
         kwargs['version'] = FileVersion.objects.create(**v_kwargs)
         return super().__init__(*args, **kwargs)
 
-    def save(self, *args, **kwargs):
+    def guess_mime(self):
         mime, _ = mimetypes.guess_type(self.name, strict=False)
-        mime = mime if mime else 'application/octet-stream'
+        return mime if mime else 'application/octet-stream'
+
+    def save(self, *args, **kwargs):
+        # Create an initial version if one is missing.
         if not self.version:
-            self.version = FileVersion.objects.create(mime=mime)
+            self.version = FileVersion.objects.create(mime=self.guess_mime())
         else:
-            self.version.mime = mime
+            self.version.mime = self.guess_mime()
             self.version.save(update_fields=['mime'])
         self.version.file = super().save(*args, **kwargs)
         self.version.save()
         return self
-
-    def delete(self):
-        self.deleted = timezone.now()
-        self.save(update_fields=['deleted'])
 
     def get_extension(self, user):
         return splitext(self.get_name(user))[1]
@@ -823,8 +861,10 @@ class File(UidModelMixin, models.Model):
 
     @transaction.atomic
     def add_version(self):
-        self.version = FileVersion.objects.create(file=self)
-        self.save(update_fields=['version'])
+        self.version = FileVersion.objects.create(file=self,
+                                                  mime=self.guess_mime())
+        # save() does not work, likely due to the cyclic relationship.
+        File.objects.filter(pk=self.pk).update(version_id=self.version.pk)
         return self.version
 
     def share(self, user):
@@ -838,13 +878,17 @@ class File(UidModelMixin, models.Model):
         user.shared_directories.add(share)
         return share
 
+    def delete(self):
+        self.deleted = timezone.now()
+        self.save(update_fields=['deleted'])
+
 
 class DeadFile(UidModelMixin, models.Model):
     """
     View.
 
-    Represents all deleted files. Deleting one of these actually removes the
-    record.
+    Represents all deleted files. Backed by a view that filters out deleted IS
+    NULL.
     """
 
     class Meta:
@@ -852,14 +896,14 @@ class DeadFile(UidModelMixin, models.Model):
         db_table = 'main_deadfile'
 
     user = models.ForeignKey(User, related_name='dead_files',
-                             on_delete=models.CASCADE)
+                             on_delete=models.DO_NOTHING)
     parent = models.ForeignKey(Directory, null=True, related_name='dead_files',
-                               on_delete=models.CASCADE)
+                               on_delete=models.DO_NOTHING)
     version = models.ForeignKey('FileVersion', null=False, blank=False,
-                                related_name='dead_current_of')
+                                related_name='+')
     name = models.CharField(max_length=255)
     created = models.DateTimeField(null=False, default=timezone.now)
-    tags = models.ManyToManyField(Tag, through='DeadTag')
+    tags = models.ManyToManyField(Tag, through='DeadTag', related_name='+')
     attrs = JSONField(null=True, blank=True)
     search = SearchVectorField(null=True, blank=True, editable=False)
     deleted = models.DateTimeField(null=True)
@@ -896,14 +940,22 @@ class AllFileTag(models.Model):
     tag = models.ForeignKey(Tag)
 
 
-class FileVersion(models.Model):
-    file = models.ForeignKey(File, null=True, related_name='versions')
+class FileVersion(UidModelMixin, models.Model):
+    file = models.ForeignKey(File, null=True, related_name='versions',
+                             on_delete=models.CASCADE)
     size = models.IntegerField(default=0)
     md5 = models.CharField(max_length=32)
     sha1 = models.CharField(max_length=40)
+    # TODO: Currently mime type is derived solely from file name. This means it
+    # would be appropriate to store the mime attribute on File rather than
+    # FileVersion. However, we should inspect the first chunk and use libmagic
+    # to set the mime for each version. When we start that, mime truly would be
+    # derived from the file body and thus belongs below.
     mime = models.CharField(max_length=64)
     raid_level = models.SmallIntegerField(null=False, default=1)
     created = models.DateTimeField(null=False, default=timezone.now)
+
+    objects = UidManager()
 
     @transaction.atomic
     def add_chunk(self, chunk):

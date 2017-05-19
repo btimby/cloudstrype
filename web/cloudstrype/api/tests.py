@@ -38,15 +38,31 @@ class APIFSTestCase(TestCase):
             # TODO: I cannot figure out how to post multipart and receive JSON
             # self.assertEqual(15, len(r.json()))
 
+            # A file object should now exist, we can access it by path.
             r = self.client.get(reverse('api:files_data_path', args=('/foo',)),
                                 {'format': 'json'})
             self.assertEqual(200, r.status_code)
             self.assertEqual(TEST_FILE_BODY,
                              b''.join(list(r.streaming_content)))
 
+            # A file object should now exist, we can access it by uid.
             file = File.objects.first()
             r = self.client.get(reverse('api:files_data_uid',
                                         args=(file.uid,)),
+                                {'format': 'json'})
+            self.assertEqual(200, r.status_code)
+            self.assertEqual(TEST_FILE_BODY,
+                             b''.join(list(r.streaming_content)))
+
+            # Ensure we can get a list of file versions.
+            r = self.client.get(reverse('api:fileversions_uid',
+                                        args=(file.uid,)),
+                                {'format': 'json'})
+            self.assertEqual(200, r.status_code)
+
+            # Ensure we can download a specific version of a file.
+            r = self.client.get(reverse('api:fileversions_data',
+                                        args=(file.version.uid,)),
                                 {'format': 'json'})
             self.assertEqual(200, r.status_code)
             self.assertEqual(TEST_FILE_BODY,
