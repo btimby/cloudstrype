@@ -750,7 +750,7 @@ class AllFile(models.Model):
                                 related_name='+')
     name = models.CharField(max_length=255)
     created = models.DateTimeField(null=False, default=timezone.now)
-    tags = models.ManyToManyField(Tag, through='AllFileTag', related_name='+')
+    tags = models.ManyToManyField(Tag, through='AllFileTag')
     attrs = JSONField(null=True, blank=True)
     search = SearchVectorField(null=True, blank=True, editable=False)
     deleted = models.DateTimeField(null=True)
@@ -920,7 +920,7 @@ class DeadTag(models.Model):
         db_table = 'main_filetag'
 
     file = models.ForeignKey(DeadFile)
-    tag = models.ForeignKey(Tag)
+    tag = models.ForeignKey(Tag, related_name='+')
 
 
 class FileTag(models.Model):
@@ -929,7 +929,7 @@ class FileTag(models.Model):
         db_table = 'main_filetag'
 
     file = models.ForeignKey(File)
-    tag = models.ForeignKey(Tag)
+    tag = models.ForeignKey(Tag, related_name='files')
 
 
 class AllFileTag(models.Model):
@@ -937,7 +937,7 @@ class AllFileTag(models.Model):
         db_table = 'main_filetag'
 
     file = models.ForeignKey(AllFile)
-    tag = models.ForeignKey(Tag)
+    tag = models.ForeignKey(Tag, related_name='+')
 
 
 class FileVersion(UidModelMixin, models.Model):
