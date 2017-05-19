@@ -71,17 +71,21 @@ class FileInfo(object):
     isfile = True
     isdir = False
 
-    def __init__(self, obj, user):
+    def __init__(self, obj, user=None):
         self.object = obj
         if obj.user != user:
-            # This file is being shared.
-            self.user = user
-            self.name = obj.get_name(user)
-            self.path = obj.get_path(user)
-        else:
-            self.user = obj.user
-            self.name = obj.get_name(user)
-            self.path = obj.get_path(user)
+            if user is None:
+                user = obj.user
+
+        # Copy attributes from the File/Directory instance for the user that is
+        # going to view them.
+        self.user = user
+        self.name = obj.get_name(user)
+        self.path = obj.get_path(user)
+        try:
+            self.extension = obj.get_extension(user)
+        except AttributeError:
+            pass
 
     def __getattr__(self, name):
         try:
@@ -163,13 +167,13 @@ class MulticloudReader(MulticloudBase, FileLikeBase):
     """
     File-like object that reads from multiple clouds.
     """
-    def __init__(self, user, storage, file):
+    def __init__(self, user, storage, version):
         super().__init__(storage)
         self.user = user
-        self.file = file
+        self.version = version
         self.chunks = list(
             Chunk.objects.filter(
-                filechunks__file=file).order_by('filechunks__serial')
+                filechunks__fileversion=version).order_by('filechunks__serial')
         )
         self._buffer = []
         self._closed = False
@@ -190,7 +194,10 @@ class MulticloudReader(MulticloudBase, FileLikeBase):
                               key=lambda k: random.random()):
             cloud = self.get_storage(storage.storage)
             try:
-                return cloud.download(chunk)
+                data = cloud.download(chunk)
+                assert len(data) == chunk.size, 'Size mismatch'
+                assert crc32(data) == chunk.crc32, 'CRC32 mismatch'
+                return data
             except Exception as e:
                 LOGGER.exception(e)
                 continue
@@ -253,11 +260,11 @@ class MulticloudWriter(MulticloudBase, FileLikeBase):
     """
     File-like object that writes to multiple clouds.
     """
-    def __init__(self, user, clouds, file, chunk_size=DEFAULT_CHUNK_SIZE,
+    def __init__(self, user, clouds, version, chunk_size=DEFAULT_CHUNK_SIZE,
                  replicas=REPLICAS):
         super().__init__(clouds)
         self.user = user
-        self.file = file
+        self.version = version
         self.chunk_size = chunk_size
         self.replicas = replicas
         self._md5 = md5()
@@ -278,26 +285,38 @@ class MulticloudWriter(MulticloudBase, FileLikeBase):
 
         Writes chunk to multiple clouds.
         """
-        # Upload to N random providers where N is desired replica count.
-        chunk = Chunk.objects.create(crc32=crc32(data))
-        chunks_uploaded = 0
-        for storage in sorted(self.storage, key=lambda k: random.random()):
-            # We add one to replicas because replicas are the COPIES we write
-            # in addition to the base block.
-            if chunks_uploaded == self.replicas + 1:
-                break
-            try:
-                storage.upload(chunk, data)
-            except Exception as e:
-                LOGGER.exception(e)
-                continue
-            chunk.storage.add(
-                ChunkStorage.objects.create(chunk=chunk,
-                                            storage=storage.storage))
-            chunks_uploaded += 1
-        else:
-            raise IOError('Failed to write chunk')
-        self.file.add_chunk(chunk)
+        kwargs = {
+            'crc32': crc32(data),
+            'md5': md5(data).hexdigest(),
+            'size': len(data),
+        }
+        # Reuse a chunk if one exists.
+        try:
+            chunk = Chunk.objects.get(**kwargs)
+            # All that is left to do is to add this chunk to the version.
+        except Chunk.DoesNotExist:
+            chunk = Chunk.objects.create(**kwargs)
+
+            # Upload to N random providers where N is desired replica count.
+            chunks_uploaded = 0
+            for storage in sorted(self.storage, key=lambda k: random.random()):
+                # We add one to replicas because replicas are the COPIES we
+                # write in addition to the base block.
+                if chunks_uploaded == self.replicas + 1:
+                    break
+                try:
+                    storage.upload(chunk, data)
+                except Exception as e:
+                    LOGGER.exception(e)
+                    continue
+                chunk.storage.add(
+                    ChunkStorage.objects.create(chunk=chunk,
+                                                storage=storage.storage))
+                chunks_uploaded += 1
+            else:
+                raise IOError('Failed to write chunk')
+
+        self.version.add_chunk(chunk)
 
     def write(self, data):
         """
@@ -345,11 +364,11 @@ class MulticloudWriter(MulticloudBase, FileLikeBase):
             return
         self._write_chunk(b''.join(self._buffer))
         # Update content related attributes.
-        self.file.size = self._size
-        self.file.md5 = self._md5.hexdigest()
-        self.file.sha1 = self._sha1.hexdigest()
+        self.version.size = self._size
+        self.version.md5 = self._md5.hexdigest()
+        self.version.sha1 = self._sha1.hexdigest()
         # Flush to db.
-        self.file.save()
+        self.version.save(update_fields=['size', 'md5', 'sha1'])
         super().close()
 
 
@@ -374,7 +393,7 @@ class MulticloudFilesystem(MulticloudBase):
                 file = File.objects.get(path=path, user=self.user)
             except File.DoesNotExist:
                 raise FileNotFoundError(path)
-        return MulticloudReader(self.user, self.storage, file)
+        return MulticloudReader(self.user, self.storage, file.version)
 
     @transaction.atomic
     def upload(self, path, f):
@@ -389,8 +408,10 @@ class MulticloudFilesystem(MulticloudBase):
             'not enough storage (%s) for %s replicas' % (len(self.storage),
                                                          self.replicas)
 
-        file = File.objects.create(path=path, user=self.user)
-        with MulticloudWriter(self.user, self.storage, file,
+        file, _ = File.objects.get_or_create(path=path, user=self.user)
+        version = file.add_version()
+
+        with MulticloudWriter(self.user, self.storage, version,
                               chunk_size=self.chunk_size,
                               replicas=self.replicas) as out:
             for chunk in chunker(f, chunk_size=self.chunk_size):
@@ -414,7 +435,7 @@ class MulticloudFilesystem(MulticloudBase):
             except File.DoesNotExist:
                 raise FileNotFoundError(path)
         # We do not care about order...
-        for chunk in Chunk.objects.filter(filechunks__file=file):
+        for chunk in Chunk.objects.filter(filechunks__fileversion=file.version):
             for storage in chunk.storage.all():
                 cloud = self.get_storage(storage.storage)
                 try:
@@ -494,11 +515,13 @@ class MulticloudFilesystem(MulticloudBase):
             raise FileConflictError(dst)
         # Clone file first.
         dstfile = \
-            File.objects.create(md5=srcfile.md5, path=dst, user=self.user)
+            File.objects.create(size=srcfile.size, md5=srcfile.md5,
+                                sha1=srcfile.sha1, mime=srcfile.mime, path=dst,
+                                user=self.user)
         # Then clone it's chunks:
-        for chunk in Chunk.objects.filter(filechunks__file=srcfile).order_by(
+        for chunk in Chunk.objects.filter(filechunks__fileversion=srcfile.version).order_by(
                                           'filechunks__serial'):
-            dstfile.add_chunk(chunk)
+            dstfile.version.add_chunk(chunk)
         return dstfile
 
     @transaction.atomic

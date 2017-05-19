@@ -48,7 +48,7 @@ class FileTestCase(TestCase):
         self.assertEqual(dir1, Directory.objects.get(uid=dir1.uid))
         self.assertEqual(file1, File.objects.get(uid=file1.uid))
 
-        self.assertEqual('.txt', file1.extension)
+        self.assertEqual('.txt', file1.get_extension(self.user))
         self.assertTrue(str(file1).startswith('<'))
         self.assertTrue(str(file1).endswith('>'))
 
@@ -65,9 +65,9 @@ class FileTestCase(TestCase):
             path='/foo/bar', user=self.user,
             parent=Directory.objects.create(path='/foo', user=self.user))
 
-        chunk1 = Chunk.objects.create()
-        chunk2 = Chunk.objects.create()
-        filechunk1 = file.add_chunk(chunk1)
+        chunk1 = Chunk.objects.create(size=1024)
+        chunk2 = Chunk.objects.create(size=1024)
+        filechunk1 = file.version.add_chunk(chunk1)
 
         self.assertTrue(str(chunk1).startswith('<'))
         self.assertTrue(str(chunk1).endswith('>'))
@@ -86,14 +86,14 @@ class FileTestCase(TestCase):
         self.assertEqual('>', str(chunk1storage)[-1])
 
         self.assertTrue(
-            FileChunk.objects.filter(file=file, chunk=chunk1).exists())
+            FileChunk.objects.filter(fileversion=file.version, chunk=chunk1).exists())
 
-        file.add_chunk(chunk2)
+        file.version.add_chunk(chunk2)
 
-        self.assertEqual(2, FileChunk.objects.filter(file=file).count())
+        self.assertEqual(2, FileChunk.objects.filter(fileversion=file.version).count())
 
         for i, chunk in enumerate(FileChunk.objects.filter(
-                                  file=file).order_by('serial')):
+                                  fileversion=file.version).order_by('serial')):
             self.assertEqual(i + 1, chunk.serial)
 
         file.delete()

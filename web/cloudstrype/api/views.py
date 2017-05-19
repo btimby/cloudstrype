@@ -23,7 +23,7 @@ from main.fs.errors import (
 )
 from main.models import (
     User, BaseStorage, BaseUserStorage, OAuth2Storage, OAuth2UserStorage,
-    Directory, File, ChunkStorage, Option, Tag,
+    Directory, File, ChunkStorage, Option, Tag, AllFile
 )
 
 
@@ -195,6 +195,8 @@ class DirectorySerializer(serializers.ModelSerializer):
         return obj.tags.all().values_list('name', flat=True)
 
     def get_path(self, obj):
+        # This is not a model attribute, since we are rendering from a FileInfo
+        # instance, we must fake it.
         return obj.path
 
 
@@ -205,14 +207,17 @@ class FileSerializer(serializers.ModelSerializer):
     Provides details about a File.
     """
 
-    chunks = serializers.SerializerMethodField()
+    # TODO: replace with version
+    # chunks = serializers.SerializerMethodField()
     tags = serializers.SerializerMethodField()
     path = serializers.SerializerMethodField()
+    extension = serializers.SerializerMethodField()
+    raid_level = serializers.SerializerMethodField()
 
     class Meta:
         model = File
-        fields = ('uid', 'name', 'extension', 'path', 'size', 'chunks', 'md5',
-                  'sha1', 'mime', 'created', 'raid_level', 'tags', 'attrs',
+        fields = ('uid', 'name', 'extension', 'path', 'size', 'md5', 'sha1',
+                  'mime', 'created', 'raid_level', 'tags', 'attrs',
                   'shared_with')
 
     def get_chunks(self, obj):
@@ -229,7 +234,19 @@ class FileSerializer(serializers.ModelSerializer):
         return obj.tags.all().values_list('name', flat=True)
 
     def get_path(self, obj):
+        # This is not a model attribute, since we are rendering from a FileInfo
+        # instance, we must fake it.
         return obj.path
+
+    def get_extension(self, obj):
+        # This is not a model attribute, since we are rendering from a FileInfo
+        # instance, we must fake it.
+        return obj.extension
+
+    def get_raid_level(self, obj):
+        # This is not a model attribute, since we are rendering from a FileInfo
+        # instance, we must fake it.
+        return obj.raid_level
 
 
 class DirectoryListingSerializer(serializers.Serializer):
@@ -527,6 +544,7 @@ class FileTagView(generics.ListAPIView):
 
     def get_queryset(self):
         return InfoView(
+            # TODO: This should be file instances!
             File.objects.filter(user=self.request.user,
                                 tags__name=self.kwargs['name']),
             self.request.user,

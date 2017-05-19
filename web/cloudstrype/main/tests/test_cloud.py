@@ -27,8 +27,8 @@ class OAuth2APIClientTestCase(TestCase):
             storage=cls.storage, access_token='test-access_token',
             refresh_token='test-refresh_token', attrs={'root.id': '0'})
         cls.file = File.objects.create(path='/foo', user=cls.user)
-        cls.chunk = Chunk.objects.create(crc32=crc32(b'foo'))
-        cls.file.add_chunk(cls.chunk)
+        cls.chunk = Chunk.objects.create(crc32=crc32(b'foo'), size=1024)
+        cls.file.version.add_chunk(cls.chunk)
 
     def setUp(self):
         self.client = self.oauth_access.get_client()

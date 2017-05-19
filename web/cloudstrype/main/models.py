@@ -584,6 +584,11 @@ class Directory(UidModelMixin, models.Model):
         parent_path = self.parent.get_path(user) if self.parent else '/'
         return pathjoin(parent_path, self.get_name(user))
 
+    def add_tag(self, tag):
+        if isinstance(tag, str):
+            tag, _ = Tag.objects.get_or_create(name=tag)
+        self.tags.add(tag)
+
     def share(self, user):
         """
         Share the directory with another user.
@@ -643,11 +648,23 @@ class FileManager(models.Manager):
         """
         return FileQuerySet(self.model, using=self._db)
 
+    @transaction.atomic
     def create(self, *args, **kwargs):
         if 'user' not in kwargs:
             raise ValueError('User required for file creation')
         FileQuerySet._args(self.model, kwargs)
-        return super().create(*args, **kwargs)
+        version = kwargs['version'] = FileVersion.objects.create()
+        version.file = super().create(*args, **kwargs)
+        version.save(update_fields=['file'])
+        return version.file
+
+    def get_or_create(self, *args, **kwargs):  # noqa: D402
+        """
+        Override default get_or_create().
+        """
+        # It might be better to do this in save().
+        FileQuerySet._args(self.model, kwargs)
+        return super().get_or_create(*args, **kwargs)
 
     def children_of(self, dir, user=None, name=None):
         if user is None:
@@ -666,49 +683,125 @@ class FileManager(models.Manager):
         return self.filter(file_q)
 
 
+class AllFile(models.Model):
+    """
+    This model backs File and DeadFile.
+    """
+
+    class Meta:
+        # Weird bug, when this attr is in place, the created migration fails
+        # with:
+        #
+        # ProgrammingError: referenced relation "main_livefile" is not a table
+        #
+        # When it is not in place, tests fail with:
+        #
+        # ProgrammingError: relation "main_allfile" does not exist
+        #
+        # My solution is to remove the field from the migration (it is
+        # commented out) and leave this attr.
+        db_table = 'main_file'
+
+    user = models.ForeignKey(User, related_name='all_files',
+                             on_delete=models.CASCADE)
+    parent = models.ForeignKey(Directory, null=True, related_name='all_files',
+                               on_delete=models.CASCADE)
+    version = models.ForeignKey('FileVersion', null=False, blank=False,
+                                related_name='all_current_of')
+    name = models.CharField(max_length=255)
+    created = models.DateTimeField(null=False, default=timezone.now)
+    tags = models.ManyToManyField(Tag, through='AllFileTag')
+    attrs = JSONField(null=True, blank=True)
+    search = SearchVectorField(null=True, blank=True, editable=False)
+    deleted = models.DateTimeField(null=True)
+
+    objects = FileManager()
+
+
 class File(UidModelMixin, models.Model):
     """
     File model.
 
-    Represents a file in the FS.
+    Represents a file in the FS. This table is presented as two views via the
+    models LiveFile and DeadFile.
     """
 
     class Meta:
-        unique_together = ('parent', 'name', 'version')
+        managed = False
+        db_table = 'main_livefile'
+        unique_together = ('parent', 'name')
 
     user = models.ForeignKey(User, related_name='files',
                              on_delete=models.CASCADE)
     parent = models.ForeignKey(Directory, null=True, related_name='files',
                                on_delete=models.CASCADE)
+    version = models.ForeignKey('FileVersion', null=False, blank=False,
+                                related_name='current_of')
     name = models.CharField(max_length=255)
-    size = models.IntegerField(default=0)
-    md5 = models.CharField(max_length=32)
-    sha1 = models.CharField(max_length=40)
-    mime = models.CharField(max_length=64)
-    raid_level = models.SmallIntegerField(null=False, default=1)
     created = models.DateTimeField(null=False, default=timezone.now)
-    tags = models.ManyToManyField(Tag)
+    # TODO: is there another way? This field is M2M, so djanog make assumptions
+    # about the table that handles the relationship. They are wrong since the
+    # relationship is actually with AllFile (main_file). Perhaps a through
+    # table?
+    tags = models.ManyToManyField(Tag, through='FileTag')
     attrs = JSONField(null=True, blank=True)
-    version = models.IntegerField(null=False, blank=False, default=0)
     search = SearchVectorField(null=True, blank=True, editable=False)
+    deleted = models.DateTimeField(null=True)
 
     objects = FileManager()
+
+    @property
+    def size(self):
+        return self.version.size
+
+    @property
+    def md5(self):
+        return self.version.md5
+
+    @property
+    def sha1(self):
+        return self.version.sha1
+
+    @property
+    def mime(self):
+        return self.version.mime
+
+    @property
+    def raid_level(self):
+        return self.version.raid_level
 
     def __str__(self):
         return '<File: %s>' % self.name
 
-    def save(self, *args, **kwargs):
-        if not self.mime:
-            # If mimetype is unknown, try to determine file's mime type based
-            # on it's name.
-            self.mime, _ = mimetypes.guess_type(self.name, strict=False)
-            if self.mime is None:
-                self.mime = 'application/octet-stream'
-        return super().save(*args, **kwargs)
+    def __init__(self, *args, **kwargs):
+        # Divert args to the version.
+        v_kwargs = {}
+        for name in ('size', 'md5', 'sha1', 'mime'):
+            try:
+                v_kwargs[name] = kwargs.pop(name)
+            except KeyError:
+                pass
+        kwargs['version'] = FileVersion.objects.create(**v_kwargs)
+        return super().__init__(*args, **kwargs)
 
-    @property
-    def extension(self):
-        return splitext(self.name)[1]
+    def save(self, *args, **kwargs):
+        mime, _ = mimetypes.guess_type(self.name, strict=False)
+        mime = mime if mime else 'application/octet-stream'
+        if not self.version:
+            self.version = FileVersion.objects.create(mime=mime)
+        else:
+            self.version.mime = mime
+            self.version.save(update_fields=['mime'])
+        self.version.file = super().save(*args, **kwargs)
+        self.version.save()
+        return self
+
+    def delete(self):
+        self.deleted = timezone.now()
+        self.save(update_fields=['deleted'])
+
+    def get_extension(self, user):
+        return splitext(self.get_name(user))[1]
 
     def get_name(self, user):
         if self.user == user:
@@ -719,14 +812,20 @@ class File(UidModelMixin, models.Model):
         parent_path = self.parent.get_path(user) if self.parent else '/'
         return pathjoin(parent_path, self.get_name(user))
 
+    def revert(self, version):
+        self.current = version
+        self.save(update_fields=['current'])
+
+    def add_tag(self, tag):
+        if isinstance(tag, str):
+            tag, _ = Tag.objects.get_or_create(name=tag)
+        return FileTag.objects.create(file=self, tag=tag)
+
     @transaction.atomic
-    def add_chunk(self, chunk):
-        "Adds a chunk to a file, taking care to set the serial number."
-        fc = FileChunk(file=self, chunk=chunk)
-        fc.serial = (FileChunk.objects.filter(file=self).select_for_update(
-            ).aggregate(Max('serial'))['serial__max'] or 0) + 1
-        fc.save()
-        return fc
+    def add_version(self):
+        self.version = FileVersion.objects.create(file=self)
+        self.save(update_fields=['version'])
+        return self.version
 
     def share(self, user):
         """
@@ -740,14 +839,80 @@ class File(UidModelMixin, models.Model):
         return share
 
 
-class FileVersion(models.Model):
-    class Meta:
-        indexes = [
-            models.Index(fields=['file', 'version']),
-        ]
+class DeadFile(UidModelMixin, models.Model):
+    """
+    View.
 
-    file = models.OneToOneField(File)
-    version = models.IntegerField(null=False, blank=False)
+    Represents all deleted files. Deleting one of these actually removes the
+    record.
+    """
+
+    class Meta:
+        managed = False
+        db_table = 'main_deadfile'
+
+    user = models.ForeignKey(User, related_name='dead_files',
+                             on_delete=models.CASCADE)
+    parent = models.ForeignKey(Directory, null=True, related_name='dead_files',
+                               on_delete=models.CASCADE)
+    version = models.ForeignKey('FileVersion', null=False, blank=False,
+                                related_name='dead_current_of')
+    name = models.CharField(max_length=255)
+    created = models.DateTimeField(null=False, default=timezone.now)
+    tags = models.ManyToManyField(Tag, through='DeadTag')
+    attrs = JSONField(null=True, blank=True)
+    search = SearchVectorField(null=True, blank=True, editable=False)
+    deleted = models.DateTimeField(null=True)
+
+    objects = FileManager()
+
+    def __str__(self):
+        return '<Dead: %s>' % self.name
+
+
+class DeadTag(models.Model):
+    class Meta:
+        managed = False
+        db_table = 'main_filetag'
+
+    file = models.ForeignKey(DeadFile)
+    tag = models.ForeignKey(Tag)
+
+
+class FileTag(models.Model):
+    class Meta:
+        managed = False
+        db_table = 'main_filetag'
+
+    file = models.ForeignKey(File)
+    tag = models.ForeignKey(Tag)
+
+
+class AllFileTag(models.Model):
+    class Meta:
+        db_table = 'main_filetag'
+
+    file = models.ForeignKey(AllFile)
+    tag = models.ForeignKey(Tag)
+
+
+class FileVersion(models.Model):
+    file = models.ForeignKey(File, null=True, related_name='versions')
+    size = models.IntegerField(default=0)
+    md5 = models.CharField(max_length=32)
+    sha1 = models.CharField(max_length=40)
+    mime = models.CharField(max_length=64)
+    raid_level = models.SmallIntegerField(null=False, default=1)
+    created = models.DateTimeField(null=False, default=timezone.now)
+
+    @transaction.atomic
+    def add_chunk(self, chunk):
+        "Adds a chunk to a file, taking care to set the serial number."
+        fc = FileChunk(fileversion=self, chunk=chunk)
+        fc.serial = (FileChunk.objects.filter(fileversion=self).select_for_update(
+            ).aggregate(Max('serial'))['serial__max'] or 0) + 1
+        fc.save()
+        return fc
 
 
 class FileStat(models.Model):
@@ -792,10 +957,11 @@ class Chunk(UidModelMixin, models.Model):
     the same content can be shared by many files.
     """
 
-    file = models.ManyToManyField(to=File, through='FileChunk',
-                                  related_name='chunks')
+    fileversion = models.ManyToManyField(to=FileVersion, through='FileChunk',
+                                         related_name='chunks')
     crc32 = models.IntegerField(null=False, blank=False, default=0)
     md5 = models.CharField(null=False, blank=False, max_length=32)
+    size = models.IntegerField(null=False, blank=False)
 
     def __str__(self):
         return '<Chunk %s>' % self.uid
@@ -822,10 +988,10 @@ class FileChunk(models.Model):
     """
 
     class Meta:
-        unique_together = ('file', 'serial')
+        unique_together = ('fileversion', 'serial')
 
-    file = models.ForeignKey(File, on_delete=models.CASCADE,
-                             related_name='filechunks')
+    fileversion = models.ForeignKey(FileVersion, on_delete=models.CASCADE,
+                                    related_name='filechunks')
     chunk = models.ForeignKey(Chunk, on_delete=models.PROTECT,
                               related_name='filechunks')
     serial = models.IntegerField(default=0)
@@ -833,7 +999,7 @@ class FileChunk(models.Model):
     objects = FileChunkManager()
 
     def __str__(self):
-        return '<FileChunk %s[%s]>' % (self.file.name, self.serial)
+        return '<FileChunk %s>' % self.serial
 
 
 class ChunkStorage(models.Model):

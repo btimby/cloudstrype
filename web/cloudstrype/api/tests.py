@@ -6,7 +6,7 @@ from django.urls import reverse
 from rest_framework.test import APIClient
 
 from main.models import (
-    User, Option, OAuth2Storage, OAuth2UserStorage, File, Directory, Tag,
+    User, Option, OAuth2Storage, OAuth2UserStorage, File, Directory, Tag, FileTag
 )
 from main.tests.test_fs import MockClients
 
@@ -69,9 +69,9 @@ class APITestCase(TestCase):
             Tag.objects.create(name='bar'),
             Tag.objects.create(name='baz'),
         ]
-        cls.file.tags.add(cls.tags[0])
-        cls.file.tags.add(cls.tags[1])
-        cls.dir.tags.add(cls.tags[2])
+        cls.file.add_tag('foo')
+        cls.file.add_tag('bar')
+        cls.dir.add_tag('baz')
 
     def setUp(self):
         self.client.force_login(self.user)
