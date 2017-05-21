@@ -333,11 +333,13 @@ class MulticloudFilesystem(MulticloudBase):
         Uses Metastore backend to resolve path to a series of chunks. Returns a
         MulticloudReader that can read these chunks in order.
         """
+        # If caller did not give a file (only a path), lookup the file by path.
         if file is None:
             try:
                 file = UserFile.objects.get(path=path, user=self.user)
             except UserFile.DoesNotExist:
                 raise FileNotFoundError(path)
+        # If caller did not specify version, select the current one.
         if version is None:
             version = file.file.version
         return MulticloudReader(self.user, self.storage, version)
@@ -361,11 +363,12 @@ class MulticloudFilesystem(MulticloudBase):
             # If it exists, make a new version of it.
             version = user_file.file.add_version()
         except UserFile.DoesNotExist:
-            # Attach that to a new file.
+            # Create a new file. A File necessarily creates a new version.
             file = File.objects.create(owner=self.user)
             # Place the new file into the user's hierarchy.
             user_file = UserFile.objects.create(
                 path=path, file=file, name=basename(path), user=self.user)
+            # Grab ref to version, since we upload to THAT.
             version = file.version
 
         # Upload the file.
@@ -374,6 +377,7 @@ class MulticloudFilesystem(MulticloudBase):
                               replicas=self.replicas) as out:
             for chunk in chunker(f, chunk_size=self.chunk_size):
                 out.write(chunk)
+
         return user_file
 
     @transaction.atomic
@@ -394,13 +398,11 @@ class MulticloudFilesystem(MulticloudBase):
                 raise FileNotFoundError(path)
         file.delete()
 
-    @transaction.atomic
     def mkdir(self, path):
         if self.isfile(path):
             raise FileConflictError(path)
         return UserDir.objects.create(path=path, user=self.user)
 
-    @transaction.atomic
     def rmdir(self, path, dir=None):
         if dir is None:
             try:
@@ -427,30 +429,29 @@ class MulticloudFilesystem(MulticloudBase):
     def _move_dir(self, dir, dst):
         if self.isfile(dst):
             raise DirectoryConflictError(dst)
-        # We need to relocate.
         try:
+            # First try moving the directory to the given path. If this fails,
+            # it means the given path does not exist, and thus the given path
+            # is the intended name of dir.
             dir.parent = \
                 UserDir.objects.get(path=dst, user=self.user)
         except UserDir.DoesNotExist:
+            # If the given path does not exist (not intended to be parent)
+            # maybe we just need to rename.
             if dirname(dst) == dirname(dir.path):
                 # This is just a rename...
                 dir.name = basename(dst)
                 dir.save(update_fields=['name'])
                 return dir
+            # No, in this case, we were asked to move to a non-existant
+            # directory so raise.
             raise DirectoryNotFoundError(dst)
-        kwargs = {
-            'user': self.user,
-            'path': pathjoin(dst, dir.name),
-        }
-        UserDirQuerySet._args(UserDir, kwargs)
-        for name, value in kwargs.items():
-            setattr(dir, name, value)
-        update_fields = ['parent']
-        update_fields.extend(kwargs.keys())
-        dir.save(update_fields=update_fields)
+        else:
+            # OK, the parent has been changed, we move it into the requested
+            # directory.
+            dir.save(update_fields=['parent'])
         return dir
 
-    @transaction.atomic
     def move(self, src, dst):
         try:
             file = UserFile.objects.get(path=src, user=self.user)
@@ -466,25 +467,39 @@ class MulticloudFilesystem(MulticloudBase):
 
     @transaction.atomic
     def _copy_file(self, srcfile, dst):
+        # If destination is a directory, then put this file inside of it.
         if self.isdir(dst):
             dst = pathjoin(dst, srcfile.name)
-        if self.isfile(dst):
+        # If destination exists, raise conflict. Remember, this is not an elif,
+        # so we are checking the original destination if it was not a directory
+        # or the adjusted one if it was a directory.
+        if self.exists(dst):
             raise FileConflictError(dst)
         # Create a new file, attach the version from the original (copy).
         file = \
             File.objects.create(owner=self.user, version=srcfile.file.version)
-        dstfile = \
-            UserFile.objects.create(path=dst, file=file, user=self.user)
+        # Place the new file into the user's hierarchy.
+        dstfile = UserFile.objects.create(path=dst, file=file, user=self.user,
+                                          attrs=srcfile.attrs)
+        for tag in srcfile.tags.all():
+            FileTag.objects.create(file=dstfile, tag=tag)
         return dstfile
 
     @transaction.atomic
     def _copy_dir(self, srcdir, dst):
+        # If destination is a directory, then put this directory inside of it.
         if self.isdir(dst):
             dst = pathjoin(dst, srcdir.name)
-        if self.isfile(dst):
+        # If destination exists, raise conflict. Remember, this is not an elif,
+        # so we are checking the original destination if it was not a directory
+        # or the adjusted one if it was a directory.
+        if self.exists(dst):
             raise FileConflictError(dst)
-        # Clone dir first.
-        dstdir = UserDir.objects.create(path=dst, user=self.user)
+        # Clone srcdir first.
+        dstdir = UserDir.objects.create(path=dst, user=self.user,
+                                        attrs=srcdir.attrs)
+        for tag in srcdir.tags.all():
+            dstdir.tags.add(tag)
         # Then copy children recursively.
         for subdir in srcdir.child_dirs.all():
             self._copy_dir(subdir, dstdir.path)
@@ -492,7 +507,6 @@ class MulticloudFilesystem(MulticloudBase):
             self._copy_file(subfile, dstdir.path)
         return dstdir
 
-    @transaction.atomic
     def copy(self, src, dst):
         try:
             file = UserFile.objects.get(path=src, user=self.user)
@@ -512,8 +526,11 @@ class MulticloudFilesystem(MulticloudBase):
                 dir = UserDir.objects.get(path=path, user=self.user)
             except UserDir.DoesNotExist:
                 raise DirectoryNotFoundError(path)
-        dirs, files = dir.child_dirs.all(), dir.child_files.all()
-        return DirectoryListing(dir, dirs, files)
+        return DirectoryListing(
+            dir,
+            dir.child_dirs.all(),
+            dir.child_files.all()
+        )
 
     def info(self, path, file=None, dir=None):
         if file is not None:
@@ -537,4 +554,5 @@ class MulticloudFilesystem(MulticloudBase):
         return UserFile.objects.filter(path=path, user=self.user).exists()
 
     def exists(self, path):
-        return self.isdir(path) or self.isfile(path)
+        return self.isdir(path) or \
+               self.isfile(path)
