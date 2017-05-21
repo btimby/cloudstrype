@@ -732,6 +732,11 @@ class UserDeadFileView(UserFileView):
 
     objects = UserFileViewManager()
 
+    def undelete(self):
+        self.deleted = None
+        self.parent = UserDir.objects.get_root(self.user)
+        self.save(update_fields=['deleted', 'parent'])
+
 
 class UserFileQuerySet(UidQuerySet):
     @staticmethod
