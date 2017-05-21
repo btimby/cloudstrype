@@ -66,7 +66,7 @@ class FilesystemTestCase(TestCase):
             with BytesIO(TEST_FILE) as f:
                 file = fs.upload('/foo', f)
 
-            self.assertEqual('/foo', file.get_path(self.user))
+            self.assertEqual('/foo', file.path)
 
             with fs.download('/foo') as f:
                 self.assertEqual(TEST_FILE, f.read())
@@ -90,7 +90,7 @@ class FilesystemTestCase(TestCase):
 
             mock_clients.clients[2].data.clear()
 
-            self.assertEqual('/foo', file.get_path(self.user))
+            self.assertEqual('/foo', file.path)
 
             with BytesIO() as o:
                 with fs.download('/foo') as f:
@@ -105,7 +105,7 @@ class FilesystemTestCase(TestCase):
     def test_mkdir(self):
         fs = MulticloudFilesystem(self.user)
         dir = fs.mkdir('/foo')
-        self.assertEqual('/foo', dir.get_path(self.user))
+        self.assertEqual('/foo', dir.path)
         fs.rmdir('/foo')
         with self.assertRaises(DirectoryNotFoundError):
             fs.rmdir('/foo')
@@ -266,10 +266,10 @@ class FilesystemTestCase(TestCase):
                 fi = fs.upload('/foo', f)
 
             # Two versions of the file should be produced.
-            self.assertEqual(2, fi.obj.versions.count())
+            self.assertEqual(2, fi.file.versions.count())
 
             # Both versions should share chunks
-            v1, v2 = fi.obj.versions.all()
+            v1, v2 = fi.file.versions.all()
             self.assertEqual(
                 [c.uid for c in v1.chunks.all()],
                 [c.uid for c in v2.chunks.all()],
@@ -295,11 +295,15 @@ class SharingTestCase(TestCase):
                 # Then shares it with User B.
                 dira.share(self.userb)
 
-                self.assertTrue(fsb.isdir('/foo (foo@a.org)'))
-                self.assertFalse(fsb.isfile('/foo (foo@a.org)'))
+                self.assertTrue(fsb.isdir('/foo (foo@b.org)'))
+                self.assertFalse(fsb.isfile('/foo (foo@b.org)'))
 
                 listing = fsb.listdir('/')
                 self.assertEqual(1, len(listing.dirs))
+
+                fsb.move('/foo (foo@b.org)', '/foo-bar')
+                self.assertTrue(fsa.exists('/foo'))
+                self.assertTrue(fsb.exists('/foo-bar'))
 
 
 class GetclientTestCase(TestCase):

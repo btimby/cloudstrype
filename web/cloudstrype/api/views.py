@@ -23,7 +23,8 @@ from main.fs.errors import (
 )
 from main.models import (
     User, BaseStorage, BaseUserStorage, OAuth2Storage, OAuth2UserStorage,
-    Directory, File, ChunkStorage, Option, Tag, FileVersion
+    UserDir, UserFile, ChunkStorage, Option, Tag, Version, FileVersion,
+    UserFileView
 )
 
 
@@ -184,7 +185,7 @@ class DirectorySerializer(serializers.ModelSerializer):
     path = serializers.SerializerMethodField()
 
     class Meta:
-        model = Directory
+        model = UserDir
         fields = ('uid', 'name', 'path', 'mime', 'created', 'tags', 'attrs',
                   'shared_with')
 
@@ -212,14 +213,13 @@ class FileSerializer(serializers.ModelSerializer):
     tags = serializers.SerializerMethodField()
     path = serializers.SerializerMethodField()
     extension = serializers.SerializerMethodField()
-    raid_level = serializers.SerializerMethodField()
     version = serializers.SerializerMethodField()
 
     class Meta:
-        model = File
+        model = UserFileView
         fields = ('uid', 'name', 'extension', 'path', 'size', 'md5', 'sha1',
-                  'mime', 'created', 'raid_level', 'tags', 'attrs',
-                  'shared_with', 'version', 'versions')
+                  'mime', 'created', 'tags', 'attrs', 'shared_with', 'version',
+                  'versions')
 
     def get_chunks(self, obj):
         # These names are a bit long...
@@ -244,13 +244,8 @@ class FileSerializer(serializers.ModelSerializer):
         # instance, we must fake it.
         return obj.extension
 
-    def get_raid_level(self, obj):
-        # This is not a model attribute, since we are rendering from a FileInfo
-        # instance, we must fake it.
-        return obj.raid_level
-
     def get_version(self, obj):
-        return obj.version.uid
+        return obj.version_uid
 
 
 class FileVersionSerializer(serializers.ModelSerializer):
@@ -263,6 +258,12 @@ class FileVersionSerializer(serializers.ModelSerializer):
     class Meta:
         model = FileVersion
         fields = ('uid', 'size', 'md5', 'sha1', 'mime', 'created')
+
+    size = serializers.IntegerField(source='version.size')
+    md5 = serializers.CharField(source='version.md5')
+    sha1 = serializers.CharField(source='version.sha1')
+    mime = serializers.CharField(source='version.mime')
+
 
 
 class DirectoryListingSerializer(serializers.Serializer):
@@ -500,7 +501,8 @@ class FileVersionUidView(FSMixin, views.APIView):
         except File.DoesNotExist:
             raise exceptions.NotFound(uid)
         return response.Response(
-            FileVersionSerializer(file.versions.all(), many=True).data)
+            FileVersionSerializer(FileVersion.objects.filter(file=file),
+                                  many=True).data)
 
 
 class FileVersionPathView(FSMixin, views.APIView):
@@ -511,20 +513,21 @@ class FileVersionPathView(FSMixin, views.APIView):
         except FileNotFoundError:
             raise exceptions.NotFound(path)
         return response.Response(
-            FileVersionSerializer(file.versions.all(), many=True).data)
+            FileVersionSerializer(FileVersion.objects.filter(file=file),
+                                  many=True).data)
 
 
 class FileVersionDataUidView(FSMixin, views.APIView):
     def get(self, request, uid, format=None):
         try:
             version = FileVersion.objects.get(uid=uid)
-        except FileVersion.DoesNotExist:
+        except Version.DoesNotExist:
             raise exceptions.NotFound(uid)
         file = version.file
         response = StreamingHttpResponse(
             self.get_fs().download(file.get_path(request.user), file=file,
-                                   version=version),
-            content_type=version.mime)
+                                   version=version.version),
+            content_type=version.version.mime)
         if request.GET.get('download', None):
             response['Content-Disposition'] = \
                 'attachment; filename="%s"' % file.name

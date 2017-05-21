@@ -18,7 +18,7 @@ from django.contrib.auth.base_user import (
     AbstractBaseUser, BaseUserManager
 )
 from django.contrib.postgres.fields import JSONField
-from django.contrib.postgres.search import SearchVectorField
+# from django.contrib.postgres.search import SearchVectorField
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import models, transaction
 from django.db.models import Max
@@ -44,7 +44,7 @@ def SET_FIELD(field_name, value):
         def set_on_delete(collector, field, sub_objs, using):
             field = field.model._meta.get_field(field_name)
             collector.add_field_update(field, value, sub_objs)
-    set_on_delete.deconstruct = lambda: ('SET_FIELD', (field_name, value,), {})
+    set_on_delete.deconstruct = lambda: ('main.models.SET_FIELD', (field_name, value,), {})
     return set_on_delete
 
 
@@ -464,6 +464,13 @@ class OAuth2UserStorage(BaseUserStorage):
 
 
 class BasicUserStorage(BaseUserStorage):
+    """
+    Storage location requring BASIC auth.
+
+    Represent a storage location that requires BASIC username/password
+    authentication such as FTP sites.
+    """
+
     url = models.URLField(max_length=256)
     username = models.CharField(max_length=256)
     # TODO: encrypt this.
@@ -488,7 +495,7 @@ class Tag(models.Model):
     name = models.CharField(null=False, max_length=32)
 
 
-class DirectoryQuerySet(UidQuerySet):
+class UserDirQuerySet(UidQuerySet):
     """
     QuerySet for Directories.
 
@@ -498,29 +505,43 @@ class DirectoryQuerySet(UidQuerySet):
     @staticmethod
     def _args(model, kwargs):
         """Convert path to name/parents."""
-        UidQuerySet._args(model, kwargs)
         path = kwargs.pop('path', None)
-        if path:
-            parents = normpath(path.lstrip('/')).split('/')
+        if path is not None:
+            try:
+                user = kwargs['user']
+            except KeyError:
+                raise ValueError('`user` argument required with `path`')
+            parents = path.lstrip('/').split('/')
             kwargs['name'] = parents.pop()
-            obj = None
-            for part in parents:
-                obj = Directory.objects.get(name=part, parent=obj)
-            kwargs['parent'] = obj
+            # This is the "root" for the user. We want to enforce uniqueness
+            # for (user, name, parent), but if parent is NULL, we cannot do so.
+            # Thus we use this "root" as the parent of everything at the
+            # top-level.
+            obj = UserDir.objects.get_root(user)
+            if parents:
+                for part in parents:
+                    obj = obj.child_dirs.get(name=part)
+                kwargs['parent'] = obj
+            elif kwargs['name'] == '':
+                # If name is also blank, they are looking for ROOT, thus parent
+                # should be null.
+                kwargs['parent'] = None
+            else:
+                kwargs['parent'] = obj
 
     def filter(self, *args, **kwargs):
         """Filter objects using full path."""
         try:
-            DirectoryQuerySet._args(self.model, kwargs)
-        except Directory.DoesNotExist:
+            UserDirQuerySet._args(self.model, kwargs)
+        except UserDir.DoesNotExist:
             # We failed to find a parent for the given path, thus it cannot
             # exist.
             return super().none()
         return super().filter(*args, **kwargs)
 
 
-class DirectoryManager(models.Manager):
-    """Manage Directory model."""
+class UserDirManager(models.Manager):
+    """Manage UserDir model."""
 
     def get_queryset(self):
         """
@@ -528,19 +549,17 @@ class DirectoryManager(models.Manager):
 
         Allow filtering with full path.
         """
-        return DirectoryQuerySet(self.model, using=self._db)
+        return UserDirQuerySet(self.model, using=self._db)
 
     def create(self, *args, **kwargs):
-        if 'user' not in kwargs:
-            raise ValueError('User required for directory creation')
         # Preserve this arg (_args() pops it...)
         path = kwargs.get('path', None)
         try:
-            DirectoryQuerySet._args(self.model, kwargs)
-        except Directory.DoesNotExist:
+            UserDirQuerySet._args(self.model, kwargs)
+        except UserDir.DoesNotExist:
             # Parent missing, create...
             parent = dirname(path.lstrip('/'))
-            kwargs['parent'], _ = Directory.objects.get_or_create(
+            kwargs['parent'], _ = UserDir.objects.get_or_create(
                 user=kwargs['user'], path=parent)
         return super().create(*args, **kwargs)
 
@@ -549,99 +568,187 @@ class DirectoryManager(models.Manager):
         Override default get_or_create().
         """
         # It might be better to do this in save().
-        DirectoryQuerySet._args(self.model, kwargs)
+        UserDirQuerySet._args(self.model, kwargs)
         return super().get_or_create(*args, **kwargs)
 
-    def children_of(self, dir, user=None, dirs_only=False, name=None):
-        if user is None:
-            user = dir.user
-
-        dir_q_kwargs = {'parent': dir, 'user': user}
-        if name:
-            dir_q_kwargs['name'] = name
-        dir_q = Q(**dir_q_kwargs)
-
-        dir_q_kwargs = {'shared_with__parent': dir, 'shared_with__user': user}
-        if name:
-            dir_q_kwargs['shared_with__name'] = name
-        dir_q |= Q(**dir_q_kwargs)
-
-        return self.filter(dir_q), File.objects.none() if dirs_only else \
-            File.objects.children_of(dir, user, name=name)
+    def get_root(self, user):
+        """Get a UserDir that serves as the user's "root"."""
+        return UserDir.objects.get_or_create(user=user, name='')[0]
 
 
-class Directory(UidModelMixin, models.Model):
+class UserDir(UidModelMixin, models.Model):
     """
-    Directory model.
+    File hierarchy for a User.
 
-    Represents a directory in the FS.
+    This model represents the hierarchy containing files for a given user. Each
+    user can locate files within any directory they please (even if the file is
+    shared amongst multiple users).
     """
 
     class Meta:
         unique_together = ('user', 'name', 'parent')
 
     user = models.ForeignKey(User, on_delete=models.CASCADE)
-    parent = models.ForeignKey('self', null=True, related_name='dirs',
+    parent = models.ForeignKey('self', null=True, related_name='child_dirs',
                                on_delete=models.CASCADE)
     name = models.CharField(max_length=255)
     created = models.DateTimeField(null=False, default=timezone.now)
     tags = models.ManyToManyField(Tag)
     attrs = JSONField(null=True, blank=True)
-    search = SearchVectorField(null=True, blank=True, editable=False)
 
-    objects = DirectoryManager()
+    objects = UserDirManager()
 
     def __str__(self):
-        return '<Directory: %s>' % self.name
+        return self.path
 
-    def get_name(self, user):
-        if self.user == user:
-            return self.name
-        return self.shared_with.get(user=user).name
-
-    def get_path(self, user):
-        parent_path = self.parent.get_path(user) if self.parent else '/'
-        return pathjoin(parent_path, self.get_name(user))
+    @property
+    def path(self):
+        parent_path = self.parent.path if self.parent else ''
+        return pathjoin('/', parent_path, self.name)
 
     def add_tag(self, tag):
         if isinstance(tag, str):
             tag, _ = Tag.objects.get_or_create(name=tag)
         self.tags.add(tag)
 
-    def share(self, user):
+    def share(self, user, parent=None, name=None, recursive=False):
         """
         Share the directory with another user.
         """
-        # The shared directory will show up in the receiving user's "root".
-        name = self.name + ' (%s)' % self.user.email
-        share = DirectoryShare.objects.create(
-            user=user, directory=self, name=name)
-        user.shared_directories.add(share)
-        return share
+        if parent is None:
+            # Get the target user's "root".
+            parent = UserDir.objects.get_root(user=user)
+        if name is None:
+            # Inherit the name.
+            name = '%s (%s)' % (self.name, user.email)
+        dir = UserDir.objects.create(parent=parent, name=name, user=user)
+        for f in self.child_files.all():
+            f.share(user, parent=dir)
+        if recursive:
+            for d in self.child_dirs.all():
+                d.share(user, parent=dir, name=d.name, recursive=recursive)
+        return dir
 
 
-class DirectoryShare(models.Model):
+class UserFileViewManager(UidManagerMixin, models.Manager):
+    pass
+
+
+class UserFileView(UidModelMixin, models.Model):
     """
-    DirectoryShare model.
+    View that pre-joins file tables.
 
-    Represents a directory shared by one user to another.
+    Meant to be the "public" interface for file information. The API should
+    export this model. The other underlying models are used for individual
+    operations.
+
+    CREATE VIEW "main_userfile_view" AS
+    SELECT "id", "user_id", "parent_id", "created", "size", "md5", "sha1",
+           "mime", "name", "attrs"
+    FROM "main_userfile_all_view"
+    WHERE "deleted" IS NULL;
+
+    This view derives from another, here is the underlying view:
+
+    CREATE VIEW "main_userfile_all_view" AS
+    SELECT "main_userfile"."id" AS "id", "main_user"."id" AS "user_id",
+           "main_userfile"."parent_id" AS "parent_id",
+           "main_file"."owner_id" AS "owner_id",
+           "main_file".created" AS "created", "main_version"."size" AS "size",
+           "main_version"."md5" AS "md5", "main_version"."sha1" AS "sha1",
+           "main_version"."mime" AS "mime", "main_userfile"."name" AS "name",
+           "main_userfile"."attrs" AS "attrs",
+           "main_userfile"."deleted" AS "deleted"
+    FROM "main_userfile"
+    JOIN "main_user"."id" ON "main_userfile"."user_id" = "main_user"."id"
+    JOIN "main_file" ON "main_userfile"."file_id" = "main_file"."id"
+    JOIN "main_version" ON "main_file"."version_id" = "main_version"."id";
     """
 
     class Meta:
-        unique_together = ('directory', 'user')
+        managed = False
+        db_table = 'main_userfile_view'
 
-    directory = models.ForeignKey(Directory, on_delete=models.CASCADE,
-                                  related_name='shared_with')
-    user = models.ForeignKey(User, on_delete=models.CASCADE,
-                             related_name='shared_directories')
-    parent = models.ForeignKey(Directory, null=True,
-                               related_name='shared_dirs',
-                               on_delete=models.SET_NULL)
+    # Fields from UserFile
+    user = models.ForeignKey(User, related_name='+',
+                             on_delete=models.DO_NOTHING)
+    parent = models.ForeignKey(UserDir, null=True, related_name='+',
+                               on_delete=models.DO_NOTHING)
+
+    # Fields from File
+    owner = models.ForeignKey(User, related_name='+',
+                              on_delete=models.DO_NOTHING)
+    created = models.DateTimeField(null=False, default=timezone.now)
+
+    # Fields from Version
+    size = models.IntegerField(default=0)
+    md5 = models.CharField(max_length=32)
+    sha1 = models.CharField(max_length=40)
+    mime = models.CharField(max_length=64)
+
+    # More fields from UserFile
     name = models.CharField(max_length=255)
+    tags = models.ManyToManyField(Tag, through='FileTagView')
+    attrs = JSONField(null=True, blank=True)
+
+    objects = UserFileViewManager()
 
 
-class FileQuerySet(UidQuerySet):
-    # Delete the objects using their delete() method. Make sure to 
+class UserDeadFileView(UserFileView):
+    """
+    View that previous file tables.
+
+    Meant to be the "public" interface for dead file information. The API
+    should export this model. The other underlying models are used for
+    individual operations.
+
+    CREATE VIEW main_userdeadfile_view AS
+    SELECT id, user_id, parent_id, created, size, md5, sha1, mime, name, attrs,
+           deleted
+    FROM main_userfile_all_view
+    WHERE deleted IS NOT NULL;
+
+    This view derives from the same view that underlies UserFileView.
+    """
+
+    class Meta:
+        managed = False
+        db_table = 'main_userfile_dead_view'
+
+    deleted = models.DateTimeField(null=False)
+
+    objects = UserFileViewManager()
+
+
+class UserFileQuerySet(UidQuerySet):
+    @staticmethod
+    def _args(model, kwargs, create_parent=False):
+        path = kwargs.pop('path', None)
+        if path:
+            try:
+                user = kwargs['user']
+            except KeyError:
+                raise ValueError('`user` argument required with `path`')
+            parent, kwargs['name'] = pathsplit(path.lstrip('/'))
+            parent = parent if parent else ''
+            if parent == '':
+                parent = UserDir.objects.get_root(user)
+            else:
+                try:
+                    parent = UserDir.objects.get(user=user, path=parent)
+                except UserDir.DoesNotExist:
+                    if not create_parent:
+                        raise UserFile.DoesNotExist()
+                    parent = UserDir.objects.create(user=user, path=parent)
+            kwargs['parent'] = parent
+
+    def filter(self, *args, **kwargs):
+        try:
+            UserFileQuerySet._args(self.model, kwargs)
+        except UserFile.DoesNotExist:
+            return self.none()
+        return super().filter(*args, **kwargs)
+
     def delete(self):
         for m in self:
             m.delete()
@@ -650,321 +757,208 @@ class FileQuerySet(UidQuerySet):
     delete.alters_data = True
     delete.queryset_only = True
 
-    @staticmethod
-    def _args(model, kwargs):
-        UidQuerySet._args(model, kwargs)
-        path = kwargs.pop('path', None)
-        if path:
-            parent, kwargs['name'] = pathsplit(path.lstrip('/'))
-            parent = parent if parent else None
-            if parent:
-                parent, _ = Directory.objects.get_or_create(
-                    user=kwargs['user'], path=parent)
-            kwargs['parent'] = parent
 
-    def filter(self, *args, **kwargs):
-        FileQuerySet._args(self.model, kwargs)
-        return super().filter(*args, **kwargs)
-
-
-class FileManager(models.Manager):
+class UserFileManager(models.Manager):
     def get_queryset(self):
         """
         Override default QuerySet
 
         Allow filtering wth full path.
         """
-        return FileQuerySet(self.model, using=self._db)
+        return UserFileQuerySet(self.model, using=self._db)
 
     @transaction.atomic
     def create(self, *args, **kwargs):
-        if 'user' not in kwargs:
-            raise ValueError('User required for file creation')
-        FileQuerySet._args(self.model, kwargs)
-        version = kwargs['version'] = FileVersion.objects.create()
-        version.file = super().create(*args, **kwargs)
-        version.save(update_fields=['file'])
-        return version.file
+        UserFileQuerySet._args(self.model, kwargs, create_parent=True)
+        obj = super().create(*args, **kwargs)
+        return obj
 
     def get_or_create(self, *args, **kwargs):  # noqa: D402
         """
         Override default get_or_create().
         """
         # It might be better to do this in save().
-        FileQuerySet._args(self.model, kwargs)
-        return super().get_or_create(*args, **kwargs)
-
-    def children_of(self, dir, user=None, name=None):
-        if user is None:
-            user = dir.user
-
-        file_q_kwargs = {'parent': dir, 'user': user}
-        if name:
-            file_q_kwargs['name'] = name
-        file_q = Q(**file_q_kwargs)
-
-        file_q_kwargs = {'shared_with__parent': dir, 'shared_with__user': user}
-        if name:
-            file_q_kwargs['shared_with__name'] = name
-        file_q |= Q(**file_q_kwargs)
-
-        return self.filter(file_q)
+        UserFileQuerySet._args(self.model, kwargs, create_parent=True)
+        try:
+            return super().get(*args, **kwargs), False
+        except ObjectDoesNotExist:
+            try:
+                return self.create(*args, **kwargs), True
+            except IntegrityError:
+                return super().get(*args, **kwargs), False
 
     def delete(self):
         return self.get_queryset().delete()
 
 
-class AllFile(models.Model):
+class UserFile(UidModelMixin, models.Model):
     """
-    This model backs File and DeadFile.
+    File hierarchy for a User.
+
+    This model represents the "namespace" or metadata for a given user. It is
+    what records the name, path and attributes for files. Each user has their
+    own specific namespace, even if they are working with the same files.
     """
 
-    class Meta:
-        # Weird bug, when this attr is in place, the created migration fails
-        # with:
-        #
-        # ProgrammingError: referenced relation "main_livefile" is not a table
-        #
-        # When it is not in place, tests fail with:
-        #
-        # ProgrammingError: relation "main_allfile" does not exist
-        #
-        # My solution is to remove the field from the migration (it is
-        # commented out) and leave this attr.
-        db_table = 'main_file'
-
-    user = models.ForeignKey(User, related_name='+',
+    user = models.ForeignKey(User, related_name='files',
                              on_delete=models.DO_NOTHING)
-    # If the parent directory is deleted, set parent to NULL, this is done
-    # because we soft-delete files, thus the file instance stays and we need
-    # to maintain referential integrity. This must be done here for two reasons:
-    #
-    # 1. We need to do two things, and on_delete supports only one. We do the
-    #    other thing in the File model.
-    # 2. Since we cannot control the order of fields being set, once the
-    #    soft-delete is performed by File, we cannot set parent to NULL using
-    #    that model, as the instance vanishes from it's backing view.
-    parent = models.ForeignKey(Directory, null=True, related_name='+',
-                               on_delete=models.SET_NULL)
-    version = models.ForeignKey('FileVersion', null=False, blank=False,
-                                related_name='+')
+    # If the parent directory is deleted, soft-delete this file.
+    parent = models.ForeignKey(UserDir, null=True, related_name='child_files',
+                               on_delete=SET_FIELD('deleted', timezone.now))
+    file = models.ForeignKey('File', null=False, blank=False,
+                             related_name='user_files')
     name = models.CharField(max_length=255)
-    created = models.DateTimeField(null=False, default=timezone.now)
-    tags = models.ManyToManyField(Tag, through='AllFileTag')
+    tags = models.ManyToManyField(Tag, through='FileTag')
     attrs = JSONField(null=True, blank=True)
-    search = SearchVectorField(null=True, blank=True, editable=False)
     deleted = models.DateTimeField(null=True)
 
-    objects = FileManager()
+    objects = UserFileManager()
+
+    def __str__(self):
+        return self.path
+
+    @property
+    def path(self):
+        return pathjoin('/', self.parent.path, self.name)
+
+    def add_tag(self, tag):
+        if isinstance(tag, str):
+            tag, _ = Tag.objects.get_or_create(name=tag)
+        self.tags.add(tag)
+
+    def share(self, user, parent=None, name=None):
+        if parent is None:
+            parent = UserDir.objects.get_root(user)
+        if name is None:
+            name = self.name
+        return UserFile.objects.create(parent=dir, user=user, file=file.file,
+                                       name=file.name)
 
 
 class File(UidModelMixin, models.Model):
     """
     File model.
 
-    Represents a file in the FS. Backed by a view that filters out deleted IS
-    NOT NULL.
+    Represents a file object. Files can be seen by many users, but the file
+    properties may be different for each user. This model represents the
+    properties that are shared amongst ALL users.
     """
 
-    class Meta:
-        managed = False
-        db_table = 'main_livefile'
-        unique_together = ('parent', 'name')
-
-    user = models.ForeignKey(User, related_name='files',
-                             on_delete=models.CASCADE)
-    # If the parent directory is deleted, soft-delete this file. It's parent is
-    # set to NULL in the AllFile model.
-    parent = models.ForeignKey(Directory, null=True, related_name='files',
-                               on_delete=SET_FIELD('deleted', timezone.now))
-    version = models.ForeignKey('FileVersion', null=False, blank=False,
+    owner = models.ForeignKey(User, related_name='owned_files',
+                              on_delete=models.CASCADE)
+    version = models.ForeignKey('Version', null=False, blank=False,
                                 related_name='current_of',
                                 on_delete=models.PROTECT)
-    name = models.CharField(max_length=255)
     created = models.DateTimeField(null=False, default=timezone.now)
-    tags = models.ManyToManyField(Tag, through='FileTag')
-    attrs = JSONField(null=True, blank=True)
-    search = SearchVectorField(null=True, blank=True, editable=False)
-    deleted = models.DateTimeField(null=True)
 
-    objects = FileManager()
-
-    @property
-    def size(self):
-        return self.version.size
-
-    @property
-    def md5(self):
-        return self.version.md5
-
-    @property
-    def sha1(self):
-        return self.version.sha1
-
-    @property
-    def mime(self):
-        return self.version.mime
-
-    @property
-    def raid_level(self):
-        return self.version.raid_level
-
-    def __str__(self):
-        return '<File: %s>' % self.name
-
-    def __init__(self, *args, **kwargs):
-        # Divert args to the version.
-        v_kwargs = {}
-        for name in ('size', 'md5', 'sha1', 'mime'):
-            try:
-                v_kwargs[name] = kwargs.pop(name)
-            except KeyError:
-                pass
-        kwargs['version'] = FileVersion.objects.create(**v_kwargs)
-        return super().__init__(*args, **kwargs)
-
-    def guess_mime(self):
-        mime, _ = mimetypes.guess_type(self.name, strict=False)
-        return mime if mime else 'application/octet-stream'
+    objects = models.Manager()
 
     def save(self, *args, **kwargs):
-        # Create an initial version if one is missing.
-        if not self.version:
-            self.version = FileVersion.objects.create(mime=self.guess_mime())
-        else:
-            self.version.mime = self.guess_mime()
-            self.version.save(update_fields=['mime'])
-        self.version.file = super().save(*args, **kwargs)
-        self.version.save()
-        return self
+        new_version = False
+        try:
+            self.version
+        except Version.DoesNotExist:
+            new_version = True
+            self.version = Version.objects.create()
+        obj = super().save(*args, **kwargs)
+        if new_version:
+            FileVersion.objects.create(file=self, version=self.version)
+        return obj
 
-    def get_extension(self, user):
-        return splitext(self.get_name(user))[1]
-
-    def get_name(self, user):
-        if self.user == user:
-            return self.name
-        return self.shared_with.get(user=user).name
-
-    def get_path(self, user):
-        parent_path = self.parent.get_path(user) if self.parent else '/'
-        return pathjoin(parent_path, self.get_name(user))
-
-    def revert(self, version):
-        self.current = version
-        self.save(update_fields=['current'])
-
-    def add_tag(self, tag):
-        if isinstance(tag, str):
-            tag, _ = Tag.objects.get_or_create(name=tag)
-        return FileTag.objects.create(file=self, tag=tag)
-
-    @transaction.atomic
-    def add_version(self):
-        self.version = FileVersion.objects.create(file=self,
-                                                  mime=self.guess_mime())
-        # save() does not work, likely due to the cyclic relationship.
-        File.objects.filter(pk=self.pk).update(version_id=self.version.pk)
-        return self.version
-
-    def share(self, user):
-        """
-        Share the directory with another user.
-        """
-        # The shared directory will show up in the receiving user's "root".
-        name = self.name + ' (%s)' % self.user.email
-        share = FileShare.objects.create(
-            user=user, file=self, name=name)
-        user.shared_directories.add(share)
-        return share
-
-    def delete(self):
-        self.deleted = timezone.now()
-        self.save(update_fields=['deleted'])
-
-
-class DeadFile(UidModelMixin, models.Model):
-    """
-    View.
-
-    Represents all deleted files. Backed by a view that filters out deleted IS
-    NULL.
-    """
-
-    class Meta:
-        managed = False
-        db_table = 'main_deadfile'
-
-    user = models.ForeignKey(User, related_name='dead_files',
-                             on_delete=models.DO_NOTHING)
-    parent = models.ForeignKey(Directory, null=True, related_name='dead_files',
-                               on_delete=models.DO_NOTHING)
-    version = models.ForeignKey('FileVersion', null=False, blank=False,
-                                related_name='+')
-    name = models.CharField(max_length=255)
-    created = models.DateTimeField(null=False, default=timezone.now)
-    tags = models.ManyToManyField(Tag, through='DeadTag', related_name='+')
-    attrs = JSONField(null=True, blank=True)
-    search = SearchVectorField(null=True, blank=True, editable=False)
-    deleted = models.DateTimeField(null=True)
-
-    objects = FileManager()
-
-    def __str__(self):
-        return '<Dead: %s>' % self.name
-
-
-class DeadTag(models.Model):
-    class Meta:
-        managed = False
-        db_table = 'main_filetag'
-
-    file = models.ForeignKey(DeadFile)
-    tag = models.ForeignKey(Tag, related_name='+')
+    def add_version(self, version=None):
+        if version is None:
+            version = Version.objects.create()
+        self.version = version
+        FileVersion.objects.create(file=self, version=version)
+        self.save(update_fields=['version'])
+        return version
 
 
 class FileTag(models.Model):
+    """
+    UserFile<->Tag M2M model.
+
+    Relates a user's files to tags. Each user can have different tags for a
+    given file (thus we reference UserFile, not File).
+    """
+
+    class Meta:
+        db_table = 'main_filetag'
+
+    file = models.ForeignKey(UserFile)
+    tag = models.ForeignKey(Tag, related_name='files')
+
+
+class FileTagView(models.Model):
+    """
+    UserFileView<->Tag M2M model.
+
+    A clone of FileTag to reference from UserFileView. It is unmanaged by
+    Django and references the same table as FileTag.
+    """
+
     class Meta:
         managed = False
         db_table = 'main_filetag'
 
-    file = models.ForeignKey(File)
-    tag = models.ForeignKey(Tag, related_name='files')
-
-
-class AllFileTag(models.Model):
-    class Meta:
-        db_table = 'main_filetag'
-
-    file = models.ForeignKey(AllFile)
+    file = models.ForeignKey(UserFileView)
     tag = models.ForeignKey(Tag, related_name='+')
 
 
-class FileVersion(UidModelMixin, models.Model):
-    file = models.ForeignKey(File, null=True, related_name='versions',
-                             on_delete=models.CASCADE)
+class Version(models.Model):
+    """
+    File version model.
+
+    Whenever an existing file is written to, a new version is created for that
+    file. A File model has a foreign key to it's current version. There is an
+    M2M table that keeps all historic versions of a file.
+
+    More than one File can share a Version if the file data is identical
+    (de-dupe).
+
+    Chunks are attached to Version, since the Version represents the physical
+    storage of a File.
+    """
+
+    file = models.ManyToManyField(File, related_name='versions',
+                                  through='FileVersion')
     size = models.IntegerField(default=0)
     md5 = models.CharField(max_length=32)
     sha1 = models.CharField(max_length=40)
     # TODO: Currently mime type is derived solely from file name. This means it
     # would be appropriate to store the mime attribute on File rather than
-    # FileVersion. However, we should inspect the first chunk and use libmagic
+    # Version. However, we should inspect the first chunk and use libmagic
     # to set the mime for each version. When we start that, mime truly would be
     # derived from the file body and thus belongs below.
     mime = models.CharField(max_length=64)
-    raid_level = models.SmallIntegerField(null=False, default=1)
     created = models.DateTimeField(null=False, default=timezone.now)
-
-    objects = UidManager()
 
     @transaction.atomic
     def add_chunk(self, chunk):
         "Adds a chunk to a file, taking care to set the serial number."
-        fc = FileChunk(fileversion=self, chunk=chunk)
-        fc.serial = (FileChunk.objects.filter(fileversion=self).select_for_update(
+        fc = FileChunk(version=self, chunk=chunk)
+        fc.serial = (FileChunk.objects.filter(version=self).select_for_update(
             ).aggregate(Max('serial'))['serial__max'] or 0) + 1
         fc.save()
         return fc
+
+
+class FileVersion(UidModelMixin, models.Model):
+    """
+    File<->Version M2M model.
+
+    Maintains all historic versions of a file (including the current version).
+    However, the current version is also referenced by the File.version FK.
+    """
+
+    class Meta:
+        unique_together = ('file', 'version')
+
+    file = models.ForeignKey(File, null=False, on_delete=models.CASCADE)
+    version = models.ForeignKey(Version, null=False, on_delete=models.CASCADE)
+    created = models.DateTimeField(null=False, default=timezone.now)
+
+    objects = UidManager()
 
 
 class FileStat(models.Model):
@@ -980,43 +974,24 @@ class FileStat(models.Model):
     last = models.DateTimeField(auto_now=True)
 
 
-class FileShare(models.Model):
-    """
-    FileShare model.
-
-    Represents a file shared by a user to another user.
-    """
-
-    class Meta:
-        unique_together = ('file', 'user')
-
-    file = models.ForeignKey(File, on_delete=models.CASCADE,
-                             related_name='shared_with')
-    user = models.ForeignKey(User, on_delete=models.CASCADE,
-                             related_name='shared_files')
-    parent = models.ForeignKey(Directory, null=True,
-                               related_name='shared_files',
-                               on_delete=models.SET_NULL)
-    name = models.CharField(max_length=255)
-
-
 class Chunk(UidModelMixin, models.Model):
     """
     Chunk model.
 
-    Represents a unique chunk of data. There is a many to many relationship
-    between chunks and files. This may allow future de-dupe, as a chunk with
-    the same content can be shared by many files.
+    Represents a unique chunk of data. A chunk is assigned to a Version of a
+    File via an M2M model. Any version of any file can reference any given
+    chunk. So if two chunks of two unrelated files are identical, they will
+    share the same chunk.
     """
 
-    fileversion = models.ManyToManyField(to=FileVersion, through='FileChunk',
-                                         related_name='chunks')
+    version = models.ManyToManyField(to=Version, through='FileChunk',
+                                     related_name='chunks')
     crc32 = models.IntegerField(null=False, blank=False, default=0)
     md5 = models.CharField(null=False, blank=False, max_length=32)
     size = models.IntegerField(null=False, blank=False)
 
     def __str__(self):
-        return '<Chunk %s>' % self.uid
+        return '%s' % self.uid
 
 
 class FileChunkManager(models.Manager):
@@ -1033,17 +1008,18 @@ class FileChunkManager(models.Manager):
 
 class FileChunk(models.Model):
     """
-    FileChunk model.
+    Version<->Chunk M2M model.
 
-    A file consists of a series of chunks. This model ties chunks to a file,
-    ordering for a given file is provided by `serial`.
+    A file consists of a series of versions, each consisting of a series of
+    chunks. This model ties chunks to a file version, ordering for a given
+    version is provided by `serial`.
     """
 
     class Meta:
-        unique_together = ('fileversion', 'serial')
+        unique_together = ('version', 'serial')
 
-    fileversion = models.ForeignKey(FileVersion, on_delete=models.CASCADE,
-                                    related_name='filechunks')
+    version = models.ForeignKey(Version, on_delete=models.CASCADE,
+                                related_name='filechunks')
     chunk = models.ForeignKey(Chunk, on_delete=models.PROTECT,
                               related_name='filechunks')
     serial = models.IntegerField(default=0)
@@ -1051,15 +1027,15 @@ class FileChunk(models.Model):
     objects = FileChunkManager()
 
     def __str__(self):
-        return '<FileChunk %s>' % self.serial
+        return '%s' % self.serial
 
 
 class ChunkStorage(models.Model):
     """
-    ChunkStorage model.
+    Chunk<->Storage M2M model.
 
-    Represents a chunk stored in a provider. Each chunk may exist in multiple
-    storage services (for redundancy).
+    Each chunk is stored in multiple storage locations for redundancy. This
+    model maps chunks to their respective storage locations.
     """
 
     class Meta:
@@ -1073,8 +1049,7 @@ class ChunkStorage(models.Model):
     attrs = JSONField(null=True, blank=True)
 
     def __str__(self):
-        return '<ChunkStorage %s@%s>' % (self.chunk,
-                                         self.storage.storage.name)
+        return '%s@%s' % (self.chunk, self.storage.storage.name)
 
 
 from main.fs.clouds import get_client  # NOQA

@@ -52,12 +52,13 @@ class FileTestCase(TestCase):
         self.assertTrue(str(file1).startswith('<'))
         self.assertTrue(str(file1).endswith('>'))
 
-        self.assertEqual(1, Directory.objects.all().count())
+        # Two to account for "root"
+        self.assertEqual(2, Directory.objects.all().count())
         self.assertEqual(1, File.objects.all().count())
 
         dir1.delete()
 
-        self.assertEqual(0, Directory.objects.all().count())
+        self.assertEqual(1, Directory.objects.all().count())
         self.assertEqual(0, File.objects.all().count())
 
     def test_chunks(self):
@@ -86,14 +87,14 @@ class FileTestCase(TestCase):
         self.assertEqual('>', str(chunk1storage)[-1])
 
         self.assertTrue(
-            FileChunk.objects.filter(fileversion=file.version, chunk=chunk1).exists())
+            FileChunk.objects.filter(version=file.version, chunk=chunk1).exists())
 
         file.version.add_chunk(chunk2)
 
-        self.assertEqual(2, FileChunk.objects.filter(fileversion=file.version).count())
+        self.assertEqual(2, FileChunk.objects.filter(version=file.version).count())
 
         for i, chunk in enumerate(FileChunk.objects.filter(
-                                  fileversion=file.version).order_by('serial')):
+                                  version=file.version).order_by('serial')):
             self.assertEqual(i + 1, chunk.serial)
 
         file.delete()

@@ -33,6 +33,9 @@ import logging
 from io import BytesIO
 from os.path import join as pathjoin
 from os.path import split as pathsplit
+from os.path import (
+    dirname, basename
+)
 from hashlib import md5, sha1
 from zlib import crc32 as _crc32
 
@@ -40,7 +43,8 @@ from django.conf import settings
 from django.db import transaction
 
 from main.models import (
-    Directory, File, Chunk, ChunkStorage, DirectoryQuerySet
+    UserDir, UserFile, File, Chunk, ChunkStorage, UserDirQuerySet, Version,
+    FileVersion,
 )
 from main.fs.raid import chunker, DEFAULT_CHUNK_SIZE
 from main.fs.errors import (
@@ -65,65 +69,6 @@ def crc32(data):
 
 DirectoryListing = collections.namedtuple('DirectoryListing',
                                           ('dir', 'dirs', 'files'))
-
-
-class FileInfo(object):
-    isfile = True
-    isdir = False
-
-    def __init__(self, obj, user=None):
-        self.obj = obj
-        if obj.user != user:
-            if user is None:
-                user = obj.user
-
-        # Copy attributes from the File/Directory instance for the user that is
-        # going to view them.
-        self.user = user
-        self.name = obj.get_name(user)
-        self.path = obj.get_path(user)
-        try:
-            self.extension = obj.get_extension(user)
-        except AttributeError:
-            pass
-
-    def __getattr__(self, name):
-        try:
-            return self.__getattribute__(name)
-        except AttributeError:
-            return getattr(self.obj, name)
-
-
-class DirInfo(FileInfo):
-    isfile = False
-    isdir = True
-
-
-class RootInfo(DirInfo):
-    """
-    Fake info for the / path.
-    """
-    def __init__(self, user):
-        self.user = user
-        self.parent = None
-        self.name = '/'
-        self.created = None
-        self.tags = []
-        self.attrs = {}
-
-
-class InfoView(object):
-    def __init__(self, objects, user, Info):
-        self.objects = objects
-        self.user = user
-        self.Info = Info
-
-    def __iter__(self):
-        for o in self.objects:
-            yield self.Info(o, self.user)
-
-    def __len__(self):
-        return len(self.objects)
 
 
 class MulticloudBase(object):
@@ -173,7 +118,7 @@ class MulticloudReader(MulticloudBase, FileLikeBase):
         self.version = version
         self.chunks = list(
             Chunk.objects.filter(
-                filechunks__fileversion=version).order_by('filechunks__serial')
+                filechunks__version=version).order_by('filechunks__serial')
         )
         self._buffer = []
         self._closed = False
@@ -390,11 +335,11 @@ class MulticloudFilesystem(MulticloudBase):
         """
         if file is None:
             try:
-                file = File.objects.get(path=path, user=self.user)
-            except File.DoesNotExist:
+                file = UserFile.objects.get(path=path, user=self.user)
+            except UserFile.DoesNotExist:
                 raise FileNotFoundError(path)
         if version is None:
-            version = file.version
+            version = file.file.version
         return MulticloudReader(self.user, self.storage, version)
 
     @transaction.atomic
@@ -410,15 +355,26 @@ class MulticloudFilesystem(MulticloudBase):
             'not enough storage (%s) for %s replicas' % (len(self.storage),
                                                          self.replicas)
 
-        file, _ = File.objects.get_or_create(path=path, user=self.user)
-        version = file.add_version()
+        try:
+            # Check user's hierarchy for the file.
+            user_file = UserFile.objects.get(path=path, user=self.user)
+            # If it exists, make a new version of it.
+            version = user_file.file.add_version()
+        except UserFile.DoesNotExist:
+            # Attach that to a new file.
+            file = File.objects.create(owner=self.user)
+            # Place the new file into the user's hierarchy.
+            user_file = UserFile.objects.create(
+                path=path, file=file, name=basename(path), user=self.user)
+            version = file.version
 
+        # Upload the file.
         with MulticloudWriter(self.user, self.storage, version,
                               chunk_size=self.chunk_size,
                               replicas=self.replicas) as out:
             for chunk in chunker(f, chunk_size=self.chunk_size):
                 out.write(chunk)
-        return FileInfo(file, self.user)
+        return user_file
 
     @transaction.atomic
     def delete(self, path, file=None):
@@ -433,33 +389,23 @@ class MulticloudFilesystem(MulticloudBase):
         """
         if file is None:
             try:
-                file = File.objects.get(path=path, user=self.user)
-            except File.DoesNotExist:
+                file = UserFile.objects.get(path=path, user=self.user)
+            except UserFile.DoesNotExist:
                 raise FileNotFoundError(path)
-        # We do not care about order...
-        for chunk in Chunk.objects.filter(filechunks__fileversion=file.version):
-            for storage in chunk.storage.all():
-                cloud = self.get_storage(storage.storage)
-                try:
-                    cloud.delete(chunk)
-                except Exception as e:
-                    LOGGER.exception(e)
-                    continue
         file.delete()
 
     @transaction.atomic
     def mkdir(self, path):
         if self.isfile(path):
             raise FileConflictError(path)
-        return DirInfo(
-            Directory.objects.create(path=path, user=self.user), self.user)
+        return UserDir.objects.create(path=path, user=self.user)
 
     @transaction.atomic
     def rmdir(self, path, dir=None):
         if dir is None:
             try:
-                dir = Directory.objects.get(path=path, user=self.user)
-            except Directory.DoesNotExist:
+                dir = UserDir.objects.get(path=path, user=self.user)
+            except UserDir.DoesNotExist:
                 raise DirectoryNotFoundError(path)
         dir.delete()
 
@@ -471,8 +417,8 @@ class MulticloudFilesystem(MulticloudBase):
         if dst:
             try:
                 file.parent = \
-                    Directory.objects.get(path=dst, user=self.user)
-            except Directory.DoesNotExist:
+                    UserDir.objects.get(path=dst, user=self.user)
+            except UserDir.DoesNotExist:
                 raise DirectoryNotFoundError(dst)
         file.save()
         return file
@@ -481,15 +427,22 @@ class MulticloudFilesystem(MulticloudBase):
     def _move_dir(self, dir, dst):
         if self.isfile(dst):
             raise DirectoryConflictError(dst)
+        # We need to relocate.
         try:
             dir.parent = \
-                Directory.objects.get(path=dst, user=self.user)
-        except Directory.DoesNotExist:
+                UserDir.objects.get(path=dst, user=self.user)
+        except UserDir.DoesNotExist:
+            if dirname(dst) == dirname(dir.path):
+                # This is just a rename...
+                dir.name = basename(dst)
+                dir.save(update_fields=['name'])
+                return dir
             raise DirectoryNotFoundError(dst)
         kwargs = {
+            'user': self.user,
             'path': pathjoin(dst, dir.name),
         }
-        DirectoryQuerySet._args(Directory, kwargs)
+        UserDirQuerySet._args(UserDir, kwargs)
         for name, value in kwargs.items():
             setattr(dir, name, value)
         dir.save()
@@ -498,14 +451,14 @@ class MulticloudFilesystem(MulticloudBase):
     @transaction.atomic
     def move(self, src, dst):
         try:
-            file = File.objects.get(path=src, user=self.user)
-            return FileInfo(self._move_file(file, dst), self.user)
-        except File.DoesNotExist:
+            file = UserFile.objects.get(path=src, user=self.user)
+            return self._move_file(file, dst)
+        except UserFile.DoesNotExist:
             pass
         try:
-            dir = Directory.objects.get(path=src, user=self.user)
-            return DirInfo(self._move_dir(dir, dst), self.user)
-        except Directory.DoesNotExist:
+            dir = UserDir.objects.get(path=src, user=self.user)
+            return self._move_dir(dir, dst)
+        except UserDir.DoesNotExist:
             pass
         raise PathNotFoundError(src)
 
@@ -515,15 +468,11 @@ class MulticloudFilesystem(MulticloudBase):
             dst = pathjoin(dst, srcfile.name)
         if self.isfile(dst):
             raise FileConflictError(dst)
-        # Clone file first.
+        # Create a new file, attach the version from the original (copy).
+        file = \
+            File.objects.create(owner=self.user, version=srcfile.file.version)
         dstfile = \
-            File.objects.create(size=srcfile.size, md5=srcfile.md5,
-                                sha1=srcfile.sha1, mime=srcfile.mime, path=dst,
-                                user=self.user)
-        # Then clone it's chunks:
-        for chunk in Chunk.objects.filter(filechunks__fileversion=srcfile.version).order_by(
-                                          'filechunks__serial'):
-            dstfile.version.add_chunk(chunk)
+            UserFile.objects.create(path=dst, file=file, user=self.user)
         return dstfile
 
     @transaction.atomic
@@ -533,79 +482,58 @@ class MulticloudFilesystem(MulticloudBase):
         if self.isfile(dst):
             raise FileConflictError(dst)
         # Clone dir first.
-        dstdir = Directory.objects.create(path=dst, user=self.user)
+        dstdir = UserDir.objects.create(path=dst, user=self.user)
         # Then copy children recursively.
-        _, dirs, files = self.listdir(srcdir.get_path(self.user), dir=srcdir)
+        _, dirs, files = self.listdir(srcdir.path, dir=srcdir)
         for subdir in dirs:
-            self._copy_dir(subdir, dstdir.get_path(self.user))
+            self._copy_dir(subdir, dstdir.path)
         for subfile in files:
-            self._copy_file(subfile, dstdir.get_path(self.user))
+            self._copy_file(subfile, dstdir.path)
         return dstdir
 
     @transaction.atomic
     def copy(self, src, dst):
         try:
-            file = File.objects.get(path=src, user=self.user)
-            return FileInfo(self._copy_file(file, dst), self.user)
-        except File.DoesNotExist:
+            file = UserFile.objects.get(path=src, user=self.user)
+            return self._copy_file(file, dst)
+        except UserFile.DoesNotExist:
             pass
         try:
-            dir = Directory.objects.get(path=src, user=self.user)
-            return DirInfo(self._copy_dir(dir, dst), self.user)
-        except Directory.DoesNotExist:
+            dir = UserDir.objects.get(path=src, user=self.user)
+            return self._copy_dir(dir, dst)
+        except UserDir.DoesNotExist:
             pass
         raise PathNotFoundError('src')
 
     def listdir(self, path, dir=None):
-        if path == '/':
-            dir = None
-        elif dir is None:
+        if dir is None:
             try:
-                dir = Directory.objects.get(path=path, user=self.user)
-            except Directory.DoesNotExist:
+                dir = UserDir.objects.get(path=path, user=self.user)
+            except UserDir.DoesNotExist:
                 raise DirectoryNotFoundError(path)
-        dirs, files = Directory.objects.children_of(dir, self.user)
-        dir = DirInfo(dir, self.user) if dir else RootInfo(self.user)
-        return DirectoryListing(
-            dir,
-            InfoView(dirs, self.user, DirInfo),
-            InfoView(files, self.user, FileInfo)
-        )
+        dirs, files = dir.child_dirs.all(), dir.child_files.all()
+        return DirectoryListing(dir, dirs, files)
 
     def info(self, path, file=None, dir=None):
-        if path == '/':
-            return RootInfo(self.user)
         if file is not None:
-            return FileInfo(file, self.user)
+            return file
         if dir is not None:
-            return DirInfo(dir, self.user)
-        dir, name = pathsplit(path.lstrip('/'))
-        dir = dir if dir else None
-        if dir:
-            try:
-                dir = Directory.objects.get(path=dir, user=self.user)
-            except Directory.DoesNotExist:
-                raise PathNotFoundError(path)
-        dirs, files = Directory.objects.children_of(dir, self.user, name=name)
-        if dirs.first():
-            return DirInfo(dirs.first(), self.user)
-        if files.first():
-            return FileInfo(files.first(), self.user)
+            return dir
+        try:
+            return UserFile.objects.get(path=path, user=self.user)
+        except UserFile.DoesNotExist:
+            pass
+        try:
+            return UserDir.objects.get(path=path, user=self.user)
+        except UserDir.DoesNotExist:
+            pass
         raise PathNotFoundError(path)
 
     def isdir(self, path):
-        try:
-            return self.info(path).isdir
-        except PathNotFoundError:
-            return False
+        return UserDir.objects.filter(path=path, user=self.user).exists()
 
     def isfile(self, path):
-        try:
-            return self.info(path).isfile
-        except PathNotFoundError:
-            return False
+        return UserFile.objects.filter(path=path, user=self.user).exists()
 
     def exists(self, path):
-        if path == '/':
-            return True
         return self.isdir(path) or self.isfile(path)
