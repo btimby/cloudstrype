@@ -504,7 +504,10 @@ class UserDirQuerySet(UidQuerySet):
 
     @staticmethod
     def _args(model, kwargs):
-        """Convert path to name/parents."""
+        """Convert path pseudo argument actual fields."""
+        # Convert path into the constituate parts that are stored. For example
+        # when given a path, we split the path and recursively locate
+        # directories using their user, parent and name.
         path = kwargs.pop('path', None)
         if path is not None:
             try:
@@ -535,7 +538,7 @@ class UserDirQuerySet(UidQuerySet):
             UserDirQuerySet._args(self.model, kwargs)
         except UserDir.DoesNotExist:
             # We failed to find a parent for the given path, thus it cannot
-            # exist.
+            # exist. Rather than raising, return an empty queryset.
             return super().none()
         return super().filter(*args, **kwargs)
 
@@ -618,13 +621,22 @@ class UserDir(UidModelMixin, models.Model):
         if parent is None:
             # Get the target user's "root".
             parent = UserDir.objects.get_root(user=user)
+        assert parent.user == user, "Bug! Sharing a directory with a user " \
+                                    "into another user's directory"
         if name is None:
-            # Inherit the name.
-            name = '%s (%s)' % (self.name, user.email)
+            # We choose the name.
+            # - If owner's name for this directory does not exist, use it.
+            if parent.child_dirs.filter(name=self.name).count() == 0:
+                name = self.name
+            # - If it exists, append sharing user's email address.
+            else:
+                name = '%s (%s)' % (self.name, user.email)
         dir = UserDir.objects.create(parent=parent, name=name, user=user)
         for f in self.child_files.all():
             f.share(user, parent=dir)
+        # Done if we only want to share the files in this directory.
         if recursive:
+            # If recursive, share the child DIRECTORIES and their contents too.
             for d in self.child_dirs.all():
                 d.share(user, parent=dir, name=d.name, recursive=recursive)
         return dir
@@ -729,17 +741,29 @@ class UserFileQuerySet(UidQuerySet):
                 user = kwargs['user']
             except KeyError:
                 raise ValueError('`user` argument required with `path`')
-            parent, kwargs['name'] = pathsplit(path.lstrip('/'))
+            parent, name = pathsplit(path.lstrip('/'))
             parent = parent if parent else ''
-            if parent == '':
+            if name == '' and parent == '':
+                # If both are empty, caller is asking for '/' or similar, which
+                # cannot be a file.
+                raise UserFile.DoesNotExist()
+            elif parent == '':
+                # If only parent is empty, caller wants a file within root.
                 parent = UserDir.objects.get_root(user)
             else:
+                # If neither are empty, caller wants a file with a directory.
                 try:
                     parent = UserDir.objects.get(user=user, path=parent)
                 except UserDir.DoesNotExist:
+                    # Caller may want us to create parent dirs (-p). For
+                    # example, during create().
                     if not create_parent:
+                        # If not, raise.
                         raise UserFile.DoesNotExist()
                     parent = UserDir.objects.create(user=user, path=parent)
+            # The caller provided a valid path consisting of a parent directory
+            # and a name. Set kwargs for the query.
+            kwargs['name'] = name
             kwargs['parent'] = parent
 
     def filter(self, *args, **kwargs):

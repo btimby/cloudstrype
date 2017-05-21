@@ -92,7 +92,7 @@ class FileLikeBase(object):
     """
     Implement File-like methods.
 
-    Implements methods shared by both MulticloudReader and MulticloudWriter.
+    Implements methods shared by both MultiCloudReader and MultiCloudWriter.
     """
 
     def tell(self):
@@ -108,7 +108,7 @@ class FileLikeBase(object):
         self._closed = True
 
 
-class MulticloudReader(MulticloudBase, FileLikeBase):
+class MultiCloudReader(MulticloudBase, FileLikeBase):
     """
     File-like object that reads from multiple clouds.
     """
@@ -201,7 +201,7 @@ class MulticloudReader(MulticloudBase, FileLikeBase):
             return buff.getvalue()
 
 
-class MulticloudWriter(MulticloudBase, FileLikeBase):
+class MultiCloudWriter(MulticloudBase, FileLikeBase):
     """
     File-like object that writes to multiple clouds.
     """
@@ -317,7 +317,7 @@ class MulticloudWriter(MulticloudBase, FileLikeBase):
         super().close()
 
 
-class MulticloudFilesystem(MulticloudBase):
+class MultiCloudFilesystem(MulticloudBase):
     def __init__(self, user, chunk_size=settings.CLOUDSTRYPE_CHUNK_SIZE,
                  replicas=0):
         super().__init__(user.get_clients())
@@ -331,7 +331,7 @@ class MulticloudFilesystem(MulticloudBase):
         Download from multiple storage.
 
         Uses Metastore backend to resolve path to a series of chunks. Returns a
-        MulticloudReader that can read these chunks in order.
+        MultiCloudReader that can read these chunks in order.
         """
         # If caller did not give a file (only a path), lookup the file by path.
         if file is None:
@@ -342,7 +342,7 @@ class MulticloudFilesystem(MulticloudBase):
         # If caller did not specify version, select the current one.
         if version is None:
             version = file.file.version
-        return MulticloudReader(self.user, self.storage, version)
+        return MultiCloudReader(self.user, self.storage, version)
 
     @transaction.atomic
     def upload(self, path, f):
@@ -372,7 +372,7 @@ class MulticloudFilesystem(MulticloudBase):
             version = file.version
 
         # Upload the file.
-        with MulticloudWriter(self.user, self.storage, version,
+        with MultiCloudWriter(self.user, self.storage, version,
                               chunk_size=self.chunk_size,
                               replicas=self.replicas) as out:
             for chunk in chunker(f, chunk_size=self.chunk_size):
@@ -453,16 +453,21 @@ class MulticloudFilesystem(MulticloudBase):
         return dir
 
     def move(self, src, dst):
+        # Is it a file?
         try:
             file = UserFile.objects.get(path=src, user=self.user)
+            # Move it.
             return self._move_file(file, dst)
         except UserFile.DoesNotExist:
             pass
+        # No, is it a dir?
         try:
             dir = UserDir.objects.get(path=src, user=self.user)
+            # Move it.
             return self._move_dir(dir, dst)
         except UserDir.DoesNotExist:
             pass
+        # Neither, raise.
         raise PathNotFoundError(src)
 
     @transaction.atomic
@@ -508,16 +513,21 @@ class MulticloudFilesystem(MulticloudBase):
         return dstdir
 
     def copy(self, src, dst):
+        # Is it a file?
         try:
             file = UserFile.objects.get(path=src, user=self.user)
+            # Copy it.
             return self._copy_file(file, dst)
         except UserFile.DoesNotExist:
             pass
+        # No, is it a dir?
         try:
             dir = UserDir.objects.get(path=src, user=self.user)
+            # Copy it.
             return self._copy_dir(dir, dst)
         except UserDir.DoesNotExist:
             pass
+        # Neither, raise.
         raise PathNotFoundError('src')
 
     def listdir(self, path, dir=None):
@@ -556,3 +566,7 @@ class MulticloudFilesystem(MulticloudBase):
     def exists(self, path):
         return self.isdir(path) or \
                self.isfile(path)
+
+
+def get_fs(user, **kwargs):
+    return MultiCloudFilesystem(user, **kwargs)

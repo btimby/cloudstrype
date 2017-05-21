@@ -7,7 +7,7 @@ from django.test import TestCase
 
 from mock import MagicMock
 
-from main.fs import MulticloudFilesystem
+from main.fs import get_fs
 from main.fs.clouds import get_client
 from main.fs.errors import (
     PathNotFoundError, FileNotFoundError, DirectoryNotFoundError,
@@ -61,7 +61,7 @@ class FilesystemTestCase(TestCase):
     def test_fs(self):
         with mock.patch('main.models.User.get_clients',
                         MockClients(self.user).get_clients):
-            fs = MulticloudFilesystem(self.user)
+            fs = get_fs(self.user)
 
             with BytesIO(TEST_FILE) as f:
                 file = fs.upload('/foo', f)
@@ -83,7 +83,7 @@ class FilesystemTestCase(TestCase):
         mock_clients = MockClients(self.user)
         with mock.patch('main.models.User.get_clients',
                         mock_clients.get_clients):
-            fs = MulticloudFilesystem(self.user, chunk_size=3, replicas=2)
+            fs = get_fs(self.user, chunk_size=3, replicas=2)
 
             with BytesIO(TEST_FILE) as f:
                 file = fs.upload('/foo', f)
@@ -103,7 +103,7 @@ class FilesystemTestCase(TestCase):
             fs.delete('/foo')
 
     def test_mkdir(self):
-        fs = MulticloudFilesystem(self.user)
+        fs = get_fs(self.user)
         dir = fs.mkdir('/foo')
         self.assertEqual('/foo', dir.path)
         fs.rmdir('/foo')
@@ -111,7 +111,7 @@ class FilesystemTestCase(TestCase):
             fs.rmdir('/foo')
 
     def test_listdir(self):
-        fs = MulticloudFilesystem(self.user)
+        fs = get_fs(self.user)
         fs.mkdir('/foo')
         fs.mkdir('/foo/bar')
         fs.mkdir('/foo/baz')
@@ -124,7 +124,7 @@ class FilesystemTestCase(TestCase):
             fs.listdir('/missing')
 
     def test_move(self):
-        fs = MulticloudFilesystem(self.user)
+        fs = get_fs(self.user)
         fs.mkdir('/foo')
         fs.mkdir('/bar')
         fs.move('/foo', '/bar')
@@ -136,7 +136,7 @@ class FilesystemTestCase(TestCase):
     def test_move_file(self):
         with mock.patch('main.models.User.get_clients',
                         MockClients(self.user).get_clients):
-            fs = MulticloudFilesystem(self.user)
+            fs = get_fs(self.user)
 
             with BytesIO(TEST_FILE) as f:
                 fs.upload('/foo', f)
@@ -151,7 +151,7 @@ class FilesystemTestCase(TestCase):
     def test_move_fail(self):
         with mock.patch('main.models.User.get_clients',
                         MockClients(self.user).get_clients):
-            fs = MulticloudFilesystem(self.user)
+            fs = get_fs(self.user)
 
             with self.assertRaises(PathNotFoundError):
                 fs.move('/foo', '/bar')
@@ -177,7 +177,7 @@ class FilesystemTestCase(TestCase):
                 fs.move('/foo', '/missing/bar')
 
     def test_copy(self):
-        fs = MulticloudFilesystem(self.user)
+        fs = get_fs(self.user)
         fs.mkdir('/foo')
         fs.mkdir('/bar')
         fs.copy('/foo', '/bar')
@@ -190,7 +190,7 @@ class FilesystemTestCase(TestCase):
     def test_copy_file(self):
         with mock.patch('main.models.User.get_clients',
                         MockClients(self.user).get_clients):
-            fs = MulticloudFilesystem(self.user)
+            fs = get_fs(self.user)
 
             with BytesIO(TEST_FILE) as f:
                 fs.upload('/foo', f)
@@ -224,7 +224,7 @@ class FilesystemTestCase(TestCase):
     def test_copy_fail(self):
         with mock.patch('main.models.User.get_clients',
                         MockClients(self.user).get_clients):
-            fs = MulticloudFilesystem(self.user)
+            fs = get_fs(self.user)
 
             with BytesIO(TEST_FILE) as f:
                 fs.upload('/foo', f)
@@ -237,7 +237,7 @@ class FilesystemTestCase(TestCase):
     def test_info(self):
         with mock.patch('main.models.User.get_clients',
                         MockClients(self.user).get_clients):
-            fs = MulticloudFilesystem(self.user)
+            fs = get_fs(self.user)
 
             with self.assertRaises(PathNotFoundError):
                 fs.info('/foo')
@@ -250,14 +250,14 @@ class FilesystemTestCase(TestCase):
     def test_is_dir_file(self):
         with mock.patch('main.models.User.get_clients',
                         MockClients(self.user).get_clients):
-            fs = MulticloudFilesystem(self.user)
+            fs = get_fs(self.user)
             self.assertTrue(fs.isdir('/'))
             self.assertFalse(fs.isfile('/'))
 
     def test_file_version(self):
         with mock.patch('main.models.User.get_clients',
                         MockClients(self.user).get_clients):
-            fs = MulticloudFilesystem(self.user)
+            fs = get_fs(self.user)
 
             with BytesIO(TEST_FILE) as f:
                 fi = fs.upload('/foo', f)
@@ -285,24 +285,31 @@ class SharingTestCase(TestCase):
     def test_listdir(self):
         with mock.patch('main.models.User.get_clients',
                         MockClients(self.usera).get_clients):
-            fsa = MulticloudFilesystem(self.usera)
+            fsa = get_fs(self.usera)
             with mock.patch('main.models.User.get_clients',
                             MockClients(self.userb).get_clients):
-                fsb = MulticloudFilesystem(self.userb)
+                fsb = get_fs(self.userb)
 
-                # User A creates a directory.
-                dira = fsa.mkdir('/foo')
-                # Then shares it with User B.
-                dira.share(self.userb)
+                # User A creates two directories.
+                dira0 = fsa.mkdir('/foo')
+                dira1 = fsa.mkdir('/bar')
+                # User B creates one.
+                dirb0 = fsb.mkdir('/baz')
+                # User A then shares them with User B.
+                dira0.share(self.userb)
+                dira1.share(self.userb, parent=dirb0)
 
-                self.assertTrue(fsb.isdir('/foo (foo@b.org)'))
-                self.assertFalse(fsb.isfile('/foo (foo@b.org)'))
+                # Ensure shares were successful.
+                self.assertTrue(fsb.isdir(dira0.path))
+                self.assertTrue(fsa.exists(dira1.path))
+                self.assertTrue(fsb.exists('/baz/bar'))
 
                 listing = fsb.listdir('/')
-                self.assertEqual(1, len(listing.dirs))
+                self.assertEqual(2, len(listing.dirs))
 
-                fsb.move('/foo (foo@b.org)', '/foo-bar')
-                self.assertTrue(fsa.exists('/foo'))
+                # Then User B moves one.
+                fsb.move(dira0.path, '/foo-bar')
+                self.assertTrue(fsa.exists(dira0.path))
                 self.assertTrue(fsb.exists('/foo-bar'))
 
 
