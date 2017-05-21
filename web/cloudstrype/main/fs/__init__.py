@@ -420,7 +420,7 @@ class MulticloudFilesystem(MulticloudBase):
                     UserDir.objects.get(path=dst, user=self.user)
             except UserDir.DoesNotExist:
                 raise DirectoryNotFoundError(dst)
-        file.save()
+        file.save(update_fields=['parent', 'name'])
         return file
 
     @transaction.atomic
@@ -445,7 +445,9 @@ class MulticloudFilesystem(MulticloudBase):
         UserDirQuerySet._args(UserDir, kwargs)
         for name, value in kwargs.items():
             setattr(dir, name, value)
-        dir.save()
+        update_fields = ['parent']
+        update_fields.extend(kwargs.keys())
+        dir.save(update_fields=update_fields)
         return dir
 
     @transaction.atomic
@@ -484,10 +486,9 @@ class MulticloudFilesystem(MulticloudBase):
         # Clone dir first.
         dstdir = UserDir.objects.create(path=dst, user=self.user)
         # Then copy children recursively.
-        _, dirs, files = self.listdir(srcdir.path, dir=srcdir)
-        for subdir in dirs:
+        for subdir in srcdir.child_dirs.all():
             self._copy_dir(subdir, dstdir.path)
-        for subfile in files:
+        for subfile in srcdir.child_files.all():
             self._copy_file(subfile, dstdir.path)
         return dstdir
 
