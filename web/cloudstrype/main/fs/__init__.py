@@ -29,6 +29,7 @@ Upload flow:
 import collections
 import random
 import logging
+import mimetypes
 
 from io import BytesIO
 from os.path import join as pathjoin
@@ -39,12 +40,13 @@ from os.path import (
 from hashlib import md5, sha1
 from zlib import crc32 as _crc32
 
+import magic
+
 from django.conf import settings
 from django.db import transaction
 
 from main.models import (
-    UserDir, UserFile, File, Chunk, ChunkStorage, UserDirQuerySet, Version,
-    FileVersion,
+    UserDir, UserFile, File, FileTag, Chunk, ChunkStorage,
 )
 from main.fs.raid import chunker, DEFAULT_CHUNK_SIZE
 from main.fs.errors import (
@@ -71,7 +73,7 @@ DirectoryListing = collections.namedtuple('DirectoryListing',
                                           ('dir', 'dirs', 'files'))
 
 
-class MulticloudBase(object):
+class MultiCloudBase(object):
     """
     Base class for interacting with multiple clouds.
     """
@@ -108,7 +110,7 @@ class FileLikeBase(object):
         self._closed = True
 
 
-class MultiCloudReader(MulticloudBase, FileLikeBase):
+class MultiCloudReader(MultiCloudBase, FileLikeBase):
     """
     File-like object that reads from multiple clouds.
     """
@@ -201,14 +203,15 @@ class MultiCloudReader(MulticloudBase, FileLikeBase):
             return buff.getvalue()
 
 
-class MultiCloudWriter(MulticloudBase, FileLikeBase):
+class MultiCloudWriter(MultiCloudBase, FileLikeBase):
     """
     File-like object that writes to multiple clouds.
     """
-    def __init__(self, user, clouds, version, chunk_size=DEFAULT_CHUNK_SIZE,
-                 replicas=REPLICAS):
+    def __init__(self, user, clouds, file, version,
+                 chunk_size=DEFAULT_CHUNK_SIZE, replicas=REPLICAS):
         super().__init__(clouds)
         self.user = user
+        self.mime = mimetypes.guess_type(file.name, strict=False)
         self.version = version
         self.chunk_size = chunk_size
         self.replicas = replicas
@@ -272,6 +275,12 @@ class MultiCloudWriter(MulticloudBase, FileLikeBase):
         """
         if self._closed:
             raise ValueError('I/O operation on closed file.')
+        if self._size == 0:
+            # First block. See if we can get a more specific mime type by
+            # examining the data.
+            mime = magic.from_buffer(data, mime=True)
+            self.mime = mime if mime != 'application/octet-stream' else \
+                self.mime
         self._size += len(data)
         self._md5.update(data)
         self._sha1.update(data)
@@ -317,7 +326,7 @@ class MultiCloudWriter(MulticloudBase, FileLikeBase):
         super().close()
 
 
-class MultiCloudFilesystem(MulticloudBase):
+class MultiCloudFilesystem(MultiCloudBase):
     def __init__(self, user, chunk_size=settings.CLOUDSTRYPE_CHUNK_SIZE,
                  replicas=0):
         super().__init__(user.get_clients())
@@ -363,16 +372,14 @@ class MultiCloudFilesystem(MulticloudBase):
             # If it exists, make a new version of it.
             version = user_file.file.add_version()
         except UserFile.DoesNotExist:
-            # Create a new file. A File necessarily creates a new version.
-            file = File.objects.create(owner=self.user)
             # Place the new file into the user's hierarchy.
             user_file = UserFile.objects.create(
-                path=path, file=file, name=basename(path), user=self.user)
+                path=path, name=basename(path), user=self.user)
             # Grab ref to version, since we upload to THAT.
-            version = file.version
+            version = user_file.file.version
 
         # Upload the file.
-        with MultiCloudWriter(self.user, self.storage, version,
+        with MultiCloudWriter(self.user, self.storage, user_file, version,
                               chunk_size=self.chunk_size,
                               replicas=self.replicas) as out:
             for chunk in chunker(f, chunk_size=self.chunk_size):

@@ -16,4 +16,5 @@ hashids
 python-uptimerobot
 raven
 aiohttp
+python-magic
 

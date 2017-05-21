@@ -9,10 +9,11 @@ from django.conf.urls import (
 from rest_framework.urlpatterns import format_suffix_patterns
 
 from api.views import (
-    MeView, PublicCloudListView, CloudListView, DirectoryUidView,
-    DirectoryPathView, FileUidView, FilePathView, DataUidView, DataPathView,
-    OptionsView, DirectoryTagView, FileTagView, TagListView, TagItemView,
-    FileVersionPathView, FileVersionUidView, FileVersionDataUidView
+    MeView, PublicCloudListView, CloudListView, UserDirUidView,
+    UserDirPathView, UserFileUidView, UserFilePathView, DataUidView,
+    DataPathView, OptionsView, UserDirTagView, UserFileTagView, TagListView,
+    TagItemView, FileVersionPathView, FileVersionUidView,
+    FileVersionDataUidView
 )
 
 urlpatterns = [
@@ -28,18 +29,19 @@ urlpatterns = [
     url(r'^v1/me/options/$', OptionsView.as_view(), name='options'),
 
     # Directories
-    url(r'^v1/me/dirs/by-uid:(.+):$', DirectoryUidView.as_view(),
+    url(r'^v1/me/dirs/by-uid:(.+):$', UserDirUidView.as_view(),
         name='dirs_uid'),
-    url(r'^v1/me/dirs/by-path:(/.+):$', DirectoryPathView.as_view(),
+    url(r'^v1/me/dirs/by-path:(/.+):$', UserDirPathView.as_view(),
         name='dirs_path'),
-    url(r'^v1/me/dirs/by-tag:(?P<name>.*):$', DirectoryTagView.as_view(),
+    url(r'^v1/me/dirs/by-tag:(?P<name>.*):$', UserDirTagView.as_view(),
         name='dirtaglist'),
 
     # File information
-    url(r'^v1/me/files/by-uid:(.+):$', FileUidView.as_view(), name='files_uid'),
-    url(r'^v1/me/files/by-path:(/.+):$', FilePathView.as_view(),
+    url(r'^v1/me/files/by-uid:(.+):$', UserFileUidView.as_view(),
+        name='files_uid'),
+    url(r'^v1/me/files/by-path:(/.+):$', UserFilePathView.as_view(),
         name='files_path'),
-    url(r'^v1/me/files/by-tag:(?P<name>.*):$', FileTagView.as_view(),
+    url(r'^v1/me/files/by-tag:(?P<name>.*):$', UserFileTagView.as_view(),
         name='filetaglist'),
 
     # File data (multipart) for browser uploads
@@ -51,7 +53,8 @@ urlpatterns = [
     # File versions.
     url(r'^v1/me/files/by-uid:(.+):/versions/$', FileVersionUidView.as_view(),
         name='fileversions_uid'),
-    url(r'^v1/me/files/by-path:(/.+):/versions/$', FileVersionPathView.as_view(),
+    url(r'^v1/me/files/by-path:(/.+):/versions/$',
+        FileVersionPathView.as_view(),
         name='fileversions_path'),
 
     # File version data.

@@ -3,13 +3,12 @@ Data models.
 
 This file contains the models that pertain to the whole application.
 """
-import functools
+
 import uuid
-import mimetypes
 
 from datetime import datetime, timedelta
 from os.path import (
-    normpath, dirname, splitext
+    dirname, splitext
 )
 from os.path import join as pathjoin
 from os.path import split as pathsplit
@@ -20,9 +19,8 @@ from django.contrib.auth.base_user import (
 from django.contrib.postgres.fields import JSONField
 # from django.contrib.postgres.search import SearchVectorField
 from django.core.exceptions import ObjectDoesNotExist
-from django.db import models, transaction
+from django.db import models, transaction, IntegrityError
 from django.db.models import Max
-from django.db.models import Q
 from django.db.models.query import QuerySet
 from django.utils.translation import ugettext as _
 from django.utils import timezone
@@ -38,13 +36,16 @@ def SET_FIELD(field_name, value):
     """
     if callable(value):
         def set_on_delete(collector, field, sub_objs, using):
+            collector.add_field_update(field, None, sub_objs)
             field = field.model._meta.get_field(field_name)
             collector.add_field_update(field, value(), sub_objs)
     else:
         def set_on_delete(collector, field, sub_objs, using):
+            collector.add_field_update(field, None, sub_objs)
             field = field.model._meta.get_field(field_name)
             collector.add_field_update(field, value, sub_objs)
-    set_on_delete.deconstruct = lambda: ('main.models.SET_FIELD', (field_name, value,), {})
+    set_on_delete.deconstruct = lambda: ('main.models.SET_FIELD',
+                                         (field_name, value,), {})
     return set_on_delete
 
 
@@ -841,22 +842,33 @@ class UserFile(UidModelMixin, models.Model):
     def __str__(self):
         return self.path
 
+    def save(self, *args, **kwargs):
+        try:
+            self.file
+        except File.DoesNotExist:
+            self.file = File.objects.create(owner=self.user)
+        return super().save(*args, **kwargs)
+
     @property
     def path(self):
         return pathjoin('/', self.parent.path, self.name)
 
+    @property
+    def extension(self):
+        return splitext(self.name)[1]
+
     def add_tag(self, tag):
         if isinstance(tag, str):
             tag, _ = Tag.objects.get_or_create(name=tag)
-        self.tags.add(tag)
+        FileTag.objects.create(file=self, tag=tag)
 
     def share(self, user, parent=None, name=None):
         if parent is None:
             parent = UserDir.objects.get_root(user)
         if name is None:
             name = self.name
-        return UserFile.objects.create(parent=dir, user=user, file=file.file,
-                                       name=file.name)
+        return UserFile.objects.create(parent=dir, user=user, file=self.file,
+                                       name=self.name)
 
 
 class File(UidModelMixin, models.Model):
@@ -980,6 +992,28 @@ class FileVersion(UidModelMixin, models.Model):
 
     file = models.ForeignKey(File, null=False, on_delete=models.CASCADE)
     version = models.ForeignKey(Version, null=False, on_delete=models.CASCADE)
+    created = models.DateTimeField(null=False, default=timezone.now)
+
+    objects = UidManager()
+
+
+class UserFileViewVersion(UidModelMixin, models.Model):
+    """
+    UserFileView<->Version M2M model.
+
+    Maintains all historic versions of a file (including the current version).
+    However, the current version is also referenced by the File.version FK.
+    """
+
+    class Meta:
+        managed = False
+        db_table = 'main_fileversion'
+        unique_together = ('file', 'version')
+
+    file = models.ForeignKey(UserFileView, null=False,
+                             on_delete=models.DO_NOTHING, related_name='versions')
+    version = models.ForeignKey(Version, null=False,
+                                on_delete=models.DO_NOTHING, related_name='+')
     created = models.DateTimeField(null=False, default=timezone.now)
 
     objects = UidManager()

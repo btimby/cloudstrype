@@ -6,7 +6,7 @@ from django.urls import reverse
 from rest_framework.test import APIClient
 
 from main.models import (
-    User, Option, OAuth2Storage, OAuth2UserStorage, File, Directory, Tag, FileTag
+    User, Option, OAuth2Storage, OAuth2UserStorage, UserFile, UserDir, Tag,
 )
 from main.tests.test_fs import MockClients
 
@@ -46,7 +46,7 @@ class APIFSTestCase(TestCase):
                              b''.join(list(r.streaming_content)))
 
             # A file object should now exist, we can access it by uid.
-            file = File.objects.first()
+            file = UserFile.objects.first()
             r = self.client.get(reverse('api:files_data_uid',
                                         args=(file.uid,)),
                                 {'format': 'json'})
@@ -78,8 +78,8 @@ class APITestCase(TestCase):
             provider=OAuth2Storage.PROVIDER_DROPBOX)
         cls.user_dropbox = OAuth2UserStorage.objects.create(
             storage=cls.dropbox, user=cls.user)
-        cls.dir = Directory.objects.create(path='/foo', user=cls.user)
-        cls.file = File.objects.create(path='/foo/bar.txt', user=cls.user)
+        cls.dir = UserDir.objects.create(path='/foo', user=cls.user)
+        cls.file = UserFile.objects.create(path='/foo/bar.txt', user=cls.user)
         cls.tags = [
             Tag.objects.create(name='foo'),
             Tag.objects.create(name='bar'),
