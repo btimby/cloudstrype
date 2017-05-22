@@ -11,8 +11,8 @@ from rest_framework.urlpatterns import format_suffix_patterns
 from api.views import (
     MeView, PublicCloudListView, CloudListView, UserDirUidView,
     UserDirPathView, UserFileUidView, UserFilePathView, DataUidView,
-    DataPathView, OptionsView, UserDirTagView, UserFileTagView, TagListView,
-    TagItemView,
+    DataPathView, DataPathVersionView, DataUidVersionView, OptionsView,
+    UserDirTagView, UserFileTagView, TagListView, TagItemView,
 )
 
 urlpatterns = [
@@ -50,11 +50,11 @@ urlpatterns = [
         name='files_data_path'),
 
     # File version data.
-    url(r'^v1/me/files/by-uid:(.+):/data/(?P<version>.+)/$',
-        DataUidView.as_view(),
+    url(r'^v1/me/files/by-uid:(.+):/data/(.+)/$',
+        DataUidVersionView.as_view(),
         name='files_version_data_uid'),
-    url(r'^v1/me/files/by-path:(/.+):/data/(?P<version>.+)/$',
-        DataPathView.as_view(),
+    url(r'^v1/me/files/by-path:(/.+):/data/(.+)/$',
+        DataPathVersionView.as_view(),
         name='files_version_data_path'),
 
     # Tags

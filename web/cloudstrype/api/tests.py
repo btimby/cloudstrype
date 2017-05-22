@@ -63,6 +63,15 @@ class APIFSTestCase(TestCase):
             self.assertEqual(TEST_FILE_BODY,
                              b''.join(list(r.streaming_content)))
 
+            # Ensure we can download a specific version of a file by uid.
+            r = self.client.get(reverse('api:files_version_data_uid',
+                                        args=(file.uid,
+                                              file.file.version.uid)),
+                                {'format': 'json'})
+            self.assertEqual(200, r.status_code)
+            self.assertEqual(TEST_FILE_BODY,
+                             b''.join(list(r.streaming_content)))
+
 
 class APITestCase(TestCase):
     @classmethod

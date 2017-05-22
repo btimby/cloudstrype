@@ -408,7 +408,7 @@ class UrlUidFilenameUploadParser(parsers.FileUploadParser):
         return basename(id)
 
 
-class DataUidView(views.APIView):
+class DataUidVersionView(views.APIView):
     """
     File data view.
 
@@ -418,7 +418,7 @@ class DataUidView(views.APIView):
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = (UrlUidFilenameUploadParser,)
 
-    def get(self, request, uid, version=None, format=None):
+    def get(self, request, uid, version, format=None):
         fs = get_fs(request.user)
 
         # Find requested file.
@@ -428,15 +428,10 @@ class DataUidView(views.APIView):
             raise exceptions.NotFound(uid)
 
         # Find requested version.
-        if version:
-            # If user requested a specific version, serve that.
-            try:
-                version = file.file.versions.get(uid=version)
-            except Version.DoesNotExist:
-                raise exceptions.NotFound(version)
-        else:
-            # Otherwise default to current version
-            version = file.file.version
+        try:
+            version = file.file.versions.get(uid=version)
+        except Version.DoesNotExist:
+            raise exceptions.NotFound(version)
 
         # Prepare response.
         response = StreamingHttpResponse(
@@ -451,9 +446,19 @@ class DataUidView(views.APIView):
         # Send the file.
         return response
 
-    def post(self, request, uid, version=None, format=None):
-        if version:
-            raise exceptions.MethodNotAllowed('POST', 'Cannot upload version')
+class DataUidView(DataUidVersionView):
+    def get(self, request, uid, format=None):
+        fs = get_fs(request.user)
+
+        # Find requested file.
+        try:
+            file = UserFile.objects.get(uid=uid, user=request.user)
+        except UserFile.DoesNotExist:
+            raise exceptions.NotFound(uid)
+
+        return super().get(request, uid, file.file.version.uid, format)
+
+    def post(self, request, uid, format=None):
         fs = get_fs(request.user)
         try:
             file = UserFile.objects.get(uid=uid, user=request.user)
@@ -464,7 +469,7 @@ class DataUidView(views.APIView):
         return response.Response(UserFileSerializer(file).data)
 
 
-class DataPathView(views.APIView):
+class DataPathVersionView(views.APIView):
     """
     File data view.
 
@@ -475,7 +480,7 @@ class DataPathView(views.APIView):
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = (UrlUidFilenameUploadParser,)
 
-    def get(self, request, path=None, version=None, format=None):
+    def get(self, request, path, version, format=None):
         fs = get_fs(request.user)
 
         # Find requested file.
@@ -485,15 +490,10 @@ class DataPathView(views.APIView):
             raise exceptions.NotFound(path)
 
         # Find requested version.
-        if version:
-            # If user requested a specific version, serve that.
-            try:
-                version = file.file.versions.get(uid=version)
-            except Version.DoesNotExist:
-                raise exceptions.NotFound(version)
-        else:
-            # Otherwise default to current version
-            version = file.file.version
+        try:
+            version = file.file.versions.get(uid=version)
+        except Version.DoesNotExist:
+            raise exceptions.NotFound(version)
 
         # Prepare response.
         try:
@@ -511,9 +511,19 @@ class DataPathView(views.APIView):
         # Send the file.
         return response
 
-    def post(self, request, path=None, version=None, format=None):
-        if version:
-            raise exceptions.MethodNotAllowed('POST', 'Cannot upload version')
+
+class DataPathView(DataPathVersionView):
+    def get(self, request, path, format=None):
+        fs = get_fs(request.user)
+
+        try:
+            file = fs.info(path)
+        except FileNotFoundError:
+            raise exceptions.NotFound(path)
+
+        return super().get(request, path, file.file.version.uid, format)
+
+    def post(self, request, path, format=None):
         fs = get_fs(request.user)
         file = fs.upload(path, f=request.data['file'])
         return response.Response(UserFileSerializer(file).data)
