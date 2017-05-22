@@ -12,8 +12,7 @@ from api.views import (
     MeView, PublicCloudListView, CloudListView, UserDirUidView,
     UserDirPathView, UserFileUidView, UserFilePathView, DataUidView,
     DataPathView, OptionsView, UserDirTagView, UserFileTagView, TagListView,
-    TagItemView, FileVersionPathView, FileVersionUidView,
-    FileVersionDataUidView
+    TagItemView,
 )
 
 urlpatterns = [
@@ -33,7 +32,7 @@ urlpatterns = [
         name='dirs_uid'),
     url(r'^v1/me/dirs/by-path:(/.+):$', UserDirPathView.as_view(),
         name='dirs_path'),
-    url(r'^v1/me/dirs/by-tag:(?P<name>.*):$', UserDirTagView.as_view(),
+    url(r'^v1/me/dirs/by-tag:(?P<name>.+):$', UserDirTagView.as_view(),
         name='dirtaglist'),
 
     # File information
@@ -41,7 +40,7 @@ urlpatterns = [
         name='files_uid'),
     url(r'^v1/me/files/by-path:(/.+):$', UserFilePathView.as_view(),
         name='files_path'),
-    url(r'^v1/me/files/by-tag:(?P<name>.*):$', UserFileTagView.as_view(),
+    url(r'^v1/me/files/by-tag:(?P<name>.+):$', UserFileTagView.as_view(),
         name='filetaglist'),
 
     # File data (multipart) for browser uploads
@@ -50,16 +49,13 @@ urlpatterns = [
     url(r'^v1/me/files/by-path:(/.+):/data/$', DataPathView.as_view(),
         name='files_data_path'),
 
-    # File versions.
-    url(r'^v1/me/files/by-uid:(.+):/versions/$', FileVersionUidView.as_view(),
-        name='fileversions_uid'),
-    url(r'^v1/me/files/by-path:(/.+):/versions/$',
-        FileVersionPathView.as_view(),
-        name='fileversions_path'),
-
     # File version data.
-    url(r'^v1/me/versions/(.+)/data/$', FileVersionDataUidView.as_view(),
-        name='fileversions_data'),
+    url(r'^v1/me/files/by-uid:(.+):/data/(?P<version>.+)/$',
+        DataUidView.as_view(),
+        name='files_version_data_uid'),
+    url(r'^v1/me/files/by-path:(/.+):/data/(?P<version>.+)/$',
+        DataPathView.as_view(),
+        name='files_version_data_path'),
 
     # Tags
     url(r'^v1/me/tags/$', TagListView.as_view(), name='taglist'),

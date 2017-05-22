@@ -22,7 +22,6 @@ from main.fs.errors import (
 from main.models import (
     User, BaseStorage, BaseUserStorage, OAuth2Storage, OAuth2UserStorage,
     UserDir, UserFile, ChunkStorage, Option, Tag, Version, FileVersion,
-    UserFileView,
 )
 
 
@@ -198,6 +197,12 @@ class UserDirSerializer(serializers.ModelSerializer):
         return obj.path
 
 
+class VersionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Version
+        fields = ('uid', 'size', 'md5', 'sha1', 'mime', 'created')
+
+
 class UserFileSerializer(serializers.ModelSerializer):
     """
     Serialize a File.
@@ -205,60 +210,46 @@ class UserFileSerializer(serializers.ModelSerializer):
     Provides details about a File.
     """
 
-    # TODO: replace with version
-    # chunks = serializers.SerializerMethodField()
+    chunks = serializers.SerializerMethodField()
+    shared_with = serializers.SerializerMethodField()
     tags = serializers.SerializerMethodField()
-    path = serializers.SerializerMethodField()
-    extension = serializers.SerializerMethodField()
     version = serializers.SerializerMethodField()
+    versions = serializers.SerializerMethodField()
+
+    size = serializers.IntegerField(source='file.version.size')
+    md5 = serializers.CharField(source='file.version.md5')
+    sha1 = serializers.CharField(source='file.version.sha1')
+    mime = serializers.CharField(source='file.version.mime')
+    created = serializers.DateTimeField(source='file.created')
 
     class Meta:
-        model = UserFileView
+        model = UserFile
         fields = ('uid', 'name', 'extension', 'path', 'size', 'md5', 'sha1',
-                  'mime', 'created', 'tags', 'attrs', 'version', 'versions')
+                  'mime', 'created', 'tags', 'attrs', 'version', 'versions',
+                  'chunks', 'shared_with')
 
     def get_chunks(self, obj):
         # These names are a bit long...
         n1 = 'storage__storage__storage__provider'
         n2 = 'storage__storage__storage'
         chunks = {}
-        for item in obj.chunks.values(n1).annotate(Count(n2)):
+        for item in obj.file.version.chunks.values(n1).annotate(Count(n2)):
             chunks[BaseStorage.PROVIDERS[item[n1]]] = \
                 item['%s__count' % n2]
         return chunks
 
+    def get_shared_with(self, obj):
+        # TODO: query all UserFile instances pointing to same obj.file.
+        return None
+
     def get_tags(self, obj):
         return obj.tags.all().values_list('name', flat=True)
 
-    def get_path(self, obj):
-        # This is not a model attribute, since we are rendering from a FileInfo
-        # instance, we must fake it.
-        return obj.path
-
-    def get_extension(self, obj):
-        # This is not a model attribute, since we are rendering from a FileInfo
-        # instance, we must fake it.
-        return obj.extension
-
     def get_version(self, obj):
-        return obj.version_uid
+        return VersionSerializer(obj.file.version).data
 
-
-class FileVersionSerializer(serializers.ModelSerializer):
-    """
-    Serialize a File version.
-
-    Provides details about a version of a file.
-    """
-
-    class Meta:
-        model = FileVersion
-        fields = ('uid', 'size', 'md5', 'sha1', 'mime', 'created')
-
-    size = serializers.IntegerField(source='version.size')
-    md5 = serializers.CharField(source='version.md5')
-    sha1 = serializers.CharField(source='version.sha1')
-    mime = serializers.CharField(source='version.mime')
+    def get_versions(self, obj):
+        return VersionSerializer(obj.file.versions.all(), many=True).data
 
 
 class UserDirListingSerializer(serializers.Serializer):
@@ -427,21 +418,42 @@ class DataUidView(views.APIView):
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = (UrlUidFilenameUploadParser,)
 
-    def get(self, request, uid, format=None):
+    def get(self, request, uid, version=None, format=None):
         fs = get_fs(request.user)
+
+        # Find requested file.
         try:
             file = UserFile.objects.get(uid=uid, user=request.user)
         except UserFile.DoesNotExist:
             raise exceptions.NotFound(uid)
+
+        # Find requested version.
+        if version:
+            # If user requested a specific version, serve that.
+            try:
+                version = file.file.versions.get(uid=version)
+            except Version.DoesNotExist:
+                raise exceptions.NotFound(version)
+        else:
+            # Otherwise default to current version
+            version = file.file.version
+
+        # Prepare response.
         response = StreamingHttpResponse(
-            fs.download(file.path, file=file),
-            content_type=file.mime)
+            fs.download(file.path, file=file, version=version),
+            content_type=version.mime)
+
+        # Adjust headers
         if request.GET.get('download', None):
             response['Content-Disposition'] = \
                 'attachment; filename="%s"' % file.name
+
+        # Send the file.
         return response
 
-    def post(self, request, uid, format=None):
+    def post(self, request, uid, version=None, format=None):
+        if version:
+            raise exceptions.MethodNotAllowed('POST', 'Cannot upload version')
         fs = get_fs(request.user)
         try:
             file = UserFile.objects.get(uid=uid, user=request.user)
@@ -463,66 +475,48 @@ class DataPathView(views.APIView):
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = (UrlUidFilenameUploadParser,)
 
-    def get(self, request, path, format=None):
+    def get(self, request, path=None, version=None, format=None):
         fs = get_fs(request.user)
+
+        # Find requested file.
         try:
-            file = fs.info(path).obj
+            file = fs.info(path)
         except FileNotFoundError:
             raise exceptions.NotFound(path)
+
+        # Find requested version.
+        if version:
+            # If user requested a specific version, serve that.
+            try:
+                version = file.file.versions.get(uid=version)
+            except Version.DoesNotExist:
+                raise exceptions.NotFound(version)
+        else:
+            # Otherwise default to current version
+            version = file.file.version
+
+        # Prepare response.
         try:
-            response = StreamingHttpResponse(fs.download(path, file=file),
-                                             content_type=file.mime)
+            response = StreamingHttpResponse(
+                fs.download(path, file=file, version=version),
+                content_type=version.mime)
         except FileNotFoundError:
             raise exceptions.NotFound(path)
+
+        # Adjust headers.
         if request.GET.get('download', None):
             response['Content-Disposition'] = \
                 'attachment; filename="%s"' % file.name
+
+        # Send the file.
         return response
 
-    def post(self, request, path, format=None):
+    def post(self, request, path=None, version=None, format=None):
+        if version:
+            raise exceptions.MethodNotAllowed('POST', 'Cannot upload version')
         fs = get_fs(request.user)
         file = fs.upload(path, f=request.data['file'])
         return response.Response(UserFileSerializer(file).data)
-
-
-class FileVersionUidView(views.APIView):
-    def get(self, request, uid, format=None):
-        try:
-            file = UserFile.objects.get(uid=uid)
-        except UserFile.DoesNotExist:
-            raise exceptions.NotFound(uid)
-        return response.Response(
-            FileVersionSerializer(FileVersion.objects.filter(file=file),
-                                  many=True).data)
-
-
-class FileVersionPathView(views.APIView):
-    def get(self, request, path, format=None):
-        fs = get_fs(request.user)
-        try:
-            file = fs.info(path).obj
-        except FileNotFoundError:
-            raise exceptions.NotFound(path)
-        return response.Response(
-            FileVersionSerializer(FileVersion.objects.filter(file=file),
-                                  many=True).data)
-
-
-class FileVersionDataUidView(views.APIView):
-    def get(self, request, uid, format=None):
-        fs = get_fs(request.user)
-        try:
-            version = FileVersion.objects.get(uid=uid)
-        except Version.DoesNotExist:
-            raise exceptions.NotFound(uid)
-        file = version.file
-        response = StreamingHttpResponse(
-            fs.download(file.path, file=file, version=version.version),
-            content_type=version.version.mime)
-        if request.GET.get('download', None):
-            response['Content-Disposition'] = \
-                'attachment; filename="%s"' % file.name
-        return response
 
 
 class TagSerializer(serializers.ModelSerializer):

@@ -13,20 +13,6 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.RunSQL([
-            '    CREATE VIEW "main_userfile_all_view" AS'
-            '    SELECT "main_userfile"."id" "id", "main_user"."id" "user_id",'
-            '           "main_userfile"."parent_id" "parent_id",'
-            '           "main_file"."owner_id" "owner_id",'
-            '           "main_file"."created" "created", "main_version"."size" "size",'
-            '           "main_version"."md5" "md5", "main_version"."sha1" "sha1",'
-            '           "main_version"."mime" "mime", "main_userfile"."name" "name",'
-            '           "main_userfile"."attrs" "attrs",'
-            '           "main_userfile"."deleted" "deleted"'
-            '    FROM "main_userfile"'
-            '    JOIN "main_user" ON "main_userfile"."user_id" = "main_user"."id"'
-            '    JOIN "main_file" ON "main_userfile"."file_id" = "main_file"."id"'
-            '    JOIN "main_version" ON "main_file"."version_id" = "main_version"."id";'
-        ,
             '    CREATE UNIQUE INDEX "unique_file_in_dir"'
             '    ON "main_userfile" ("user_id", "parent_id", "file_id")'
             '    WHERE "deleted" IS NULL'
@@ -34,17 +20,5 @@ class Migration(migrations.Migration):
             '    CREATE UNIQUE INDEX "unique_name_in_dir"'
             '    ON "main_userfile" ("user_id", "parent_id", "name")'
             '    WHERE "deleted" IS NULL'
-        ,
-            '    CREATE VIEW "main_userfile_view" AS'
-            '    SELECT "id", "user_id", "parent_id", "created", "size", "md5", "sha1",'
-            '           "mime", "name", "attrs"'
-            '    FROM "main_userfile_all_view"'
-            '    WHERE "deleted" IS NULL;'
-        ,
-            '    CREATE VIEW "main_userfile_dead_view" AS'
-            '    SELECT "id", "user_id", "parent_id", "created", "size", "md5", "sha1",'
-            '           "mime", "name", "attrs"'
-            '    FROM "main_userfile_all_view"'
-            '    WHERE "deleted" IS NOT NULL;'
         ]),
     ]

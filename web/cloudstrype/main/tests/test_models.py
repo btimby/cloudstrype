@@ -7,7 +7,7 @@ from django.test import TestCase
 from main.models import (
     User, UserFile, UserDir, Chunk, FileChunk, Option, BaseStorage,
     OAuth2UserStorage, ArrayStorage, OAuth2Storage, BasicStorage,
-    ArrayUserStorage, BasicUserStorage, ChunkStorage, UserFileView
+    ArrayUserStorage, BasicUserStorage, ChunkStorage,
 )
 from main.fs.clouds.base import BaseOAuth2APIClient
 from main.fs.array import ArrayClient
@@ -50,12 +50,12 @@ class UserFileTestCase(TestCase):
 
         # Two to account for "root"
         self.assertEqual(2, UserDir.objects.all().count())
-        self.assertEqual(1, UserFileView.objects.all().count())
+        self.assertEqual(1, UserFile.objects.all().count())
 
         dir1.delete()
 
         self.assertEqual(1, UserDir.objects.all().count())
-        self.assertEqual(0, UserFileView.objects.all().count())
+        self.assertEqual(0, UserFile.objects.all().count())
 
     def test_chunks(self):
         file = UserFile.objects.create(

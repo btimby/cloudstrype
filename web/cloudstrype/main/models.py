@@ -77,7 +77,6 @@ class UidManagerMixin(object):
 
     A Model can use a custom manager with this mixin to gain uid capabilities.
     """
-
     def get_queryset(self):
         "Return UidQuerySet instance."
         return UidQuerySet(self.model, using=self._db)
@@ -546,7 +545,6 @@ class UserDirQuerySet(UidQuerySet):
 
 class UserDirManager(models.Manager):
     """Manage UserDir model."""
-
     def get_queryset(self):
         """
         Override default QuerySet.
@@ -643,101 +641,6 @@ class UserDir(UidModelMixin, models.Model):
         return dir
 
 
-class UserFileViewManager(UidManagerMixin, models.Manager):
-    pass
-
-
-class UserFileView(UidModelMixin, models.Model):
-    """
-    View that pre-joins file tables.
-
-    Meant to be the "public" interface for file information. The API should
-    export this model. The other underlying models are used for individual
-    operations.
-
-    CREATE VIEW "main_userfile_view" AS
-    SELECT "id", "user_id", "parent_id", "created", "size", "md5", "sha1",
-           "mime", "name", "attrs"
-    FROM "main_userfile_all_view"
-    WHERE "deleted" IS NULL;
-
-    This view derives from another, here is the underlying view:
-
-    CREATE VIEW "main_userfile_all_view" AS
-    SELECT "main_userfile"."id" AS "id", "main_user"."id" AS "user_id",
-           "main_userfile"."parent_id" AS "parent_id",
-           "main_file"."owner_id" AS "owner_id",
-           "main_file".created" AS "created", "main_version"."size" AS "size",
-           "main_version"."md5" AS "md5", "main_version"."sha1" AS "sha1",
-           "main_version"."mime" AS "mime", "main_userfile"."name" AS "name",
-           "main_userfile"."attrs" AS "attrs",
-           "main_userfile"."deleted" AS "deleted"
-    FROM "main_userfile"
-    JOIN "main_user"."id" ON "main_userfile"."user_id" = "main_user"."id"
-    JOIN "main_file" ON "main_userfile"."file_id" = "main_file"."id"
-    JOIN "main_version" ON "main_file"."version_id" = "main_version"."id";
-    """
-
-    class Meta:
-        managed = False
-        db_table = 'main_userfile_view'
-
-    # Fields from UserFile
-    user = models.ForeignKey(User, related_name='+',
-                             on_delete=models.DO_NOTHING)
-    parent = models.ForeignKey(UserDir, null=True, related_name='+',
-                               on_delete=models.DO_NOTHING)
-
-    # Fields from File
-    owner = models.ForeignKey(User, related_name='+',
-                              on_delete=models.DO_NOTHING)
-    created = models.DateTimeField(null=False, default=timezone.now)
-
-    # Fields from Version
-    size = models.IntegerField(default=0)
-    md5 = models.CharField(max_length=32)
-    sha1 = models.CharField(max_length=40)
-    mime = models.CharField(max_length=64)
-
-    # More fields from UserFile
-    name = models.CharField(max_length=255)
-    tags = models.ManyToManyField(Tag, through='FileTagView')
-    attrs = JSONField(null=True, blank=True)
-
-    objects = UserFileViewManager()
-
-
-class UserDeadFileView(UserFileView):
-    """
-    View that previous file tables.
-
-    Meant to be the "public" interface for dead file information. The API
-    should export this model. The other underlying models are used for
-    individual operations.
-
-    CREATE VIEW main_userdeadfile_view AS
-    SELECT id, user_id, parent_id, created, size, md5, sha1, mime, name, attrs,
-           deleted
-    FROM main_userfile_all_view
-    WHERE deleted IS NOT NULL;
-
-    This view derives from the same view that underlies UserFileView.
-    """
-
-    class Meta:
-        managed = False
-        db_table = 'main_userfile_dead_view'
-
-    deleted = models.DateTimeField(null=False)
-
-    objects = UserFileViewManager()
-
-    def undelete(self):
-        self.deleted = None
-        self.parent = UserDir.objects.get_root(self.user)
-        self.save(update_fields=['deleted', 'parent'])
-
-
 class UserFileQuerySet(UidQuerySet):
     @staticmethod
     def _args(model, kwargs, create_parent=False):
@@ -788,7 +691,7 @@ class UserFileQuerySet(UidQuerySet):
     delete.queryset_only = True
 
 
-class UserFileManager(models.Manager):
+class BaseUserFileManager(models.Manager):
     def get_queryset(self):
         """
         Override default QuerySet
@@ -796,6 +699,19 @@ class UserFileManager(models.Manager):
         Allow filtering wth full path.
         """
         return UserFileQuerySet(self.model, using=self._db)
+
+    def delete(self):
+        raise NotImplementedError()
+
+
+class UserFileManager(BaseUserFileManager):
+    def get_queryset(self):
+        """
+        Override default QuerySet
+
+        Filter out soft deletions.
+        """
+        return super().get_queryset().filter(deleted__isnull=True)
 
     @transaction.atomic
     def create(self, *args, **kwargs):
@@ -821,6 +737,16 @@ class UserFileManager(models.Manager):
         return self.get_queryset().delete()
 
 
+class DeadUserFileManager(BaseUserFileManager):
+    def get_queryset(self):
+        """
+        Override default QuerySet
+
+        Filter out soft deletions.
+        """
+        return super().get_queryset().filter(deleted__isnull=False)
+
+
 class UserFile(UidModelMixin, models.Model):
     """
     File hierarchy for a User.
@@ -842,7 +768,9 @@ class UserFile(UidModelMixin, models.Model):
     attrs = JSONField(null=True, blank=True)
     deleted = models.DateTimeField(null=True)
 
+    all = BaseUserFileManager()
     objects = UserFileManager()
+    dead = DeadUserFileManager()
 
     def __str__(self):
         return self.path
@@ -924,29 +852,13 @@ class FileTag(models.Model):
     """
 
     class Meta:
-        db_table = 'main_filetag'
+        unique_together = ('file', 'tag')
 
     file = models.ForeignKey(UserFile)
     tag = models.ForeignKey(Tag, related_name='files')
 
 
-class FileTagView(models.Model):
-    """
-    UserFileView<->Tag M2M model.
-
-    A clone of FileTag to reference from UserFileView. It is unmanaged by
-    Django and references the same table as FileTag.
-    """
-
-    class Meta:
-        managed = False
-        db_table = 'main_filetag'
-
-    file = models.ForeignKey(UserFileView)
-    tag = models.ForeignKey(Tag, related_name='+')
-
-
-class Version(models.Model):
+class Version(UidModelMixin, models.Model):
     """
     File version model.
 
@@ -961,6 +873,9 @@ class Version(models.Model):
     storage of a File.
     """
 
+    class Meta:
+        base_manager_name = 'objects'
+
     file = models.ManyToManyField(File, related_name='versions',
                                   through='FileVersion')
     size = models.IntegerField(default=0)
@@ -974,6 +889,8 @@ class Version(models.Model):
     mime = models.CharField(max_length=64)
     created = models.DateTimeField(null=False, default=timezone.now)
 
+    objects = UidManager()
+
     @transaction.atomic
     def add_chunk(self, chunk):
         "Adds a chunk to a file, taking care to set the serial number."
@@ -984,7 +901,7 @@ class Version(models.Model):
         return fc
 
 
-class FileVersion(UidModelMixin, models.Model):
+class FileVersion(models.Model):
     """
     File<->Version M2M model.
 
@@ -997,28 +914,6 @@ class FileVersion(UidModelMixin, models.Model):
 
     file = models.ForeignKey(File, null=False, on_delete=models.CASCADE)
     version = models.ForeignKey(Version, null=False, on_delete=models.CASCADE)
-    created = models.DateTimeField(null=False, default=timezone.now)
-
-    objects = UidManager()
-
-
-class UserFileViewVersion(UidModelMixin, models.Model):
-    """
-    UserFileView<->Version M2M model.
-
-    Maintains all historic versions of a file (including the current version).
-    However, the current version is also referenced by the File.version FK.
-    """
-
-    class Meta:
-        managed = False
-        db_table = 'main_fileversion'
-        unique_together = ('file', 'version')
-
-    file = models.ForeignKey(UserFileView, null=False,
-                             on_delete=models.DO_NOTHING, related_name='versions')
-    version = models.ForeignKey(Version, null=False,
-                                on_delete=models.DO_NOTHING, related_name='+')
     created = models.DateTimeField(null=False, default=timezone.now)
 
     objects = UidManager()
