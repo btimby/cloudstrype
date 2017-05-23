@@ -1,0 +1,11 @@
+#!/bin/sh -x
+
+/scripts/wait-for ${POSTGRES_HOST}:${POSTGRES_PORT} -- echo "PostgreSQL is up!"
+
+cd /web/cloudstrype
+/usr/bin/env python3 manage.py migrate
+
+while true;
+do
+    nc -l -p ${MIGRATE_PORT};
+done;

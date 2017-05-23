@@ -37,7 +37,7 @@ SECRET_KEY = ENV('SECRET_KEY', default='mot!1w1il6f2ub@89*3j&+)c(z9yvcfj!_le57tt
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = ENV('DEBUG', cast=bool, default=True)
 
-ALLOWED_HOSTS = ENV('ALLOWED_HOSTS', default='localhost').split(',')
+ALLOWED_HOSTS = ENV('ALLOWED_HOSTS', default='cloudstrype').split(',')
 
 
 # Application definition
@@ -113,7 +113,7 @@ WSGI_APPLICATION = 'cloudstrype.wsgi.application'
 # https://docs.djangoproject.com/en/1.10/ref/settings/#databases
 
 DATABASES = {
-    'default': ENV.db(default='postgresql://cloudstrype:password@localhost/cloudstrype')
+    'default': ENV.db(default='postgresql://postgres@postgres/postgres')
 }
 
 

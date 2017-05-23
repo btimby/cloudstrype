@@ -1,0 +1,33 @@
+upstream cloudstrype {
+    server web:8080;
+}
+
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name cloudstrype;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl default_server;
+    listen [::]:443 ssl default_server;
+    server_name cloudstrype-ssl;
+
+    ssl_certificate "/ssl/combined.pem";
+    ssl_certificate_key "/ssl/server.key";
+    ssl_session_cache shared:SSL:1m;
+    ssl_session_timeout  10m;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+
+    location /static {
+        alias /web/cloudstrype/.static;
+    }
+
+    location / {
+        root /web/cloudstrype/;
+        proxy_pass http://cloudstrype;
+        include /etc/nginx/uwsgi_params;
+    }
+}

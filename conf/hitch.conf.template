@@ -1,0 +1,27 @@
+# Run 'man hitch.conf' for a description of all options.
+
+frontend = {
+    host = "0.0.0.0"
+    port = "8766"
+}
+
+pem-file = {
+    cert = "/ssl/combined.pem"
+}
+
+# Alas, both of these are required for my current mono/TLS implementation.
+ciphers = HIGH
+tls-protos = TLSv1.0, TLSv1.1, TLSv1.2
+
+backend = "[array]:8765"
+workers = 1
+
+daemon = off
+user = "hitch"
+group = "hitch"
+
+# Enable to let clients negotiate HTTP/2 with ALPN. (default off)
+# alpn-protos = "http/2, http/1.1"
+
+# run Varnish as backend over PROXY; varnishd -a :80 -a localhost:6086,PROXY ..
+#write-proxy-v2 = on             # Write PROXY header

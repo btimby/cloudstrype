@@ -1,0 +1,5 @@
+#!/bin/sh -x
+
+envsubst < /etc/hitch/hitch.conf.template > /etc/hitch/hitch.conf
+/scripts/wait-for -t 60 array:8765
+hitch --config=/etc/hitch/hitch.conf

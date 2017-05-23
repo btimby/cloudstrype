@@ -1,0 +1,133 @@
+version: '2'
+
+networks:
+  private:
+
+services:
+
+  postgres:
+    image: postgres:9.6-alpine
+    networks:
+      - private
+    volumes:
+      - /mnt/data/postgres:/var/lib/postgresql/data
+    logging:
+      driver: journald
+      options:
+        tag: "postgres"
+
+  cache:
+    image: memcached:1.4-alpine
+    networks:
+      - private
+    logging:
+      driver: journald
+      options:
+        tag: "memcached"
+
+  web:
+    build:
+      context: .
+      dockerfile: ./web/Dockerfile
+    image: cloudstrype/web
+    command: /scripts/web
+    depends_on:
+      - postgres
+    networks:
+      - private
+    volumes:
+      - /mnt/data/web:/data
+      - ./web:/web
+      - ./scripts:/scripts
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - MIGRATE_HOST=migrate
+      - MIGRATE_PORT=3024
+    logging:
+      driver: journald
+      options:
+        tag: "web"
+    container_name: web
+
+  migrate:
+    image: cloudstrype/web
+    depends_on:
+      - postgres
+    networks:
+      - private
+    volumes:
+      - /mnt/data/web:/data
+      - ./web:/web
+      - ./scripts:/scripts
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - MIGRATE_PORT=3024
+    logging:
+      driver: journald
+      options:
+        tag: "migrate"
+    container_name: migrate
+    command: /scripts/migrate
+
+  nginx:
+    image: nginx:1.13.0-alpine
+    volumes:
+      - ./conf/nginx.conf.template:/etc/nginx/conf.d/cloudstrype.conf.template
+      - ./ssl:/ssl
+      - ./web:/web
+      - ./scripts:/scripts
+    depends_on:
+      - web
+    networks:
+      - private
+    ports:
+      - "8000:80"
+      - "8443:443"
+    environment:
+      - NGINX_HOST=cloudstrype.io
+      - NGINX_PORT=80
+    command: /scripts/nginx
+
+  array:
+    image: cloudstrype/web
+    command: /scripts/array
+    networks:
+      - private
+    depends_on:
+      - postgres
+    volumes:
+      - /mnt/data/web:/data
+      - ./web:/web
+      - ./scripts:/scripts
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - MIGRATE_HOST=migrate
+      - MIGRATE_PORT=3024
+    logging:
+      driver: journald
+      options:
+        tag: "array"
+    container_name: array
+
+  hitch:
+    build:
+      context: .
+      dockerfile: ./hitch/Dockerfile
+    image: cloudstrype/hitch
+    volumes:
+      - ./conf/hitch.conf.template:/etc/hitch/hitch.conf.template
+      - ./ssl:/ssl
+      - ./scripts:/scripts
+    depends_on:
+      - array
+    networks:
+      - private
+    ports:
+      - "8766:8766"
+    environment:
+      - ARRAY_HOST=array
+      - ARRAY_PORT=8765
+    command: /scripts/hitch

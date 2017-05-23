@@ -1,0 +1,6 @@
+#!/bin/sh -x
+
+/scripts/wait-for -t 60 ${MIGRATE_HOST}:${MIGRATE_PORT} -- echo "Migrations complete!"
+
+cd /web/cloudstrype
+/usr/bin/env python3 manage.py array --bind=0.0.0.0 --port=8765

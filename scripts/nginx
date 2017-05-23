@@ -1,0 +1,5 @@
+#!/bin/sh -x
+
+envsubst < /etc/nginx/conf.d/cloudstrype.conf.template > /etc/nginx/conf.d/cloudstrype.conf
+/scripts/wait-for -t 60 web:8080
+nginx -g 'daemon off;'

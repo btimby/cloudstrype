@@ -239,8 +239,11 @@ class UserFileSerializer(serializers.ModelSerializer):
         return chunks
 
     def get_shared_with(self, obj):
-        # TODO: query all UserFile instances pointing to same obj.file.
-        return None
+        return UserSerializer(
+            UserFile.objects.filter(file=obj.file) \
+                .exclude(user=obj.file.owner) \
+                .exclude(user=obj.user),
+            many=True).data
 
     def get_tags(self, obj):
         return obj.tags.all().values_list('name', flat=True)
