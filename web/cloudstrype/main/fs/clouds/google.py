@@ -114,16 +114,13 @@ class GDriveAPIClient(BaseOAuth2APIClient):
         if not 199 < r.status_code < 300:
             raise HTTPError(response=r)
         attrs = r.json()
-        if 'id' not in attrs:
-            LOGGER.error('key "id" not in response "%s"', attrs)
-            raise KeyError('id')
         # Store the file ID provided by Google into the attribute store of
         # ChunkStorage
-        chunk_storage = chunk.storage.get(
-            storage__storage__provider=self.PROVIDER)
-        chunk_storage.attrs = {'file.id': attrs['id']}
-        chunk_storage.save()
-        r.close()
+        try:
+            return {'file.id': attrs['id']}
+        except KeyError as e:
+            LOGGER.error('key "id" not in response "%s"', attrs)
+            raise
 
     def delete(self, chunk, **kwargs):
         """
@@ -181,10 +178,19 @@ class GDriveAPIClient(BaseOAuth2APIClient):
             params = {
                 'q': ' and '.join(query),
             }
+            # Try to find a directory with the given "title" and parent.
             r = self.oauthsession.get(self.CREATE_URL, params=params)
             if r.status_code == 200:
-                parent_id = r.json()['items'][0]['id']
-                continue
+                # Even with a 200 response code, items could be empty (if the
+                # query failed to match).
+                try:
+                    parent_id = r.json()['items'][0]['id']
+                except IndexError:
+                    # If we did not find the directory, continue and create it.
+                    pass
+                else:
+                    # If we found it, go to top of loop.
+                    continue
 
             # OK, with that extra round-trip out of the way, let's create the
             # missing directory.

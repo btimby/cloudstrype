@@ -17,4 +17,4 @@ python-uptimerobot
 raven
 aiohttp
 python-magic
-
+python-memcached

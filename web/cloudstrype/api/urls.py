@@ -30,7 +30,7 @@ urlpatterns = [
     # Directories
     url(r'^v1/me/dirs/by-uid:(.+):$', UserDirUidView.as_view(),
         name='dirs_uid'),
-    url(r'^v1/me/dirs/by-path:(/.+):$', UserDirPathView.as_view(),
+    url(r'^v1/me/dirs/by-path:(/.*):$', UserDirPathView.as_view(),
         name='dirs_path'),
     url(r'^v1/me/dirs/by-tag:(?P<name>.+):$', UserDirTagView.as_view(),
         name='dirtaglist'),
@@ -38,7 +38,7 @@ urlpatterns = [
     # File information
     url(r'^v1/me/files/by-uid:(.+):$', UserFileUidView.as_view(),
         name='files_uid'),
-    url(r'^v1/me/files/by-path:(/.+):$', UserFilePathView.as_view(),
+    url(r'^v1/me/files/by-path:(/.*):$', UserFilePathView.as_view(),
         name='files_path'),
     url(r'^v1/me/files/by-tag:(?P<name>.+):$', UserFileTagView.as_view(),
         name='filetaglist'),

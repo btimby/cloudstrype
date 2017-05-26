@@ -66,14 +66,14 @@ async def parse_request(reader, writer):
     try:
         client_id, chunk_id = path.strip('/').split('/', 1)
     except ValueError as e:
-        LOGGER.debug(e)
+        LOGGER.debug(e, exc_info=True)
         await error_response(writer, 404, b'Not Found')
         raise RequestError()
 
     try:
         client_id = uuid.UUID(client_id)
     except ValueError as e:
-        LOGGER.debug(e)
+        LOGGER.debug(e, exc_info=True)
         await error_response(writer, 404, b'Not Found')
         raise RequestError()
 
@@ -261,7 +261,7 @@ class ArrayServer(object):
         try:
             name = uuid.UUID(bytes=name)
         except ValueError as e:
-            LOGGER.debug(e)
+            LOGGER.debug(e, exc_info=True)
             writer.close()
             return
         LOGGER.info('Connect: {0}'.format(name))
@@ -323,18 +323,21 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument('--port', type=int, default=8765,
                             help='Server port')
+        parser.add_argument('--http-port', type=int, default=8001,
+                            help='HTTP server port')
         parser.add_argument('--bind', default='localhost',
                             help='Server address to bind')
 
-    def handle(self, *args, **kwargs):
+    def handle(self, *args, bind='localhost', port=8765, http_port=8001,
+               **kwargs):
         LOGGER.addHandler(logging.StreamHandler())
-        LOGGER.setLevel(logging.DEBUG)
+        LOGGER.setLevel(logging.WARNING)
 
         server = ArrayServer()
 
         loop = asyncio.get_event_loop()
         loop.run_until_complete(
-            asyncio.start_server(server.handle_client, 'localhost', 8765))
+            asyncio.start_server(server.handle_client, bind, port))
         loop.run_until_complete(
-            asyncio.start_server(server.handle_http, 'localhost', 8081))
+            asyncio.start_server(server.handle_http, bind, http_port))
         loop.run_forever()

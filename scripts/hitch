@@ -1,5 +1,7 @@
 #!/bin/sh -x
 
-envsubst < /etc/hitch/hitch.conf.template > /etc/hitch/hitch.conf
+# No substitutions necessary at this time.
+# envsubst < /etc/hitch/hitch.conf.template > /etc/hitch/hitch.conf
+cp /etc/hitch/hitch.conf.template /etc/hitch/hitch.conf
 /scripts/wait-for -t 60 array:8765
 hitch --config=/etc/hitch/hitch.conf

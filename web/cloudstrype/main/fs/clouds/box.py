@@ -93,15 +93,14 @@ class BoxAPIClient(BaseOAuth2APIClient):
         attrs = r.json()
         # Store the file_id provided by Box into the attribute store of
         # ChunkStorage
-        chunk_storage = chunk.storage.get(
-            storage__storage__provider=self.PROVIDER)
         try:
-            chunk_storage.attrs = {'file.id': attrs['entries'][0]['id']}
+            return {'file.id': attrs['entries'][0]['id']}
         except KeyError as e:
             LOGGER.error('key "%s" not in response "%s"', e.args[0], attrs)
             raise
-        chunk_storage.save()
-        return r
+        except IndexError as e:
+            LOGGER.error('result was empty "%s"', attrs)
+            raise
 
     def delete(self, chunk, **kwargs):
         "Overidden to add file_id to URL."

@@ -5,6 +5,8 @@ networks:
 
 services:
 
+# Non-custom services (not our code).
+
   postgres:
     image: postgres:9.6-alpine
     networks:
@@ -15,6 +17,7 @@ services:
       driver: journald
       options:
         tag: "postgres"
+    container_name: cloudstrype_db
 
   cache:
     image: memcached:1.4-alpine
@@ -24,52 +27,8 @@ services:
       driver: journald
       options:
         tag: "memcached"
-
-  web:
-    build:
-      context: .
-      dockerfile: ./web/Dockerfile
-    image: cloudstrype/web
-    command: /scripts/web
-    depends_on:
-      - postgres
-    networks:
-      - private
-    volumes:
-      - /mnt/data/web:/data
-      - ./web:/web
-      - ./scripts:/scripts
-    environment:
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
-      - MIGRATE_HOST=migrate
-      - MIGRATE_PORT=3024
-    logging:
-      driver: journald
-      options:
-        tag: "web"
-    container_name: web
-
-  migrate:
-    image: cloudstrype/web
-    depends_on:
-      - postgres
-    networks:
-      - private
-    volumes:
-      - /mnt/data/web:/data
-      - ./web:/web
-      - ./scripts:/scripts
-    environment:
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
-      - MIGRATE_PORT=3024
-    logging:
-      driver: journald
-      options:
-        tag: "migrate"
-    container_name: migrate
-    command: /scripts/migrate
+    container_name: cloudstrype_cache
+    command: memcached -vv
 
   nginx:
     image: nginx:1.13.0-alpine
@@ -88,29 +47,8 @@ services:
     environment:
       - NGINX_HOST=cloudstrype.io
       - NGINX_PORT=80
+    container_name: cloudstrype_nginx
     command: /scripts/nginx
-
-  array:
-    image: cloudstrype/web
-    command: /scripts/array
-    networks:
-      - private
-    depends_on:
-      - postgres
-    volumes:
-      - /mnt/data/web:/data
-      - ./web:/web
-      - ./scripts:/scripts
-    environment:
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
-      - MIGRATE_HOST=migrate
-      - MIGRATE_PORT=3024
-    logging:
-      driver: journald
-      options:
-        tag: "array"
-    container_name: array
 
   hitch:
     build:
@@ -130,4 +68,112 @@ services:
     environment:
       - ARRAY_HOST=array
       - ARRAY_PORT=8765
+    container_name: cloudstrype_hitch
     command: /scripts/hitch
+
+# Our code.
+
+  web:
+    build:
+      context: .
+      dockerfile: ./web/Dockerfile
+    image: cloudstrype/web
+    depends_on:
+      - postgres
+    networks:
+      - private
+    volumes:
+      - /mnt/data/web:/data
+      - ./web:/web
+      - ./scripts:/scripts
+    env_file:
+      - .env
+      - .env-private
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - MIGRATE_HOST=migrate
+      - MIGRATE_PORT=3024
+    logging:
+      driver: journald
+      options:
+        tag: "web"
+    container_name: cloudstrype_web
+    command: /scripts/web
+
+  migrate:
+    image: cloudstrype/web
+    depends_on:
+      - postgres
+    networks:
+      - private
+    volumes:
+      - /mnt/data/web:/data
+      - ./web:/web
+      - ./scripts:/scripts
+    env_file:
+      - .env
+      - .env-private
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - MIGRATE_PORT=3024
+    logging:
+      driver: journald
+      options:
+        tag: "migrate"
+    container_name: cloudstrype_migrate
+    command: /scripts/migrate
+
+  cron:
+    build:
+      context: .
+      dockerfile: ./cron/Dockerfile
+    depends_on:
+      - postgres
+    networks:
+      - private
+    volumes:
+    volumes:
+      - /mnt/data/web:/data
+      - ./web:/web
+      - ./scripts:/scripts
+      - ./cron/cron.d:/etc/cron.d
+    env_file:
+      - .env
+      - .env-private
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - MIGRATE_PORT=3024
+    logging:
+      driver: journald
+      options:
+        tag: "cron"
+    container_name: cloudstrype_cron
+    command: /scripts/cron
+
+  array:
+    image: cloudstrype/web
+    networks:
+      - private
+    depends_on:
+      - postgres
+    volumes:
+      - /mnt/data/web:/data
+      - ./web:/web
+      - ./scripts:/scripts
+    env_file:
+      - .env
+      - .env-private
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - MIGRATE_HOST=migrate
+      - MIGRATE_PORT=3024
+    logging:
+      driver: journald
+      options:
+        tag: "array"
+    container_name: cloudstrype_array
+    command: /scripts/array

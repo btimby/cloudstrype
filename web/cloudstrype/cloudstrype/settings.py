@@ -20,7 +20,8 @@ from os.path import join as pathjoin
 
 ROOT = environ.Path(__file__) - 4
 ENV = environ.Env()
-environ.Env.read_env(pathjoin(str(ROOT), '.env'))
+
+# Production version (populated by CI in deploy.sh)
 environ.Env.read_env(pathjoin(str(ROOT), '.env-version'))
 
 CLOUDSTRYPE_VERSION = ENV('CLOUDSTRYPE_VERSION', default='development')
@@ -38,6 +39,7 @@ SECRET_KEY = ENV('SECRET_KEY', default='mot!1w1il6f2ub@89*3j&+)c(z9yvcfj!_le57tt
 DEBUG = ENV('DEBUG', cast=bool, default=True)
 
 ALLOWED_HOSTS = ENV('ALLOWED_HOSTS', default='cloudstrype').split(',')
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 
 # Application definition
@@ -113,7 +115,16 @@ WSGI_APPLICATION = 'cloudstrype.wsgi.application'
 # https://docs.djangoproject.com/en/1.10/ref/settings/#databases
 
 DATABASES = {
-    'default': ENV.db(default='postgresql://postgres@postgres/postgres')
+    'default': ENV.db(default='postgresql://postgres@postgres/postgres'),
+}
+
+
+CACHES = {
+    'default': ENV.cache(default='locmemcache://'),
+    'chunks': {
+        'BACKEND': 'django.core.cache.backends.filebased.FileBasedCache',
+        'LOCATION': '/var/cache/chunks',
+    },
 }
 
 
@@ -232,7 +243,7 @@ LOGGING = {
 
 # File chunk size, can be modified at any time, will only affect newly written
 # chunks.
-CLOUDSTRYPE_CHUNK_SIZE = 32 * 1024
+CLOUDSTRYPE_CHUNK_SIZE = ENV('CLOUDSTRYPE_CHUNK_SIZE', default=1024 * 1024)
 
 # In production, we send mail through a 3rd party. Otherwise use locmem.
 EMAIL_BACKEND = ENV('EMAIL_BACKEND', default='django.core.mail.backends.console.EmailBackend')

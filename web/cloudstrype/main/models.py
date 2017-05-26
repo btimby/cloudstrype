@@ -4,6 +4,7 @@ Data models.
 This file contains the models that pertain to the whole application.
 """
 
+import os
 import uuid
 
 from datetime import datetime, timedelta
@@ -18,7 +19,7 @@ from django.contrib.auth.base_user import (
 )
 from django.contrib.postgres.fields import JSONField
 # from django.contrib.postgres.search import SearchVectorField
-from django.core.exceptions import ObjectDoesNotExist
+from django.core.exceptions import ObjectDoesNotExist, ImproperlyConfigured
 from django.db import models, transaction, IntegrityError
 from django.db.models import Max
 from django.db.models.query import QuerySet
@@ -290,12 +291,12 @@ class BaseStorage(UidModelMixin, models.Model):
 
     class Meta:
         verbose_name = 'Storage'
-        verbose_name_plural = 'Storage'
+        verbose_name_plural = 'Storages'
 
     provider = models.SmallIntegerField(null=False, choices=PROVIDERS.items())
 
     def __str__(self):
-        return '<BaseStorage: %s>' % self.name
+        return self.name
 
     @property
     def name(self):
@@ -320,9 +321,12 @@ class ArrayStorage(BaseStorage):
 
     Represents storage access via array system.
     """
+    class Meta:
+        verbose_name = 'Array Storage'
+        verbose_name_plural = 'Array Storages'
 
     def __str__(self):
-        return '<ArrayProvider: %s>' % self.name
+        return self.name
 
     def get_client(self, **kwargs):
         raise NotImplementedError('No client available.')
@@ -335,11 +339,25 @@ class OAuth2Storage(BaseStorage):
     Represents Storage accessed via HTTP and OAuth2.
     """
 
+    class Meta:
+        verbose_name = 'OAuth2 Storage'
+        verbose_name_plural = 'OAuth2 Storages'
+
     client_id = models.TextField(null=False)
-    client_secret = models.TextField()
 
     def __str__(self):
-        return '<OAuth2Storage: %s>' % self.name
+        return self.name
+
+    def get_secret(self):
+        # We split for Google, since the name we use for them is "Google Drive"
+        # Splitting gets use GOOGLE which is more appropriate for an env
+        # variable name.
+        varname = '%s_CLIENT_SECRET' % self.name.split(' ')[0].upper()
+        try:
+            return os.environ[varname]
+        except KeyError as e:
+            raise ImproperlyConfigured('Missing %s environment variable' % \
+                                       varname)
 
     def get_client(self, redirect_uri, **kwargs):
         return get_client(self, redirect_uri=redirect_uri)
@@ -353,7 +371,7 @@ class BasicStorage(BaseStorage):
     """
 
     def __str__(self):
-        return '<BasicStorage: %s>' % self.name
+        return self.name
 
     def get_client(self, **kwargs):
         "Get an HTTP client to interact with this node."
@@ -377,7 +395,11 @@ class BaseUserStorage(UidModelMixin, models.Model):
     attrs = JSONField(null=True, blank=True)
 
     def __str__(self):
-        return '<BaseUserStorage: %s/%s>' % (self.storage, self.user)
+        return '%s -- %s' % (self.user, self.storage)
+
+    @property
+    def name(self):
+        return self.storage.name
 
     def get_client(self, *args, **kwargs):
         for subclass in ('oauth2userstorage', 'arrayuserstorage',
@@ -396,10 +418,14 @@ class ArrayUserStorage(BaseUserStorage):
     Represents a node within an array belonging to a user.
     """
 
+    class Meta:
+        verbose_name = 'Array User Storage'
+        verbose_name_plural = 'Array User Storages'
+
     name = models.UUIDField(default=uuid.uuid4)
 
     def __str__(self):
-        return '<ArrayUserStorage: %s>' % self.name
+        return str(self.name)
 
     def get_client(self, **kwargs):
         "Get an HTTP client to interact with this node."
@@ -425,7 +451,7 @@ class OAuth2UserStorage(BaseUserStorage):
     expires = models.DateTimeField(null=True)
 
     def __str__(self):
-        return '<OAuth2UserStorage: %s@%s>' % (self.user.email,
+        return '%s -- %s' % (self.user.email,
                                                self.storage.name)
 
     def get_client(self, **kwargs):
@@ -604,6 +630,14 @@ class UserDir(UidModelMixin, models.Model):
         return self.path
 
     @property
+    def isdir(self):
+        return True
+
+    @property
+    def isfile(self):
+        return False
+
+    @property
     def path(self):
         parent_path = self.parent.path if self.parent else ''
         return pathjoin('/', parent_path, self.name)
@@ -774,6 +808,14 @@ class UserFile(UidModelMixin, models.Model):
 
     def __str__(self):
         return self.path
+
+    @property
+    def isdir(self):
+        return False
+
+    @property
+    def isfile(self):
+        return True
 
     def save(self, *args, **kwargs):
         try:
@@ -948,6 +990,8 @@ class Chunk(UidModelMixin, models.Model):
     md5 = models.CharField(null=False, blank=False, max_length=32)
     size = models.IntegerField(null=False, blank=False)
 
+    objects = UidManager()
+
     def __str__(self):
         return '%s' % self.uid
 
@@ -1007,7 +1051,7 @@ class ChunkStorage(models.Model):
     attrs = JSONField(null=True, blank=True)
 
     def __str__(self):
-        return '%s@%s' % (self.chunk, self.storage.storage.name)
+        return '%s@%s' % (self.chunk, self.storage.name)
 
 
 from main.fs.clouds import get_client  # NOQA

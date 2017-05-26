@@ -1,5 +1,10 @@
 #!/bin/sh -x
 
-envsubst < /etc/nginx/conf.d/cloudstrype.conf.template > /etc/nginx/conf.d/cloudstrype.conf
+# No variable to merge yet, and it munges our nginx variables. When we need to
+# replace, restore this, but specify the variable we want substituted (to avoid
+# munging.)
+# https://linux.die.net/man/1/envsubst
+# envsubst < /etc/nginx/conf.d/cloudstrype.conf.template > /etc/nginx/conf.d/cloudstrype.conf
+cp /etc/nginx/conf.d/cloudstrype.conf.template /etc/nginx/conf.d/cloudstrype.conf
 /scripts/wait-for -t 60 web:8080
 nginx -g 'daemon off;'

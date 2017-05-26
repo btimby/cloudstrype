@@ -2,10 +2,10 @@
 Cloud RAID.
 """
 
-DEFAULT_CHUNK_SIZE = 128 * 1024
+from django.conf import settings
 
 
-def chunker(f, chunk_size=DEFAULT_CHUNK_SIZE):
+def chunker(f, chunk_size=settings.CLOUDSTRYPE_CHUNK_SIZE):
     """
     Iterator that reads a file-like object and yields a series of chunks.
     """

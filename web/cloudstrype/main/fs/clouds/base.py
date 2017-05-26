@@ -83,7 +83,7 @@ class BaseOAuth2APIClient(object):
     def fetch_token(self, request_uri):
         return self.oauthsession.fetch_token(
             self.ACCESS_TOKEN_URL, authorization_response=request_uri,
-            client_secret=self.storage.client_secret)
+            client_secret=self.storage.get_secret())
 
     def get_profile(self, **kwargs):
         profile = self.oauthsession.request(
@@ -110,8 +110,8 @@ class BaseOAuth2APIClient(object):
                 token = self.oauthsession.refresh_token(
                     self.REFRESH_TOKEN_URL,
                     refresh_token=self.user_storage.refresh_token,
-                    client_id=self.storage.client_id,
-                    client_secret=self.storage.client_secret)
+                    client_id=self.storage.oauth2storage.client_id,
+                    client_secret=self.storage.oauth2storage.get_secret())
                 self._save_refresh_token(token)
                 tried_refresh = True
 

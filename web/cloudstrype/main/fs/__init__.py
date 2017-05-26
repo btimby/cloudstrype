@@ -30,6 +30,9 @@ import collections
 import random
 import logging
 import mimetypes
+import struct
+import tempfile
+import zlib
 
 from io import BytesIO
 from os.path import join as pathjoin
@@ -43,12 +46,13 @@ from zlib import crc32 as _crc32
 import magic
 
 from django.conf import settings
+from django.core.cache import caches
 from django.db import transaction
 
 from main.models import (
     UserDir, UserFile, File, FileTag, Chunk, ChunkStorage,
 )
-from main.fs.raid import chunker, DEFAULT_CHUNK_SIZE
+from main.fs.raid import chunker
 from main.fs.errors import (
     DirectoryNotFoundError, FileNotFoundError, PathNotFoundError,
     DirectoryConflictError, FileConflictError
@@ -57,6 +61,8 @@ from main.fs.errors import (
 
 REPLICAS = 2
 LOGGER = logging.getLogger(__name__)
+FLAG_ZLIB = 1
+CHUNK_CACHE = caches['chunks']
 
 
 def twos_complement(input_value, num_bits):
@@ -69,6 +75,48 @@ def crc32(data):
     return twos_complement(_crc32(data), 32)
 
 
+def pack_data(data):
+    """
+    Prepare a data block for storage.
+
+    Compresses and prepends a header.
+    """
+    # TODO: encrypt.
+    # TODO: write metadata into header such as size.
+    flags = 0
+    try:
+        # Try to compress, and set flag.
+        data = zlib.compress(data)
+        flags |= FLAG_ZLIB
+    except Exception as e:
+        # Log error and continue without compression.
+        LOGGER.exception(e, exc_info=True)
+    # Pack our magic and flags.
+    header = struct.pack('BBH', 0, 0xff, flags)
+    # Return header and data for storage.
+    return header + data
+
+
+def unpack_data(data):
+    """
+    Prepare data chunk for reading.
+
+    Reverses operations of pack_data().
+    """
+    # First read our magic and flags.
+    m1, m2, flags = struct.unpack('BBH', data[:4])
+    # If no magic, or flag indicates no zlib, just return data
+    if m1 != 0 or m2 != 0xff:
+        return data
+    # Header check passed, remove header.
+    data = data[4:]
+    if flags & FLAG_ZLIB != FLAG_ZLIB:
+        # Not compressed, return data portion.
+        return data
+    # Decompress and return data.
+    return zlib.decompress(data)
+
+
 DirectoryListing = collections.namedtuple('DirectoryListing',
                                           ('dir', 'dirs', 'files'))
 
@@ -78,16 +126,15 @@ class MultiCloudBase(object):
     Base class for interacting with multiple clouds.
     """
 
-    def __init__(self, storage):
-        assert isinstance(storage, collections.Iterable), \
-            'storage must be iterable'
-        self.storage = storage
+    def __init__(self, user):
+        self.user = user
+        self.storage = user.get_clients()
 
     def get_storage(self, storage):
         for s in self.storage:
-            if s.storage.pk == storage.pk:
+            if s.user_storage.storage.provider == storage.storage.provider:
                 return s
-        raise ValueError('invalid storage %s' % storage)
+        raise ValueError('invalid storage %s for user %s' % (storage.storage.name, self.user))
 
 
 class FileLikeBase(object):
@@ -114,9 +161,8 @@ class MultiCloudReader(MultiCloudBase, FileLikeBase):
     """
     File-like object that reads from multiple clouds.
     """
-    def __init__(self, user, storage, version):
-        super().__init__(storage)
-        self.user = user
+    def __init__(self, user, version):
+        super().__init__(user)
         self.version = version
         self.chunks = list(
             Chunk.objects.filter(
@@ -133,84 +179,66 @@ class MultiCloudReader(MultiCloudBase, FileLikeBase):
 
     def _read_chunk(self):
         try:
-            chunk = self.chunks.pop()
+            chunk = self.chunks.pop(0)
         except IndexError:
             raise EOFError('out of chunks')
+        data = CHUNK_CACHE.get('chunk:%s' % chunk.uid)
+        if data is not None:
+            # Cache hit!
+            #data = data.encode('utf-8')
+            return unpack_data(data)
+            # return data
         # Try providers in random order.
-        for storage in sorted(chunk.storage.all(),
+        for cs in sorted(chunk.storage.all(),
                               key=lambda k: random.random()):
-            cloud = self.get_storage(storage.storage)
+            # Since chunks are shared with other users, we need to get the
+            # client for the chunk, not one of the clients for the current
+            # user.
+            cloud = cs.storage.get_client()
             try:
                 data = cloud.download(chunk)
-                assert len(data) == chunk.size, 'Size mismatch'
-                assert crc32(data) == chunk.crc32, 'CRC32 mismatch'
-                return data
             except Exception as e:
                 LOGGER.exception(e)
                 continue
-        raise IOError('Failed to read chunk')
+            unpacked = unpack_data(data)
+            # unpacked = data
+            if len(unpacked) != chunk.size:
+                LOGGER.error('Size mismatch (%s != %s)', len(unpacked),
+                             chunk.size)
+                continue
+            checksum = crc32(unpacked)
+            if checksum != chunk.crc32:
+                LOGGER.error('CRC32 mismatch (%s != %s)', checksum,
+                             chunk.crc32)
+                continue
+            # If the chunk checks out, cache it and return it.
+            CHUNK_CACHE.set('chunk:%s' % chunk.uid, data)
+            return unpacked
+        raise IOError('Failed to read chunk %s' % chunk.uid)
 
     def __iter__(self):
         while self.chunks:
             yield self._read_chunk()
 
-    # TODO: refactor this.
     def read(self, size=-1):  # NOQA
         """
         Read series of chunks from multiple clouds.
         """
-        if self._closed:
-            raise ValueError('I/O operation on closed file.')
-        if not self.chunks:
-            return
-        if size == -1:
-            # If we have a buffer, return it, otherwise, return the next full
-            # chunk.
-            if self._buffer:
-                data = b''.join(self._buffer)
-                self._buffer.clear()
-                return data
-            else:
-                return self._read_chunk()
-        else:
-            # Fetch chunks until we can satisfy the read or until we are out of
-            # chunks.
-            while True:
-                buffer_len = sum(map(len, self._buffer))
-                if buffer_len >= size:
-                    break
-                try:
-                    self._buffer.append(self._read_chunk())
-                except EOFError:
-                    break
-            # Satisfy the read from our buffer. Retain the remainder (if any)
-            # for the next read().
-            bytes_needed, buff = size, BytesIO()
-            # Grab data from our buffer until we have exactly self.chunk_size
-            # in our send buffer.
-            while bytes_needed and self._buffer:
-                head_len = len(self._buffer[0])
-                if head_len <= bytes_needed:
-                    # Head can be consumed in full, it will not exceed
-                    # self.chunk_size
-                    buff.write(self._buffer.pop())
-                    bytes_needed -= head_len
-                else:
-                    # Head of our buffer is too large, we need a portion of it.
-                    buff.write(self._buffer[0][:bytes_needed])
-                    self._buffer[0] = self._buffer[0][bytes_needed:]
-                    bytes_needed = 0
-            return buff.getvalue()
+        while True:
+            try:
+                return next(self)
+            except StopIteration:
+                return
 
 
 class MultiCloudWriter(MultiCloudBase, FileLikeBase):
     """
     File-like object that writes to multiple clouds.
     """
-    def __init__(self, user, clouds, file, version,
-                 chunk_size=DEFAULT_CHUNK_SIZE, replicas=REPLICAS):
-        super().__init__(clouds)
-        self.user = user
+    def __init__(self, user, storage, file, version,
+                 chunk_size=settings.CLOUDSTRYPE_CHUNK_SIZE,
+                 replicas=REPLICAS):
+        super().__init__(user)
         self.mime = mimetypes.guess_type(file.name, strict=False)
         self.version = version
         self.chunk_size = chunk_size
@@ -243,6 +271,7 @@ class MultiCloudWriter(MultiCloudBase, FileLikeBase):
             chunk = Chunk.objects.get(**kwargs)
             # All that is left to do is to add this chunk to the version.
         except Chunk.DoesNotExist:
+            data = pack_data(data)
             chunk = Chunk.objects.create(**kwargs)
 
             # Upload to N random providers where N is desired replica count.
@@ -253,17 +282,21 @@ class MultiCloudWriter(MultiCloudBase, FileLikeBase):
                 if chunks_uploaded == self.replicas + 1:
                     break
                 try:
-                    storage.upload(chunk, data)
+                    attrs = storage.upload(chunk, data)
                 except Exception as e:
                     LOGGER.exception(e)
                     continue
                 chunk.storage.add(
-                    ChunkStorage.objects.create(chunk=chunk,
-                                                storage=storage.storage))
+                    cs = ChunkStorage.objects.create(
+                        chunk=chunk, storage=storage.user_storage))
+                cs.attrs = attrs or {}
+                cs.save()
                 chunks_uploaded += 1
-            else:
+            if chunks_uploaded < self.replicas + 1:
                 raise IOError('Failed to write chunk')
 
+        # Freshen the cache.
+        CHUNK_CACHE.set('chunk:%s' % chunk.uid, data.decode('utf-8'))
         self.version.add_chunk(chunk)
 
     def write(self, data):
@@ -279,44 +312,21 @@ class MultiCloudWriter(MultiCloudBase, FileLikeBase):
             # First block. See if we can get a more specific mime type by
             # examining the data.
             mime = magic.from_buffer(data, mime=True)
-            self.mime = mime if mime != 'application/octet-stream' else \
-                self.mime
+            # Choose the better mimetype somehow, self.mime is determined by
+            # the filename. mime is determined by magic.
+            if not self.mime or mime != 'application/octet-strem':
+                self.mime = mime
         self._size += len(data)
         self._md5.update(data)
         self._sha1.update(data)
-        self._buffer.append(data)
-        # Write chunks until our buffer is < self.chunk_size.
-        while True:
-            buffer_len = sum(map(len, self._buffer))
-            if buffer_len < self.chunk_size:
-                # Buffer does not contain a full chunk.
-                break
-            # Buffer contains at least one full chunk.
-            bytes_needed, buff = self.chunk_size, BytesIO()
-            # Grab data from our buffer until we have exactly self.chunk_size
-            # in our send buffer.
-            while bytes_needed and self._buffer:
-                head_len = len(self._buffer[0])
-                if head_len <= bytes_needed:
-                    # Head can be consumed in full, it will not exceed
-                    # self.chunk_size
-                    buff.write(self._buffer.pop())
-                    bytes_needed -= head_len
-                else:
-                    # Head of our buffer is too large, we need a portion of it.
-                    buff.write(self._buffer[0][:bytes_needed])
-                    self._buffer[0] = self._buffer[0][bytes_needed:]
-                    bytes_needed = 0
-            # We now have a full chunk, send it.
-            self._write_chunk(buff.getvalue())
+        self._write_chunk(data)
 
     def close(self):
         """
-        Flush remaining buffer and disable writing.
+        Finalize file by writing attributes.
         """
         if self._closed:
             return
-        self._write_chunk(b''.join(self._buffer))
         # Update content related attributes.
         self.version.size = self._size
         self.version.md5 = self._md5.hexdigest()
@@ -329,8 +339,7 @@ class MultiCloudWriter(MultiCloudBase, FileLikeBase):
 class MultiCloudFilesystem(MultiCloudBase):
     def __init__(self, user, chunk_size=settings.CLOUDSTRYPE_CHUNK_SIZE,
                  replicas=0):
-        super().__init__(user.get_clients())
-        self.user = user
+        super().__init__(user)
         self.chunk_size = chunk_size
         self.level = user.get_option('raid_level', 0)
         self.replicas = user.get_option('raid_replicas', replicas)
@@ -351,7 +360,7 @@ class MultiCloudFilesystem(MultiCloudBase):
         # If caller did not specify version, select the current one.
         if version is None:
             version = file.file.version
-        return MultiCloudReader(self.user, self.storage, version)
+        return MultiCloudReader(self.user, version)
 
     @transaction.atomic
     def upload(self, path, f):
@@ -379,11 +388,16 @@ class MultiCloudFilesystem(MultiCloudBase):
             version = user_file.file.version
 
         # Upload the file.
-        with MultiCloudWriter(self.user, self.storage, user_file, version,
+        size, count = 0, 0
+        LOGGER.error('Total size: %s', f.size)
+        with MultiCloudWriter(self.user, user_file, version,
                               chunk_size=self.chunk_size,
                               replicas=self.replicas) as out:
-            for chunk in chunker(f, chunk_size=self.chunk_size):
-                out.write(chunk)
+            for data in chunker(f, chunk_size=self.chunk_size):
+                size += len(data)
+                count += 1
+                out.write(data)
+        LOGGER.error('Total written: %s in %s chunks', size, count)
 
         return user_file
 

@@ -7,12 +7,13 @@ API.
 
 from os.path import basename
 
+from django import forms
 from django.db.models import Sum, Count
 from django.http import StreamingHttpResponse
 
 from rest_framework import (
     serializers, permissions, views, generics, response, exceptions, parsers,
-    mixins
+    mixins, renderers
 )
 
 from main.fs import get_fs
@@ -314,7 +315,7 @@ class UserDirPathView(views.APIView):
         try:
             dir, dirs, files = get_fs(request.user).listdir(path)
         except DirectoryNotFoundError:
-            raise exceptions.NotFound()
+            raise exceptions.NotFound(path)
         return response.Response(UserDirListingSerializer({
             'info': dir, 'dirs': dirs, 'files': files
         }).data)
@@ -373,15 +374,21 @@ class UserFilePathView(views.APIView):
     def get(self, request, path, format=None):
         fs = get_fs(request.user)
         try:
+            info = fs.info(path)
+            if info.isdir:
+                raise exceptions.NotFound(path)
             return response.Response(
-                UserFileSerializer(fs.info(path)).data)
+                UserFileSerializer(info).data)
         except PathNotFoundError:
             raise exceptions.NotFound(path)
 
     def delete(self, request, path, format=None):
         fs = get_fs(request.user)
         try:
-            return response.Response(fs.delete(path))
+            info = fs.info(path)
+            if info.isdir:
+                raise exceptions.NotFound(path)
+            return response.Response(fs.delete(path, file=info))
         except FileNotFoundError:
             raise exceptions.NotFound(path)
 
@@ -400,15 +407,26 @@ class UrlUidFilenameUploadParser(parsers.FileUploadParser):
     def get_filename(self, stream, media_type, parser_context):
         try:
             request = parser_context['request']
-            id = parser_context['args'][0]
+            uid = parser_context['args'][0]
         except (KeyError, IndexError):
             return
-        if not id.startswith('/'):
+        if not uid.startswith('/'):
             try:
-                return UserFile.objects.get(uid=id, user=request.user).name
+                return UserFile.objects.get(uid=uid, user=request.user).name
             except UserFile.DoesNotExist:
                 return
-        return basename(id)
+        return basename(uid)
+
+
+class UploadForm(forms.Form):
+    file = forms.FileField()
+
+
+class UploadBrowsableAPIRenderer(renderers.BrowsableAPIRenderer):
+    def get_context(self, *args, **kwargs):
+        context = super().get_context(*args, **kwargs)
+        context['post_form'] = UploadForm()
+        return context
 
 
 class DataUidVersionView(views.APIView):
@@ -420,6 +438,7 @@ class DataUidVersionView(views.APIView):
 
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = (UrlUidFilenameUploadParser,)
+    renderer_classes = (UploadBrowsableAPIRenderer, renderers.JSONRenderer)
 
     def get(self, request, uid, version, format=None):
         fs = get_fs(request.user)
@@ -442,7 +461,7 @@ class DataUidVersionView(views.APIView):
             content_type=version.mime)
 
         # Adjust headers
-        if request.GET.get('download', None):
+        if 'download' in request.GET:
             response['Content-Disposition'] = \
                 'attachment; filename="%s"' % file.name
 
@@ -468,7 +487,7 @@ class DataUidView(DataUidVersionView):
         except UserFile.DoesNotExist:
             raise exceptions.NotFound(uid)
         file = fs.upload(
-            file.path, f=request.data['file'])
+            file.path, f=request.FILES['file'])
         return response.Response(UserFileSerializer(file).data)
 
 
@@ -482,6 +501,7 @@ class DataPathVersionView(views.APIView):
 
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = (UrlUidFilenameUploadParser,)
+    renderer_classes = (UploadBrowsableAPIRenderer, renderers.JSONRenderer)
 
     def get(self, request, path, version, format=None):
         fs = get_fs(request.user)
@@ -489,7 +509,7 @@ class DataPathVersionView(views.APIView):
         # Find requested file.
         try:
             file = fs.info(path)
-        except FileNotFoundError:
+        except PathNotFoundError:
             raise exceptions.NotFound(path)
 
         # Find requested version.
@@ -503,11 +523,11 @@ class DataPathVersionView(views.APIView):
             response = StreamingHttpResponse(
                 fs.download(path, file=file, version=version),
                 content_type=version.mime)
-        except FileNotFoundError:
+        except PathNotFoundError:
             raise exceptions.NotFound(path)
 
         # Adjust headers.
-        if request.GET.get('download', None):
+        if 'download' in request.GET:
             response['Content-Disposition'] = \
                 'attachment; filename="%s"' % file.name
 
@@ -521,14 +541,14 @@ class DataPathView(DataPathVersionView):
 
         try:
             file = fs.info(path)
-        except FileNotFoundError:
+        except PathNotFoundError:
             raise exceptions.NotFound(path)
 
         return super().get(request, path, file.file.version.uid, format)
 
     def post(self, request, path, format=None):
         fs = get_fs(request.user)
-        file = fs.upload(path, f=request.data['file'])
+        file = fs.upload(path, f=request.FILES['file'])
         return response.Response(UserFileSerializer(file).data)
 
 
