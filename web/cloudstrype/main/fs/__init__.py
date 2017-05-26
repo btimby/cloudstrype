@@ -144,16 +144,30 @@ class FileLikeBase(object):
     Implements methods shared by both MultiCloudReader and MultiCloudWriter.
     """
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, type, value, tb):
+        self.close()
+
     def tell(self):
+        # This should be fairly easy to implement. For MultiCloudWriter, we
+        # have size, and could keep count on MultiCloudReader to provided this.
         raise NotImplementedError()
 
     def seek(self):
+        # TODO: This could possibly be implemented, and could be useful for
+        # range requests.
         raise NotImplementedError()
 
     def flush(self):
+        # N/A
         pass
 
     def close(self):
+        # No resources to release, so mark as closed.
+        if self._closed:
+            raise IOError('Already closed.')
         self._closed = True
 
 
@@ -170,12 +184,6 @@ class MultiCloudReader(MultiCloudBase, FileLikeBase):
         )
         self._buffer = []
         self._closed = False
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, type, value, tb):
-        self.close()
 
     def _read_chunk(self):
         try:
@@ -217,18 +225,18 @@ class MultiCloudReader(MultiCloudBase, FileLikeBase):
         raise IOError('Failed to read chunk %s' % chunk.uid)
 
     def __iter__(self):
+        if self._closed:
+            raise IOError('I/O operation on closed file.')
         while self.chunks:
-            yield self._read_chunk()
+            yield self.read()
 
     def read(self, size=-1):  # NOQA
         """
         Read series of chunks from multiple clouds.
         """
-        while True:
-            try:
-                return next(self)
-            except StopIteration:
-                return
+        if self._closed:
+            raise IOError('I/O operation on closed file.')
+        return self._read_chunk()
 
 
 class MultiCloudWriter(MultiCloudBase, FileLikeBase):
@@ -248,12 +256,6 @@ class MultiCloudWriter(MultiCloudBase, FileLikeBase):
         self._size = 0
         self._buffer = []
         self._closed = False
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, type, value, tb):
-        self.close()
 
     def _write_chunk(self, data):
         """
@@ -307,7 +309,7 @@ class MultiCloudWriter(MultiCloudBase, FileLikeBase):
         Close flushes the remainder of the buffer.
         """
         if self._closed:
-            raise ValueError('I/O operation on closed file.')
+            raise IOError('I/O operation on closed file.')
         if self._size == 0:
             # First block. See if we can get a more specific mime type by
             # examining the data.
@@ -325,15 +327,13 @@ class MultiCloudWriter(MultiCloudBase, FileLikeBase):
         """
         Finalize file by writing attributes.
         """
-        if self._closed:
-            return
+        super().close()
         # Update content related attributes.
         self.version.size = self._size
         self.version.md5 = self._md5.hexdigest()
         self.version.sha1 = self._sha1.hexdigest()
         # Flush to db.
         self.version.save(update_fields=['size', 'md5', 'sha1'])
-        super().close()
 
 
 class MultiCloudFilesystem(MultiCloudBase):
