@@ -2,11 +2,13 @@
 I would like to remove this to a dedicated async HTTP server.
 
 Upload flow:
- - Upload handled by nginx (written to /tmp).
- - Upload handed off to uWSGI application, which auths users and performs
+ 1 Upload handled by nginx (written to /tmp).
+ 2 Upload handed off to uWSGI application, which auths users and performs
    validation.
- - Upload handed off to aiohttp server, temp file path passed.
- - Application waits for aiohttp and nginx waits for application.
+ 3 Upload handed off to aiohttp server, temp file path passed.
+ 4 Application waits for aiohttp and nginx waits for application. BUT perhaps
+   X-Accel-Redirect can be used even for this upload... Then uWSGI can get out
+   of the way.
  - https://www.nginx.com/resources/wiki/modules/upload/
 
  [User] -> [Nginx] -> [uWSGI] -> [AIOHTTP]
@@ -15,14 +17,15 @@ Upload flow:
               +--------[disk]--------+
 
  Download flow:
- - Download request hits application via nginx.
- - Perform validation and auth.
- - Redirect nginx to aiohttp, which will stream chunks via nginx to caller.
+ 1 Download request hits application via nginx.
+ 2 Perform validation and auth.
+ 3 Redirect nginx to aiohttp, which will stream chunks via nginx to caller.
  - https://kovyrin.net/2010/07/24/nginx-fu-x-accel-redirect-remote/
 
  [User] <- [Nginx] <-> [uWSGI]
               ^
               |
+              v
            [AIOHTTP]
 """
 
@@ -128,13 +131,7 @@ class MultiCloudBase(object):
 
     def __init__(self, user):
         self.user = user
-        self.storage = user.get_clients()
-
-    def get_storage(self, storage):
-        for s in self.storage:
-            if s.user_storage.storage.provider == storage.storage.provider:
-                return s
-        raise ValueError('invalid storage %s for user %s' % (storage.storage.name, self.user))
+        self.storage = user.storages.all()
 
 
 class FileLikeBase(object):
@@ -236,14 +233,17 @@ class MultiCloudReader(MultiCloudBase, FileLikeBase):
         """
         if self._closed:
             raise IOError('I/O operation on closed file.')
-        return self._read_chunk()
+        try:
+            return self._read_chunk()
+        except EOFError:
+            return
 
 
 class MultiCloudWriter(MultiCloudBase, FileLikeBase):
     """
     File-like object that writes to multiple clouds.
     """
-    def __init__(self, user, storage, file, version,
+    def __init__(self, user, file, version,
                  chunk_size=settings.CLOUDSTRYPE_CHUNK_SIZE,
                  replicas=REPLICAS):
         super().__init__(user)
@@ -283,22 +283,22 @@ class MultiCloudWriter(MultiCloudBase, FileLikeBase):
                 # write in addition to the base block.
                 if chunks_uploaded == self.replicas + 1:
                     break
+                client = storage.get_client()
                 try:
-                    attrs = storage.upload(chunk, data)
+                    attrs = client.upload(chunk, data)
                 except Exception as e:
                     LOGGER.exception(e)
                     continue
-                chunk.storage.add(
-                    cs = ChunkStorage.objects.create(
-                        chunk=chunk, storage=storage.user_storage))
+                cs = ChunkStorage(chunk=chunk, storage=storage)
                 cs.attrs = attrs or {}
                 cs.save()
+                chunk.storages.add(cs)
                 chunks_uploaded += 1
             if chunks_uploaded < self.replicas + 1:
                 raise IOError('Failed to write chunk')
 
         # Freshen the cache.
-        CHUNK_CACHE.set('chunk:%s' % chunk.uid, data.decode('utf-8'))
+        CHUNK_CACHE.set('chunk:%s' % chunk.uid, data)
         self.version.add_chunk(chunk)
 
     def write(self, data):
@@ -389,7 +389,6 @@ class MultiCloudFilesystem(MultiCloudBase):
 
         # Upload the file.
         size, count = 0, 0
-        LOGGER.error('Total size: %s', f.size)
         with MultiCloudWriter(self.user, user_file, version,
                               chunk_size=self.chunk_size,
                               replicas=self.replicas) as out:
@@ -397,7 +396,6 @@ class MultiCloudFilesystem(MultiCloudBase):
                 size += len(data)
                 count += 1
                 out.write(data)
-        LOGGER.error('Total written: %s in %s chunks', size, count)
 
         return user_file
 

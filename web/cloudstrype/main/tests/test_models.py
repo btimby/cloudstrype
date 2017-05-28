@@ -5,9 +5,7 @@ from django.db.utils import IntegrityError
 from django.test import TestCase
 
 from main.models import (
-    User, UserFile, UserDir, Chunk, FileChunk, Option, BaseStorage,
-    OAuth2UserStorage, ArrayStorage, OAuth2Storage, BasicStorage,
-    ArrayUserStorage, BasicUserStorage, ChunkStorage,
+    User, UserFile, UserDir, Chunk, VersionChunk, Option, Storage, ChunkStorage,
 )
 from main.fs.clouds.base import BaseOAuth2APIClient
 from main.fs.array import ArrayClient
@@ -66,23 +64,21 @@ class UserFileTestCase(TestCase):
         chunk2 = Chunk.objects.create(size=1024)
         filechunk1 = file.file.version.add_chunk(chunk1)
 
-        storage = BaseStorage.objects.create(
-            provider=BaseStorage.PROVIDER_DROPBOX)
-        oauth2 = OAuth2UserStorage.objects.create(storage=storage,
-                                                  user=self.user)
-        chunk1storage = ChunkStorage.objects.create(chunk=chunk1,
-                                                    storage=oauth2)
+        storage = Storage.objects.create(
+            user=self.user, type=Storage.TYPE_DROPBOX)
+        chunk1storage = ChunkStorage.objects.create(
+            chunk=chunk1, storage=storage)
 
         self.assertTrue(
-            FileChunk.objects.filter(version=file.file.version,
-                                     chunk=chunk1).exists())
+            VersionChunk.objects.filter
+                (version=file.file.version, chunk=chunk1).exists())
 
         file.file.version.add_chunk(chunk2)
 
         self.assertEqual(
-            2, FileChunk.objects.filter(version=file.file.version).count())
+            2, VersionChunk.objects.filter(version=file.file.version).count())
 
-        for i, chunk in enumerate(FileChunk.objects.filter(
+        for i, chunk in enumerate(VersionChunk.objects.filter(
                                   version=file.file.version).order_by('serial')):
             self.assertEqual(i + 1, chunk.serial)
 
@@ -131,31 +127,24 @@ class UserStorageTestCase(TestCase):
                                             full_name='Foo Bar')
 
     def test_oauth2(self):
-        storage = BaseStorage.objects.create(
-            provider=BaseStorage.PROVIDER_DROPBOX)
-
-        oauth2 = OAuth2UserStorage.objects.create(storage=storage,
-                                                  user=self.user)
+        storage = Storage.objects.create(type=Storage.TYPE_DROPBOX,
+                                         user=self.user)
 
         kwargs = {
             'access_token': 'AAAA',
             'refresh_token': 'BBBB',
             'expires_in': 10,
         }
-        oauth2.update(**kwargs)
-        self.assertEqual('AAAA', oauth2.access_token)
-        self.assertEqual('BBBB', oauth2.refresh_token)
-        oauth2.update('CCCC', expires_at=time.time())
-        d = oauth2.to_dict()
-        self.assertEqual('CCCC', d['access_token'])
-        self.assertEqual('BBBB', d['refresh_token'])
+        storage.auth.update(**kwargs)
+        self.assertEqual('AAAA', storage.auth['access_token'])
+        self.assertEqual('BBBB', storage.auth['refresh_token'])
+        storage.auth.update({'access_token': 'CCCC', 'expires_at':time.time()})
+        self.assertEqual('CCCC', storage.auth['access_token'])
+        self.assertEqual('BBBB', storage.auth['refresh_token'])
 
     def test_array(self):
-        storage = BaseStorage.objects.create(
-            provider=BaseStorage.PROVIDER_ARRAY)
-
-        array = ArrayUserStorage.objects.create(storage=storage,
-                                                user=self.user)
+        array = Storage.objects.create(type=Storage.TYPE_ARRAY,
+                                       user=self.user)
 
         # Name should have usable default (is system-provided).
         self.assertIsNotNone(array.name)
@@ -164,43 +153,8 @@ class UserStorageTestCase(TestCase):
         self.assertIsInstance(obj, ArrayClient)
 
     def test_basic(self):
-        storage = BaseStorage.objects.create(
-            provider=BaseStorage.PROVIDER_BASIC)
-
-        basic = BasicUserStorage.objects.create(storage=storage,
-                                                user=self.user,
-                                                url='http://foobar.org/',
-                                                username='foo',
-                                                password='bar')
-
-        obj = basic.get_client()
-        # Not yet implemented, stub test.
-        self.assertIsNone(obj)
-
-
-class StorageTestCase(TestCase):
-    """
-    Test storage types.
-    """
-
-    def test_array(self):
-        storage = ArrayStorage.objects.create(
-            provider=BaseStorage.PROVIDER_ARRAY)
-
-        with self.assertRaises(NotImplementedError):
-            storage.get_client()
-
-    def test_oauth2(self):
-        storage = OAuth2Storage.objects.create(
-            provider=BaseStorage.PROVIDER_DROPBOX, client_id='id',
-            client_secret='secret')
-
-        obj = storage.get_client('https://redirect.org/')
-        self.assertIsInstance(obj, BaseOAuth2APIClient)
-
-    def test_basic(self):
-        storage = BasicStorage.objects.create(
-            provider=BaseStorage.PROVIDER_BASIC)
+        storage = Storage.objects.create(
+            type=Storage.TYPE_BASIC, user=self.user)
 
         with self.assertRaises(NotImplementedError):
             storage.get_client()

@@ -6,9 +6,8 @@ from base64 import b64encode
 from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
 
-from main.fs import Chunk
 from main.fs.clouds.base import BaseOAuth2APIClient, HTTPError
-from main.models import BaseStorage
+from main.models import Chunk, Storage
 
 
 LOGGER = logging.getLogger(__name__)
@@ -21,7 +20,7 @@ class GDriveAPIClient(BaseOAuth2APIClient):
     Unholy fuck-shits is all I have to say. Look at how much code I had to
     write... And all of it hard-fought.
     """
-    PROVIDER = BaseStorage.PROVIDER_GOOGLE
+    TYPE = Storage.TYPE_GOOGLE
     SCOPES = [
         'profile', 'email', 'https://www.googleapis.com/auth/drive',
     ]
@@ -53,8 +52,8 @@ class GDriveAPIClient(BaseOAuth2APIClient):
     def download(self, chunk, **kwargs):
         "Overidden to add file_id to URL."
         assert isinstance(chunk, Chunk), 'must be chunk instance'
-        chunk_storage = chunk.storage.get(
-            storage__storage__provider=self.PROVIDER)
+        chunk_storage = chunk.storages.get(
+            storage__type=self.TYPE)
         method, url = self.DOWNLOAD_URL
         url = url.format(file_id=chunk_storage.attrs['file.id'])
         r = self.request(method, url, chunk, **kwargs)
@@ -79,7 +78,7 @@ class GDriveAPIClient(BaseOAuth2APIClient):
         assert isinstance(chunk, Chunk), 'must be chunk instance'
 
         try:
-            parent_id = self.user_storage.attrs.get('root.id')
+            parent_id = self.storage.attrs.get('root.id')
         except ValueError:
             parent_id = None
         attrs = {
@@ -131,8 +130,8 @@ class GDriveAPIClient(BaseOAuth2APIClient):
         discovering it's ID from it's path.
         """
         assert isinstance(chunk, Chunk), 'must be chunk instance'
-        chunk_storage = chunk.storage.get(
-            storage__storage__provider=self.PROVIDER)
+        chunk_storage = chunk.storages.get(
+            storage__type=self.TYPE)
         method, url = self.DELETE_URL
         url = url.format(file_id=chunk_storage.attrs['file.id'])
         r = self.request(method, url, chunk, **kwargs)
@@ -148,7 +147,7 @@ class GDriveAPIClient(BaseOAuth2APIClient):
         return self.oauthsession.authorization_url(
             self.AUTHORIZATION_URL, access_type='offline')
 
-    def initialize(self):
+    def initialize(self, storage):
         """
         Overidden to create a storage location.
 
@@ -168,7 +167,7 @@ class GDriveAPIClient(BaseOAuth2APIClient):
         parent_id, kwargs = None, {
             'headers': {'Content-Type': 'application/json'}
         }
-        for name in ('.cloudstrype', self.user_storage.user.uid):
+        for name in ('.cloudstrype', storage.user.uid):
             # Hey Google, fuck you for making me do this!
             query = [
                 "title='%s'" % name,
@@ -206,5 +205,4 @@ class GDriveAPIClient(BaseOAuth2APIClient):
             # Create the directory:
             r = self.oauthsession.post(self.CREATE_URL, **kwargs)
             parent_id = r.json()['id']
-        self.user_storage.attrs = {'root.id': parent_id}
-        self.user_storage.save()
+        storage.attrs = {'root.id': parent_id}

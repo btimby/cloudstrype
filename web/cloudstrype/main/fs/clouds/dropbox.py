@@ -3,7 +3,7 @@ import logging
 
 from main.fs import Chunk
 from main.fs.clouds.base import BaseOAuth2APIClient
-from main.models import BaseStorage
+from main.models import Storage
 
 
 LOGGER = logging.getLogger(__name__)
@@ -21,7 +21,7 @@ class DropboxAPIClient(BaseOAuth2APIClient):
     sync on the .cloudstrype directory.
     """
 
-    PROVIDER = BaseStorage.PROVIDER_DROPBOX
+    TYPE = Storage.TYPE_DROPBOX
     PROFILE_FIELDS = {
         'uid': 'account_id',
         'email': 'email',
@@ -45,7 +45,7 @@ class DropboxAPIClient(BaseOAuth2APIClient):
 
     def request(self, method, url, chunk, headers={}, **kwargs):
         headers['Dropbox-API-Arg'] = json.dumps({
-            'path': '/.cloudstrype/%s/%s' % (self.user_storage.user.uid,
+            'path': '/.cloudstrype/%s/%s' % (self.user.uid,
                                              chunk.uid),
         })
         return super().request(method, url, chunk, headers=headers, **kwargs)

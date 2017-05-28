@@ -6,7 +6,7 @@ from django.urls import reverse
 from rest_framework.test import APIClient
 
 from main.models import (
-    User, Option, OAuth2Storage, OAuth2UserStorage, UserFile, UserDir, Tag,
+    User, Option, Storage, UserFile, UserDir, Tag,
 )
 from main.tests.test_fs import MockClients
 
@@ -78,10 +78,8 @@ class APITestCase(TestCase):
     def setUpTestData(cls):
         cls.user = User.objects.create_user(email='foo@bar.org')
         cls.option = Option.objects.create(user=cls.user)
-        cls.dropbox = OAuth2Storage.objects.create(
-            provider=OAuth2Storage.PROVIDER_DROPBOX)
-        cls.user_dropbox = OAuth2UserStorage.objects.create(
-            storage=cls.dropbox, user=cls.user)
+        cls.storage = Storage.objects.create(
+            type=Storage.TYPE_DROPBOX, user=cls.user)
         cls.dir = UserDir.objects.create(path='/foo', user=cls.user)
         cls.file = UserFile.objects.create(path='/foo/bar.txt', user=cls.user)
         cls.tags = [

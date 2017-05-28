@@ -6,16 +6,19 @@ import requests
 
 from django.conf import settings
 
-from main.models import Chunk
+from main.models import Chunk, Storage
 
 
 LOGGER = logging.getLogger(__name__)
 
 
 class ArrayClient(object):
-    def __init__(self, array_service):
-        self.service = array_service
-        self.name = array_service.name
+    TYPE = Storage.TYPE_ARRAY
+
+    def __init__(self, storage):
+        self.storage = storage
+        self.user = storage.user
+        self.name = storage.name
 
     def request(self, method, chunk, headers={}, **kwargs):
         url = pathjoin(settings.ARRAY_SERVER_URL, self.name, chunk.id)

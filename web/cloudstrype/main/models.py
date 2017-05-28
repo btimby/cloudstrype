@@ -194,7 +194,7 @@ class User(UidModelMixin, AbstractBaseUser):
 
     def get_clients(self):
         clients = []
-        for storage in BaseUserStorage.objects.filter(user=self):
+        for storage in Storage.objects.filter(user=self):
             clients.append(storage.get_client())
         return clients
 
@@ -257,257 +257,72 @@ class Option(models.Model):
                                         self.attrs)
 
 
-class BaseStorage(UidModelMixin, models.Model):
+class Storage(UidModelMixin, models.Model):
     """
-    BaseStorage model.
+    Storage model.
 
     An external provider of storage.
     """
 
-    PROVIDER_DROPBOX = 1
-    PROVIDER_ONEDRIVE = 2
-    PROVIDER_BOX = 3
-    PROVIDER_GOOGLE = 4
-    PROVIDER_ARRAY = 5
-    PROVIDER_BASIC = 6
+    TYPE_DROPBOX = 1
+    TYPE_ONEDRIVE = 2
+    TYPE_BOX = 3
+    TYPE_GOOGLE = 4
+    TYPE_ARRAY = 5
+    TYPE_BASIC = 6
 
-    PROVIDERS = {
-        PROVIDER_DROPBOX: "Dropbox",
-        PROVIDER_ONEDRIVE: "Onedrive",
-        PROVIDER_BOX: "Box",
-        PROVIDER_GOOGLE: "Google Drive",
-        PROVIDER_ARRAY: "Array",
-        PROVIDER_BASIC: "Basic",
+    TYPES = {
+        TYPE_DROPBOX: "Dropbox",
+        TYPE_ONEDRIVE: "Onedrive",
+        TYPE_BOX: "Box",
+        TYPE_GOOGLE: "Google Drive",
+        TYPE_ARRAY: "Array",
+        TYPE_BASIC: "Basic",
     }
 
-    PROVIDER_SLUGS = {
-        PROVIDER_DROPBOX: "dropbox",
-        PROVIDER_ONEDRIVE: "onedrive",
-        PROVIDER_BOX: "box",
-        PROVIDER_GOOGLE: "google",
-        PROVIDER_ARRAY: "array",
-        PROVIDER_BASIC: "basic",
+    TYPE_SLUGS = {
+        TYPE_DROPBOX: "dropbox",
+        TYPE_ONEDRIVE: "onedrive",
+        TYPE_BOX: "box",
+        TYPE_GOOGLE: "google",
+        TYPE_ARRAY: "array",
+        TYPE_BASIC: "basic",
     }
 
     class Meta:
         verbose_name = 'Storage'
         verbose_name_plural = 'Storages'
 
-    provider = models.SmallIntegerField(null=False, choices=PROVIDERS.items())
+    user = models.ForeignKey(User, null=False, blank=False,
+                             on_delete=models.CASCADE, related_name='storages')
+    type = models.SmallIntegerField(null=False, choices=TYPES.items())
+    size = models.IntegerField(null=False, default=0)
+    used = models.IntegerField(null=False, default=0)
+    auth = JSONField(default={})
+    attrs = JSONField(default={})
 
     def __str__(self):
         return self.name
 
     @property
     def name(self):
-        return self.PROVIDERS[self.provider]
+        return self.TYPES[self.type]
 
     @property
     def slug(self):
-        return self.PROVIDER_SLUGS[self.provider]
+        return self.TYPE_SLUGS[self.type]
+
+    def auth_update(self, auth):
+        self.auth = self.auth or {}
+        self.auth.update(auth)
+        self.save(update_fields=['auth'])
 
     def get_client(self, *args, **kwargs):
-        for subclass in ('oauth2storage', 'arraystorage', 'basicstorage'):
-            try:
-                return getattr(self, subclass).get_client(*args, **kwargs)
-            except ObjectDoesNotExist:
-                continue
-        raise ValueError('Invalid BaseStorage instance')
-
-
-class ArrayStorage(BaseStorage):
-    """
-    ArrayStorage model.
-
-    Represents storage access via array system.
-    """
-    class Meta:
-        verbose_name = 'Array Storage'
-        verbose_name_plural = 'Array Storages'
-
-    def __str__(self):
-        return self.name
-
-    def get_client(self, **kwargs):
-        raise NotImplementedError('No client available.')
-
-
-class OAuth2Storage(BaseStorage):
-    """
-    OAuth2Storage model.
-
-    Represents Storage accessed via HTTP and OAuth2.
-    """
-
-    class Meta:
-        verbose_name = 'OAuth2 Storage'
-        verbose_name_plural = 'OAuth2 Storages'
-
-    client_id = models.TextField(null=False)
-
-    def __str__(self):
-        return self.name
-
-    def get_secret(self):
-        # We split for Google, since the name we use for them is "Google Drive"
-        # Splitting gets use GOOGLE which is more appropriate for an env
-        # variable name.
-        varname = '%s_CLIENT_SECRET' % self.name.split(' ')[0].upper()
-        try:
-            return os.environ[varname]
-        except KeyError as e:
-            raise ImproperlyConfigured('Missing %s environment variable' % \
-                                       varname)
-
-    def get_client(self, redirect_uri, **kwargs):
-        return get_client(self, redirect_uri=redirect_uri)
-
-
-class BasicStorage(BaseStorage):
-    """
-    BasicStorage model.
-
-    Represents storage accessed via URL and secure by username/password.
-    """
-
-    def __str__(self):
-        return self.name
-
-    def get_client(self, **kwargs):
-        "Get an HTTP client to interact with this node."
-        raise NotImplementedError('No client available.')
-
-
-class BaseUserStorage(UidModelMixin, models.Model):
-    """
-    BaseUserStorage model.
-
-    Represents a Storage instance for a given user.
-    """
-
-    user = models.ForeignKey(User, on_delete=models.CASCADE,
-                             related_name='storages')
-    storage = models.ForeignKey(BaseStorage)
-    size = models.BigIntegerField(default=0)
-    used = models.BigIntegerField(default=0)
-    # Provider-specific attribute storage, such as chunk storage location
-    # directory ID.
-    attrs = JSONField(null=True, blank=True)
-
-    def __str__(self):
-        return '%s -- %s' % (self.user, self.storage)
-
-    @property
-    def name(self):
-        return self.storage.name
-
-    def get_client(self, *args, **kwargs):
-        for subclass in ('oauth2userstorage', 'arrayuserstorage',
-                         'basicuserstorage'):
-            try:
-                return getattr(self, subclass).get_client(*args, **kwargs)
-            except ObjectDoesNotExist:
-                continue
-        raise ValueError('Invalid BaseStorage instance')
-
-
-class ArrayUserStorage(BaseUserStorage):
-    """
-    ArrayUserStorage model.
-
-    Represents a node within an array belonging to a user.
-    """
-
-    class Meta:
-        verbose_name = 'Array User Storage'
-        verbose_name_plural = 'Array User Storages'
-
-    name = models.UUIDField(default=uuid.uuid4)
-
-    def __str__(self):
-        return str(self.name)
-
-    def get_client(self, **kwargs):
-        "Get an HTTP client to interact with this node."
-        return ArrayClient(self, **kwargs)
-
-
-class OAuth2UserStorage(BaseUserStorage):
-    """
-    OAuth2UserStorage model.
-
-    An access token obtained for a user from a provider. Represents an instance
-    of a cloud service provider for a specific user.
-    """
-
-    class Meta:
-        verbose_name = 'OAuth2 Access Token'
-        verbose_name_plural = 'OAuth2 Access Tokens'
-
-    provider_uid = models.CharField(null=False, blank=False, editable=False,
-                                    max_length=255)
-    access_token = models.TextField()
-    refresh_token = models.TextField(null=True)
-    expires = models.DateTimeField(null=True)
-
-    def __str__(self):
-        return '%s -- %s' % (self.user.email,
-                                               self.storage.name)
-
-    def get_client(self, **kwargs):
-        "Get an OAuth2 client to interact with this cloud."
-        return get_client(self.storage, user_storage=self, **kwargs)
-
-    def update(self, access_token, refresh_token=None, expires=None, **kwargs):
-        if 'expires_at' in kwargs:
-            expires = datetime.fromtimestamp(kwargs['expires_at'],
-                                             timezone.utc)
-        elif 'expires_in' in kwargs:
-            expires = datetime.now(timezone.utc) + \
-                      timedelta(seconds=kwargs['expires_in'])
-        else:
-            expires = kwargs.get('expires', None)
-        self.access_token = access_token
-        if refresh_token:
-            # This check is necessary because Google uses long-lived refresh
-            # tokens, in other words they don't issue a new one when you
-            # refresh. We need to retain the old one for re-use.
-            #
-            # See the final note of the following section:
-            # https://developers.google.com/identity/protocols/OAuth2WebServer#offline  # NOQA
-            self.refresh_token = refresh_token
-        self.expires = expires
-        self.save()
-
-    def to_dict(self):
-        token = {
-            'access_token': self.access_token,
-            'refresh_token': self.refresh_token,
-        }
-        if self.expires:
-            token['expires_at'] = format(self.expires, 'U')
-        return token
-
-
-class BasicUserStorage(BaseUserStorage):
-    """
-    Storage location requring BASIC auth.
-
-    Represent a storage location that requires BASIC username/password
-    authentication such as FTP sites.
-    """
-
-    url = models.URLField(max_length=256)
-    username = models.CharField(max_length=256)
-    # TODO: encrypt this.
-    password = models.CharField(max_length=256)
-
-    def __str__(self):
-        return '<BasicServer: %s>' % self.url
-
-    def get_client(self, **kwargs):
-        # TODO: get a protocol specific client for this server.
-        pass
+        # Cache the client
+        if getattr(self, '__client', None) is None:
+            client = get_client(self.type, storage=self)
+            setattr(self, '__client', client)
+        return getattr(self, '__client')
 
 
 class Tag(models.Model):
@@ -936,11 +751,11 @@ class Version(UidModelMixin, models.Model):
     @transaction.atomic
     def add_chunk(self, chunk):
         "Adds a chunk to a file, taking care to set the serial number."
-        fc = FileChunk(version=self, chunk=chunk)
-        fc.serial = (FileChunk.objects.filter(version=self).select_for_update(
+        vc = VersionChunk(version=self, chunk=chunk)
+        vc.serial = (VersionChunk.objects.filter(version=self).select_for_update(
             ).aggregate(Max('serial'))['serial__max'] or 0) + 1
-        fc.save()
-        return fc
+        vc.save()
+        return vc
 
 
 class FileVersion(models.Model):
@@ -984,7 +799,7 @@ class Chunk(UidModelMixin, models.Model):
     share the same chunk.
     """
 
-    version = models.ManyToManyField(to=Version, through='FileChunk',
+    version = models.ManyToManyField(to=Version, through='VersionChunk',
                                      related_name='chunks')
     crc32 = models.IntegerField(null=False, blank=False, default=0)
     md5 = models.CharField(null=False, blank=False, max_length=32)
@@ -1008,7 +823,7 @@ class FileChunkManager(models.Manager):
         return QuerySet(self.model, using=self._db).order_by('serial')
 
 
-class FileChunk(models.Model):
+class VersionChunk(models.Model):
     """
     Version<->Chunk M2M model.
 
@@ -1043,9 +858,9 @@ class ChunkStorage(models.Model):
     class Meta:
         unique_together = ('chunk', 'storage')
 
-    chunk = models.ForeignKey(Chunk, related_name='storage',
+    chunk = models.ForeignKey(Chunk, related_name='storages',
                               on_delete=models.CASCADE)
-    storage = models.ForeignKey(BaseUserStorage, related_name='chunks',
+    storage = models.ForeignKey(Storage, related_name='chunks',
                                 on_delete=models.CASCADE)
     # Provider-specific attribute storage, such as the chunk's file ID.
     attrs = JSONField(null=True, blank=True)

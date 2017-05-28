@@ -39,30 +39,42 @@ class BaseOAuth2APIClient(object):
     UPLOAD_URL = None
     DELETE_URL = None
 
-    def __init__(self, storage, user_storage=None, redirect_uri=None,
-                 **kwargs):
+    def __init__(self, client_id, client_secret, user=None, storage=None,
+                 redirect_uri=None, token=None, token_callback=None, **kwargs):
+        self.client_id = client_id
+        self.client_secret = client_secret
+        self.user = user
         self.storage = storage
-        self.user_storage = user_storage
-        if self.user_storage:
+        self.token = token or {}
+        self.token_callback = token_callback
+        if self.token:
             # We already have a token, pass it along.
             self.oauthsession = OAuth2Session(
-                token=self.user_storage.to_dict(), **kwargs)
+                token=self.token, **kwargs)
         else:
             # We have yet to obtain a token, so we have only the client ID etc.
             # needed to call `authorization_url()` and get a token.
             self.oauthsession = OAuth2Session(
-                storage.client_id, redirect_uri=redirect_uri,
+                self.client_id, redirect_uri=redirect_uri,
                 scope=self.SCOPES, **kwargs)
 
-    def _save_refresh_token(self, token):
+    def _update_token(self, token):
         """
         Save tokens.
 
         Called by OAuthSession during refresh. Also used by fetch_token.
         """
-        self.user_storage.update(**token)
+        self.token.update(token)
+        if callable(self.token_callback):
+            self.token_callback(token)
 
     def _get_profile_field(self, profile, field_name):
+        """
+        Extract profile field from JSON.
+
+        Profile fields are defined in dotted notation. This function will delve
+        into the JSON multiple levels to extract them.
+        """
         field_name = self.PROFILE_FIELDS[field_name]
         if isinstance(field_name, str):
             return profile.get(field_name)
@@ -73,6 +85,7 @@ class BaseOAuth2APIClient(object):
             return value
 
     def _get_profile_fields(self, profile, *field_names):
+        """Extract profile fields from JSON."""
         return list(map(lambda x: self._get_profile_field(profile, x),
                     field_names))
 
@@ -81,9 +94,11 @@ class BaseOAuth2APIClient(object):
                                                    **kwargs)
 
     def fetch_token(self, request_uri):
-        return self.oauthsession.fetch_token(
+        token = self.oauthsession.fetch_token(
             self.ACCESS_TOKEN_URL, authorization_response=request_uri,
-            client_secret=self.storage.get_secret())
+            client_secret=self.client_secret)
+        self._update_token(token)
+        return token
 
     def get_profile(self, **kwargs):
         profile = self.oauthsession.request(
@@ -109,10 +124,10 @@ class BaseOAuth2APIClient(object):
                 # Do our own, since requests_oauthlib is broken.
                 token = self.oauthsession.refresh_token(
                     self.REFRESH_TOKEN_URL,
-                    refresh_token=self.user_storage.refresh_token,
-                    client_id=self.storage.oauth2storage.client_id,
-                    client_secret=self.storage.oauth2storage.get_secret())
-                self._save_refresh_token(token)
+                    refresh_token=self.token['refresh_token'],
+                    client_id=self.client_id,
+                    client_secret=self.client_secret)
+                self.update_token(token)
                 tried_refresh = True
 
     def download(self, chunk, **kwargs):
@@ -133,7 +148,7 @@ class BaseOAuth2APIClient(object):
                          **kwargs)
         r.close()
 
-    def initialize(self):
+    def initialize(self, storage):
         """
         Allow the storage provider to initialize the account.
 

@@ -11,8 +11,9 @@ from django.views import View
 from django.urls import reverse
 
 from main.models import (
-    BaseStorage, User, OAuth2UserStorage,
+    Storage, User
 )
+from main.fs.clouds import get_client
 
 
 LOGGER = logging.getLogger(__name__)
@@ -35,7 +36,7 @@ def login(request):
                 pass
             else:
                 provider = \
-                    user.storages.order_by('id').first().storage.slug
+                    user.storages.order_by('id').first().slug
         if provider:
             return redirect(reverse('login_oauth2', args=(provider,)))
     return render(request, 'main/login.html')
@@ -53,8 +54,7 @@ class OAuth2View(View):
     """
 
     def get_oauth2_client(self, request, provider_name):
-        for id, slug in BaseStorage.PROVIDER_SLUGS.items():
-            # split() so that 'Google Drive' becomes 'google'
+        for type, slug in Storage.TYPE_SLUGS.items():
             if slug == provider_name:
                 break
         else:
@@ -63,9 +63,7 @@ class OAuth2View(View):
         redirect_uri = reverse('complete_oauth2', args=[provider_name])
         redirect_uri = request.build_absolute_uri(redirect_uri)
 
-        provider = get_object_or_404(BaseStorage, provider=id)
-
-        return provider.get_client(redirect_uri)
+        return get_client(type, redirect_uri=redirect_uri)
 
 
 class Login(OAuth2View):
@@ -100,7 +98,6 @@ class LoginComplete(OAuth2View):
         if 'error' in request.GET:
             return redirect(reverse('login'))
         provider_name = provider_name.lower()
-        client = self.get_oauth2_client(request, provider_name)
 
         client = self.get_oauth2_client(request, provider_name)
 
@@ -120,8 +117,7 @@ class LoginComplete(OAuth2View):
         else:
             try:
                 # Try to fetch the user and log them in.
-                user = User.objects.get(
-                    storages__oauth2userstorage__provider_uid=uid)
+                user = User.objects.get(storages__attrs__uid=uid)
             except User.DoesNotExist:
                 try:
                     user = User.objects.create_user(email=email,
@@ -135,18 +131,20 @@ class LoginComplete(OAuth2View):
 
         # If the token exists, update it. Otherwise create it.
         try:
-            oauth_access, created = OAuth2UserStorage.objects.get_or_create(
-                storage=client.storage, user=user, provider_uid=uid)
-            oauth_access.size = size
-            oauth_access.used = used
-            oauth_access.save()
-            client.user_storage = oauth_access
+            try:
+                storage = Storage.objects.get(user=user, type=client.type,
+                                              attrs__uid=uid)
+            except Storage.DoesNotExist:
+                storage = Storage.objects.create(user=user, type=client_type)
+                storage.attrs = {'uid': uid}
+            stroage.token = token
+            storage.size = size
+            storage.used = used
             if created:
-                client.initialize()
+                client.initialize(storage)
+            storage.save()
         except IntegrityError:
             return HttpResponseBadRequest('Cloud already registered to user')
-        oauth_access.update(**token)
-        oauth_access.save()
 
         _login(request, user)
 

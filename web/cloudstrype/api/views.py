@@ -21,36 +21,26 @@ from main.fs.errors import (
     DirectoryNotFoundError, FileNotFoundError, PathNotFoundError
 )
 from main.models import (
-    User, BaseStorage, BaseUserStorage, OAuth2Storage, OAuth2UserStorage,
-    UserDir, UserFile, ChunkStorage, Option, Tag, Version, FileVersion,
+    User, Storage, UserDir, UserFile, ChunkStorage, Option, Tag, Version,
+    FileVersion,
 )
 
 
-class BaseStorageSerializer(serializers.ModelSerializer):
+class StorageSerializer(serializers.ModelSerializer):
     """
     Serialize a Cloud.
 
     Provides statistics for a supported cloud.
     """
 
-    size = serializers.SerializerMethodField()
-    used = serializers.SerializerMethodField()
     chunks = serializers.SerializerMethodField()
 
     class Meta:
-        model = BaseStorage
+        model = Storage
         fields = ('name', 'size', 'used', 'chunks')
 
-    def get_size(self, obj):
-        return OAuth2UserStorage.objects.filter(storage=obj).aggregate(
-            Sum('size'))['size__sum'] or 0
-
-    def get_used(self, obj):
-        return OAuth2UserStorage.objects.filter(storage=obj).aggregate(
-            Sum('used'))['used__sum'] or 0
-
     def get_chunks(self, obj):
-        return ChunkStorage.objects.filter(storage__storage=obj).count()
+        return ChunkStorage.objects.filter(storage=obj).count()
 
 
 class PublicCloudListView(generics.ListAPIView):
@@ -62,11 +52,11 @@ class PublicCloudListView(generics.ListAPIView):
     """
 
     permission_classes = [permissions.AllowAny]
-    queryset = OAuth2Storage.objects.all()
-    serializer_class = BaseStorageSerializer
+    queryset = Storage.objects.all()
+    serializer_class = StorageSerializer
 
     def get_queryset(self):
-        return BaseStorage.objects.all().order_by('provider')
+        return Storage.objects.all().order_by('type')
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -136,18 +126,17 @@ class OptionsView(mixins.RetrieveModelMixin, mixins.UpdateModelMixin,
         return self.update(request, *args, **kwargs)
 
 
-class BaseUserStorageSerializer(serializers.ModelSerializer):
+class StorageSerializer(serializers.ModelSerializer):
     """
     Serialize a Cloud instance.
 
     Provides statistics for a cloud account.
     """
 
-    name = serializers.CharField(source='storage.name')
     chunks = serializers.SerializerMethodField()
 
     class Meta:
-        model = BaseUserStorage
+        model = Storage
         fields = ('name', 'size', 'used', 'chunks')
 
     def get_chunks(self, obj):
@@ -163,12 +152,11 @@ class CloudListView(generics.ListAPIView):
     """
 
     permission_classes = [permissions.IsAuthenticated]
-    queryset = BaseUserStorage.objects.all()
-    serializer_class = BaseUserStorageSerializer
+    queryset = Storage.objects.all()
+    serializer_class = StorageSerializer
 
     def get_queryset(self):
-        return BaseUserStorage.objects.filter(user=self.request.user).order_by(
-            'storage__provider')
+        return Storage.objects.filter(user=self.request.user).order_by('type')
 
 
 class UserDirSerializer(serializers.ModelSerializer):
@@ -231,11 +219,11 @@ class UserFileSerializer(serializers.ModelSerializer):
 
     def get_chunks(self, obj):
         # These names are a bit long...
-        n1 = 'storage__storage__storage__provider'
-        n2 = 'storage__storage__storage'
+        n1 = 'storages__storage__type'
+        n2 = 'storages__storage'
         chunks = {}
         for item in obj.file.version.chunks.values(n1).annotate(Count(n2)):
-            chunks[BaseStorage.PROVIDERS[item[n1]]] = \
+            chunks[Storage.TYPES[item[n1]]] = \
                 item['%s__count' % n2]
         return chunks
 
@@ -389,7 +377,7 @@ class UserFilePathView(views.APIView):
             if info.isdir:
                 raise exceptions.NotFound(path)
             return response.Response(fs.delete(path, file=info))
-        except FileNotFoundError:
+        except PathNotFoundError:
             raise exceptions.NotFound(path)
 
 

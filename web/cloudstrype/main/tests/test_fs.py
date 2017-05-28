@@ -14,7 +14,7 @@ from main.fs.errors import (
     DirectoryConflictError, FileConflictError,
 )
 from main.models import (
-    User, BaseStorage, OAuth2UserStorage,
+    User, Storage,
 )
 
 
@@ -39,15 +39,12 @@ class MockClient(object):
 class MockClients(object):
     def __init__(self, user):
         self.user = user
-
-        storage = BaseStorage.objects.create(
-            provider=BaseStorage.PROVIDER_DROPBOX)
-
         self.clients = []
+
         for i in range(4):
-            oauth2 = OAuth2UserStorage.objects.create(
-                storage=storage, user=self.user)
-            self.clients.append(MockClient(oauth2))
+            storage = Storage.objects.create(type=Storage.TYPE_DROPBOX,
+                                             user=self.user)
+            self.clients.append(MockClient(storage))
 
     def get_clients(self):
         return self.clients
@@ -315,7 +312,5 @@ class SharingTestCase(TestCase):
 
 class GetclientTestCase(TestCase):
     def test_get_client(self):
-        obj = MagicMock(provider=1024)
-
         with self.assertRaises(ValueError):
-            get_client(obj)
+            get_client(1024)

@@ -8,7 +8,7 @@ import httpretty
 from django.test import TestCase
 from django.urls import reverse
 
-from main.models import User, BaseStorage, OAuth2Storage, OAuth2UserStorage
+from main.models import User, Storage
 
 from main.fs.clouds import get_client
 
@@ -69,12 +69,12 @@ METHODS = {
 }
 
 
-class NonProviderLoginTestCase(TestCase):
+class NonTYPELoginTestCase(TestCase):
     """
-    An invalid provider name should 404.
+    An invalid TYPE name should 404.
     """
 
-    def test_login_provider(self):
+    def test_login_TYPE(self):
         r = self.client.get(reverse('login_oauth2', args=('wtf', )))
         self.assertEqual(404, r.status_code)
 
@@ -82,17 +82,15 @@ class NonProviderLoginTestCase(TestCase):
 class LoginTestCase(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.storage = OAuth2Storage.objects.create(
-            provider=BaseStorage.PROVIDER_DROPBOX)
         cls.user = User.objects.create(email='foo@bar.org')
-        cls.oauth2 = OAuth2UserStorage.objects.create(
-                storage=cls.storage, user=cls.user)
+        cls.storage = Storage.objects.create(
+            type=Storage.TYPE_DROPBOX, user=cls.user)
 
     def test_login_get(self):
         r = self.client.get(reverse('login'))
         self.assertEqual(200, r.status_code)
 
-    def test_login_post_provider(self):
+    def test_login_post_type(self):
         r = self.client.post(reverse('login'),
                              {'provider': self.storage.name})
         self.assertEqual(302, r.status_code)
@@ -110,13 +108,14 @@ class LogoutTestCase(TestCase):
 
 class BaseLogin(object):
     """
-    Test each OAuth2 provider.
+    Test each OAuth2 TYPE.
     """
 
     @classmethod
     def setUpTestData(cls):
-        cls.provider = OAuth2Storage.objects.create(provider=cls.PROVIDER)
-        cls.oauth2_client = get_client(cls.provider)
+        cls.user = User.objects.create(email='foo@bar.org')
+        cls.storage = Storage.objects.create(type=cls.TYPE, user=cls.user)
+        cls.oauth2_client = cls.storage.get_client()
 
     def setUp(self):
         httpretty.enable()
@@ -131,17 +130,17 @@ class BaseLogin(object):
 
     def test_step_one(self):
         r = self.client.get(reverse('login_oauth2',
-                            args=(self.provider.slug, )))
+                            args=(self.storage.slug, )))
         self.assertEqual(302, r.status_code)
 
     def test_step_two(self):
         r = self.client.get(reverse('login_oauth2',
-                            args=(self.provider.slug, )))
+                            args=(self.storage.slug, )))
         qs = r.url.split('?', 1)[1]
         qs = parse_qs(qs)
         urlp = urlparse(qs['redirect_uri'][0])
 
-        # This view makes several calls to the OAuth provider. setUp() has
+        # This view makes several calls to the OAuth TYPE. setUp() has
         # mocked these HTTP calls, so the view can operate.
         r = self.client.get(urlp.path, {
             'state': qs['state'][0], 'code': '1234'
@@ -151,7 +150,7 @@ class BaseLogin(object):
 
 
 class DropboxLoginTestCase(BaseLogin, TestCase):
-    PROVIDER = BaseStorage.PROVIDER_DROPBOX
+    TYPE = Storage.TYPE_DROPBOX
 
     def setUp(self):
         super().setUp()
@@ -168,7 +167,7 @@ class DropboxLoginTestCase(BaseLogin, TestCase):
 
 
 class OnedriveLoginTestCase(BaseLogin, TestCase):
-    PROVIDER = BaseStorage.PROVIDER_ONEDRIVE
+    TYPE = Storage.TYPE_ONEDRIVE
 
     def setUp(self):
         super().setUp()
@@ -185,7 +184,7 @@ class OnedriveLoginTestCase(BaseLogin, TestCase):
 
 
 class BoxLoginTestCase(BaseLogin, TestCase):
-    PROVIDER = BaseStorage.PROVIDER_BOX
+    TYPE = Storage.TYPE_BOX
 
     def setUp(self):
         super().setUp()
@@ -200,7 +199,7 @@ class BoxLoginTestCase(BaseLogin, TestCase):
 
 
 class GoogleLoginTestCase(BaseLogin, TestCase):
-    PROVIDER = BaseStorage.PROVIDER_GOOGLE
+    TYPE = Storage.TYPE_GOOGLE
 
     def setUp(self):
         super().setUp()

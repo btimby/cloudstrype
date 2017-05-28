@@ -1,7 +1,7 @@
 import logging
 
 from main.fs.clouds.base import BaseOAuth2APIClient
-from main.models import BaseStorage
+from main.models import Storage
 
 
 LOGGER = logging.getLogger(__name__)
@@ -22,7 +22,7 @@ class OnedriveAPIClient(BaseOAuth2APIClient):
     SCOPES = [
         'wl.basic', 'onedrive.readwrite', 'offline_access', 'wl.emails',
     ]
-    PROVIDER = BaseStorage.PROVIDER_ONEDRIVE
+    TYPE = Storage.TYPE_ONEDRIVE
     PROFILE_FIELDS = {
         'uid': 'id',
         'email': ['emails', 'account'],
@@ -47,6 +47,6 @@ class OnedriveAPIClient(BaseOAuth2APIClient):
 
     def request(self, method, url, chunk, headers={}, **kwargs):
         url = url.format(
-            path='.cloudstrype/%s/%s' % (self.user_storage.user.uid,
+            path='.cloudstrype/%s/%s' % (self.user.uid,
                                          chunk.uid))
         return super().request(method, url, chunk, headers=headers, **kwargs)

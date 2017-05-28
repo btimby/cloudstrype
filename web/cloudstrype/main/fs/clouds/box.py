@@ -3,9 +3,8 @@ import logging
 
 from io import BytesIO
 
-from main.fs import Chunk
 from main.fs.clouds.base import BaseOAuth2APIClient, HTTPError
-from main.models import BaseStorage
+from main.models import Chunk, Storage
 
 
 LOGGER = logging.getLogger(__name__)
@@ -29,7 +28,7 @@ class BoxAPIClient(BaseOAuth2APIClient):
     to refresh our key set, but what a PiTA.
     """
 
-    PROVIDER = BaseStorage.PROVIDER_BOX
+    TYPE = Storage.TYPE_BOX
     PROFILE_FIELDS = {
         'uid': 'id',
         'email': 'login',
@@ -54,8 +53,8 @@ class BoxAPIClient(BaseOAuth2APIClient):
     def download(self, chunk, **kwargs):
         "Overidden to add file_id to URL."
         assert isinstance(chunk, Chunk), 'must be chunk instance'
-        chunk_storage = chunk.storage.get(
-            storage__storage__provider=self.PROVIDER)
+        chunk_storage = chunk.storages.get(
+            storage__type=self.TYPE)
         method, url = self.DOWNLOAD_URL
         url = url.format(file_id=chunk_storage.attrs['file.id'])
         r = self.request(method, url, chunk, **kwargs)
@@ -63,7 +62,7 @@ class BoxAPIClient(BaseOAuth2APIClient):
 
     def upload(self, chunk, data, **kwargs):
         assert isinstance(chunk, Chunk), 'must be chunk instance'
-        parent_id = self.user_storage.attrs['root.id']
+        parent_id = self.storage.attrs['root.id']
         kwargs['data'] = {
             'attributes': json.dumps({
                 'name': chunk.uid, 'parent': {'id': parent_id}
@@ -105,8 +104,8 @@ class BoxAPIClient(BaseOAuth2APIClient):
     def delete(self, chunk, **kwargs):
         "Overidden to add file_id to URL."
         assert isinstance(chunk, Chunk), 'must be chunk instance'
-        chunk_storage = chunk.storage.get(
-            storage__storage__provider=self.PROVIDER)
+        chunk_storage = chunk.storages.get(
+            storage__type=self.TYPE)
         method, url = self.DELETE_URL
         url = url.format(file_id=chunk_storage.attrs['file.id'])
         r = self.request(method, url, chunk, **kwargs)
@@ -120,7 +119,7 @@ class BoxAPIClient(BaseOAuth2APIClient):
         return self._get_profile_fields(profile, 'uid', 'email', 'name',
                                         'size', 'used')
 
-    def initialize(self):
+    def initialize(self, storage):
         """
         Overidden to create a storage location.
 
@@ -129,7 +128,7 @@ class BoxAPIClient(BaseOAuth2APIClient):
         """
         # "0" root directory, our first goes under that, sencond under first.
         parent_id, kwargs = "0", {}
-        for name in ('.cloudstrype', self.user_storage.user.uid):
+        for name in ('.cloudstrype', storage.user.uid):
             kwargs['data'] = json.dumps({
                 'name': name,
                 'parent': {
@@ -145,5 +144,4 @@ class BoxAPIClient(BaseOAuth2APIClient):
             else:
                 # We created it, so nab the ID and continue to child.
                 parent_id = r.json()['id']
-        self.user_storage.attrs = {'root.id': parent_id}
-        self.user_storage.save()
+        storage.attrs = {'root.id': parent_id}

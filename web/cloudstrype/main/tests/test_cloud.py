@@ -3,8 +3,7 @@ import httpretty
 from django.test import TestCase
 
 from main.models import (
-    User, UserFile, BaseStorage, OAuth2Storage, OAuth2UserStorage, Chunk,
-    ChunkStorage
+    User, UserFile, Storage, Chunk, ChunkStorage,
 )
 from main.fs import crc32
 from main.fs.clouds.dropbox import DropboxAPIClient
@@ -19,26 +18,25 @@ class OAuth2APIClientTestCase(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.user = User.objects.create_user(email='foo@bar.org')
-        cls.storage = OAuth2Storage.objects.create(
-            client_id='test-client_id', client_secret='test-client_secret',
-            provider=cls.PROVIDER)
-        cls.oauth_access = OAuth2UserStorage.objects.create(
-            user=cls.user,
-            storage=cls.storage, access_token='test-access_token',
-            refresh_token='test-refresh_token', attrs={'root.id': '0'})
+        cls.storage = Storage.objects.create(type=cls.TYPE, user=cls.user)
+        cls.storage.auth = {
+            'access_token': 'test-access_token',
+            'refresh_token': 'test-refresh_token',
+        }
+        cls.storage.attrs = {'root.id': 1}
         cls.file = UserFile.objects.create(path='/foo', user=cls.user)
         cls.chunk = Chunk.objects.create(crc32=crc32(b'foo'), size=1024)
         cls.file.file.version.add_chunk(cls.chunk)
 
     def setUp(self):
-        self.client = self.oauth_access.get_client()
+        self.client = self.storage.get_client()
 
     def _get_path(self):
         return '.cloudstrype/%s/%s' % (self.user.uid, self.chunk.uid)
 
 
 class DropboxAPIClientTestCase(OAuth2APIClientTestCase):
-    PROVIDER = BaseStorage.PROVIDER_DROPBOX
+    TYPE = Storage.TYPE_DROPBOX
 
     @httpretty.activate
     def test_download(self):
@@ -69,7 +67,7 @@ class DropboxAPIClientTestCase(OAuth2APIClientTestCase):
 
 
 class OnedriveAPIClientTestCase(OAuth2APIClientTestCase):
-    PROVIDER = BaseStorage.PROVIDER_ONEDRIVE
+    TYPE = Storage.TYPE_ONEDRIVE
 
     @httpretty.activate
     def test_download(self):
@@ -105,12 +103,12 @@ class OnedriveAPIClientTestCase(OAuth2APIClientTestCase):
 
 
 class BoxAPIClientTestCase(OAuth2APIClientTestCase):
-    PROVIDER = BaseStorage.PROVIDER_BOX
+    TYPE = Storage.TYPE_BOX
 
     def setUp(self):
         super().setUp()
         ChunkStorage.objects.create(
-            chunk=self.chunk, storage=self.oauth_access,
+            chunk=self.chunk, storage=self.storage,
             attrs={'file.id': 'abc123'})
 
     @httpretty.activate
@@ -151,12 +149,12 @@ class BoxAPIClientTestCase(OAuth2APIClientTestCase):
 
 
 class GDriveAPIClientTestCase(OAuth2APIClientTestCase):
-    PROVIDER = BaseStorage.PROVIDER_GOOGLE
+    TYPE = Storage.TYPE_GOOGLE
 
     def setUp(self):
         super().setUp()
         ChunkStorage.objects.create(
-            chunk=self.chunk, storage=self.oauth_access,
+            chunk=self.chunk, storage=self.storage,
             attrs={'file.id': 'abc123'})
 
     @httpretty.activate
