@@ -5,8 +5,6 @@ from io import BytesIO
 
 from django.test import TestCase
 
-from mock import MagicMock
-
 from main.fs import get_fs
 from main.fs.clouds import get_client
 from main.fs.errors import (

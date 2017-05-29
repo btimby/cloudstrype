@@ -8,7 +8,7 @@ API.
 from os.path import basename
 
 from django import forms
-from django.db.models import Sum, Count
+from django.db.models import Count
 from django.http import StreamingHttpResponse
 
 from rest_framework import (
@@ -18,11 +18,10 @@ from rest_framework import (
 
 from main.fs import get_fs
 from main.fs.errors import (
-    DirectoryNotFoundError, FileNotFoundError, PathNotFoundError
+    DirectoryNotFoundError, PathNotFoundError
 )
 from main.models import (
     User, Storage, UserDir, UserFile, ChunkStorage, Option, Tag, Version,
-    FileVersion,
 )
 
 
@@ -229,9 +228,9 @@ class UserFileSerializer(serializers.ModelSerializer):
 
     def get_shared_with(self, obj):
         return UserSerializer(
-            UserFile.objects.filter(file=obj.file) \
-                .exclude(user=obj.file.owner) \
-                .exclude(user=obj.user),
+            UserFile.objects.filter(file=obj.file)
+            .exclude(user=obj.file.owner)
+            .exclude(user=obj.user),
             many=True).data
 
     def get_tags(self, obj):
@@ -456,10 +455,9 @@ class DataUidVersionView(views.APIView):
         # Send the file.
         return response
 
+
 class DataUidView(DataUidVersionView):
     def get(self, request, uid, format=None):
-        fs = get_fs(request.user)
-
         # Find requested file.
         try:
             file = UserFile.objects.get(uid=uid, user=request.user)
@@ -470,12 +468,15 @@ class DataUidView(DataUidVersionView):
 
     def post(self, request, uid, format=None):
         fs = get_fs(request.user)
+
         try:
             file = UserFile.objects.get(uid=uid, user=request.user)
         except UserFile.DoesNotExist:
             raise exceptions.NotFound(uid)
+
         file = fs.upload(
             file.path, f=request.FILES['file'])
+
         return response.Response(UserFileSerializer(file).data)
 
 

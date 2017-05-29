@@ -10,8 +10,6 @@ from django.urls import reverse
 
 from main.models import User, Storage
 
-from main.fs.clouds import get_client
-
 
 ACCESS_TOKEN = {
     'access_token': '1234',

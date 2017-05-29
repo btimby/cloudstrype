@@ -40,7 +40,7 @@ class Command(BaseCommand):
 
             client.upload(chunk, data)
 
-            print('Chunk uploaded. id=%s, size=%s, crc32=%s, md5=%s' % \
+            print('Chunk uploaded. id=%s, size=%s, crc32=%s, md5=%s' %
                   (chunk.id, chunk.size, chunk.crc32, chunk.md5))
 
         if kwargs['download']:
@@ -51,7 +51,7 @@ class Command(BaseCommand):
 
             data = client.download(chunk)
 
-            print('Chunk downloaded. id=%s, size=%s, crc32=%s, md5=%s' % \
+            print('Chunk downloaded. id=%s, size=%s, crc32=%s, md5=%s' %
                   (chunk.id, chunk.size, chunk.crc32, chunk.md5))
 
             assert len(data) == chunk.size, \

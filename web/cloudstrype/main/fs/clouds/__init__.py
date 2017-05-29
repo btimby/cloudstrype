@@ -1,6 +1,8 @@
 import os
 import logging
 
+from django.core.exceptions import ImproperlyConfigured
+
 from main.fs.clouds.dropbox import DropboxAPIClient
 from main.fs.clouds.onedrive import OnedriveAPIClient
 from main.fs.clouds.box import BoxAPIClient
@@ -36,7 +38,7 @@ def get_client(type, storage=None, **kwargs):
         client_id = os.environ['%s_CLIENT_ID' % slug.upper()]
         client_secret = os.environ['%s_CLIENT_SECRET' % slug.upper()]
     except KeyError as e:
-        raise ImproperlyConfigured('Missing %s environment variable' % \
+        raise ImproperlyConfigured('Missing %s environment variable' %
                                    e.args[0])
     if storage:
         kwargs.setdefault('user', storage.user)
@@ -45,4 +47,4 @@ def get_client(type, storage=None, **kwargs):
     return client_class(client_id, client_secret, storage=storage, **kwargs)
 
 
-from main.models import Storage
+from main.models import Storage  # NOQA

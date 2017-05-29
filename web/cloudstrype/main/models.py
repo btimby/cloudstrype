@@ -4,10 +4,6 @@ Data models.
 This file contains the models that pertain to the whole application.
 """
 
-import os
-import uuid
-
-from datetime import datetime, timedelta
 from os.path import (
     dirname, splitext
 )
@@ -19,13 +15,12 @@ from django.contrib.auth.base_user import (
 )
 from django.contrib.postgres.fields import JSONField
 # from django.contrib.postgres.search import SearchVectorField
-from django.core.exceptions import ObjectDoesNotExist, ImproperlyConfigured
+from django.core.exceptions import ObjectDoesNotExist
 from django.db import models, transaction, IntegrityError
 from django.db.models import Max
 from django.db.models.query import QuerySet
 from django.utils.translation import ugettext as _
 from django.utils import timezone
-from django.utils.dateformat import format
 from hashids import Hashids
 
 
@@ -752,8 +747,10 @@ class Version(UidModelMixin, models.Model):
     def add_chunk(self, chunk):
         "Adds a chunk to a file, taking care to set the serial number."
         vc = VersionChunk(version=self, chunk=chunk)
-        vc.serial = (VersionChunk.objects.filter(version=self).select_for_update(
-            ).aggregate(Max('serial'))['serial__max'] or 0) + 1
+        vc.serial = (
+            VersionChunk.objects.filter(version=self).select_for_update()
+            .aggregate(Max('serial'))['serial__max'] or 0
+        ) + 1
         vc.save()
         return vc
 

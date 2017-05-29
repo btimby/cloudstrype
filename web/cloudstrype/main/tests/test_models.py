@@ -5,7 +5,8 @@ from django.db.utils import IntegrityError
 from django.test import TestCase
 
 from main.models import (
-    User, UserFile, UserDir, Chunk, VersionChunk, Option, Storage, ChunkStorage,
+    User, UserFile, UserDir, Chunk, VersionChunk, Option, Storage,
+    ChunkStorage,
 )
 from main.fs.clouds.base import BaseOAuth2APIClient
 from main.fs.array import ArrayClient
@@ -62,24 +63,26 @@ class UserFileTestCase(TestCase):
 
         chunk1 = Chunk.objects.create(size=1024)
         chunk2 = Chunk.objects.create(size=1024)
-        filechunk1 = file.file.version.add_chunk(chunk1)
+        versionchunk = file.file.version.add_chunk(chunk1)
+
+        self.assertEqual(1, versionchunk.serial)
 
         storage = Storage.objects.create(
             user=self.user, type=Storage.TYPE_DROPBOX)
-        chunk1storage = ChunkStorage.objects.create(
-            chunk=chunk1, storage=storage)
+        ChunkStorage.objects.create(chunk=chunk1, storage=storage)
 
         self.assertTrue(
-            VersionChunk.objects.filter
-                (version=file.file.version, chunk=chunk1).exists())
+            VersionChunk.objects.filter(
+                version=file.file.version, chunk=chunk1).exists())
 
         file.file.version.add_chunk(chunk2)
 
         self.assertEqual(
             2, VersionChunk.objects.filter(version=file.file.version).count())
 
-        for i, chunk in enumerate(VersionChunk.objects.filter(
-                                  version=file.file.version).order_by('serial')):
+        for i, chunk in enumerate(
+            VersionChunk.objects.filter(
+                version=file.file.version).order_by('serial')):
             self.assertEqual(i + 1, chunk.serial)
 
         file.delete()
@@ -114,6 +117,8 @@ class UserTestCase(TestCase):
     def test_options(self):
         user = User.objects.create_user('foo@bar.org', full_name='Foo Bar')
         options = Option.objects.create(user=user)
+        self.assertEqual(1, options.raid_level)
+        self.assertEqual(1, options.raid_replicas)
 
 
 class UserStorageTestCase(TestCase):
@@ -130,6 +135,9 @@ class UserStorageTestCase(TestCase):
         storage = Storage.objects.create(type=Storage.TYPE_DROPBOX,
                                          user=self.user)
 
+        client = storage.get_client()
+        self.assertIsInstance(client, BaseOAuth2APIClient)
+
         kwargs = {
             'access_token': 'AAAA',
             'refresh_token': 'BBBB',
@@ -138,7 +146,10 @@ class UserStorageTestCase(TestCase):
         storage.auth.update(**kwargs)
         self.assertEqual('AAAA', storage.auth['access_token'])
         self.assertEqual('BBBB', storage.auth['refresh_token'])
-        storage.auth.update({'access_token': 'CCCC', 'expires_at':time.time()})
+        storage.auth.update({
+            'access_token': 'CCCC',
+            'expires_at': time.time()
+        })
         self.assertEqual('CCCC', storage.auth['access_token'])
         self.assertEqual('BBBB', storage.auth['refresh_token'])
 

@@ -34,10 +34,8 @@ import random
 import logging
 import mimetypes
 import struct
-import tempfile
 import zlib
 
-from io import BytesIO
 from os.path import join as pathjoin
 from os.path import split as pathsplit
 from os.path import (
@@ -189,13 +187,9 @@ class MultiCloudReader(MultiCloudBase, FileLikeBase):
             raise EOFError('out of chunks')
         data = CHUNK_CACHE.get('chunk:%s' % chunk.uid)
         if data is not None:
-            # Cache hit!
-            #data = data.encode('utf-8')
             return unpack_data(data)
-            # return data
         # Try providers in random order.
-        for cs in sorted(chunk.storage.all(),
-                              key=lambda k: random.random()):
+        for cs in sorted(chunk.storage.all(), key=lambda k: random.random()):
             # Since chunks are shared with other users, we need to get the
             # client for the chunk, not one of the clients for the current
             # user.

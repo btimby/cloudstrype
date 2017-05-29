@@ -3,9 +3,7 @@ import logging
 from django.contrib.auth import login as _login
 from django.contrib.auth import logout as _logout
 from django.db import transaction, IntegrityError
-from django.shortcuts import (
-    redirect, get_object_or_404, render
-)
+from django.shortcuts import redirect, render
 from django.http import HttpResponseBadRequest, Http404
 from django.views import View
 from django.urls import reverse
@@ -135,13 +133,12 @@ class LoginComplete(OAuth2View):
                 storage = Storage.objects.get(user=user, type=client.type,
                                               attrs__uid=uid)
             except Storage.DoesNotExist:
-                storage = Storage.objects.create(user=user, type=client_type)
+                storage = Storage(user=user, type=client.type)
                 storage.attrs = {'uid': uid}
-            stroage.token = token
+                client.initialize(storage)
+            storage.token = token
             storage.size = size
             storage.used = used
-            if created:
-                client.initialize(storage)
             storage.save()
         except IntegrityError:
             return HttpResponseBadRequest('Cloud already registered to user')
