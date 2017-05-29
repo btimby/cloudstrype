@@ -123,7 +123,7 @@ CACHES = {
     'default': ENV.cache(default='locmemcache://'),
     'chunks': {
         'BACKEND': 'django.core.cache.backends.filebased.FileBasedCache',
-        'LOCATION': '/var/cache/chunks',
+        'LOCATION': '/tmp/chunks',
     },
 }
 
