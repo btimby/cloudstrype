@@ -4,6 +4,8 @@ Data models.
 This file contains the models that pertain to the whole application.
 """
 
+import uuid
+
 from os.path import (
     dirname, splitext
 )
@@ -293,8 +295,8 @@ class Storage(UidModelMixin, models.Model):
     type = models.SmallIntegerField(null=False, choices=TYPES.items())
     size = models.BigIntegerField(null=False, default=0)
     used = models.BigIntegerField(null=False, default=0)
-    auth = JSONField(default={})
-    attrs = JSONField(default={})
+    auth = JSONField(blank=True, default={})
+    attrs = JSONField(blank=True, default={})
 
     def __str__(self):
         return self.name
@@ -306,6 +308,13 @@ class Storage(UidModelMixin, models.Model):
     @property
     def slug(self):
         return self.TYPE_SLUGS[self.type]
+
+    def save(self, *args, **kwargs):
+        if self.type == self.TYPE_ARRAY:
+            self.attrs = self.attrs or {}
+            if 'name' not in self.attrs:
+                self.attrs['name'] = str(uuid.uuid4())
+        return super().save(*args, **kwargs)
 
     def auth_update(self, auth):
         self.auth = self.auth or {}

@@ -175,6 +175,10 @@ services:
       - POSTGRES_PORT=5432
       - MIGRATE_HOST=migrate
       - MIGRATE_PORT=3024
+    networks:
+      - private
+    ports:
+      - "8765:8765"
     logging:
       driver: journald
       options:

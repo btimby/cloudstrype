@@ -7,6 +7,8 @@ from urllib.parse import parse_qs
 
 from django.core.management.base import BaseCommand
 
+from main.models import Storage
+
 
 LOGGER = logging.getLogger(__name__)
 LOGGER.addHandler(logging.NullHandler())
@@ -90,6 +92,23 @@ async def parse_request(reader, writer):
     return method, path, querystring, headers, client_id, chunk_id
 
 
+async def update_stat(name, size, used):
+    """
+    Coroutine to run database update in executor.
+    """
+
+    def _update():
+        try:
+            storage = Storage.objects.get(
+                type=Storage.TYPE_ARRAY, attrs__name=str(name))
+            storage.size, storage.used = size, used
+            storage.save(update_fields=['size', 'used'])
+        except Exception as e:
+            LOGGER.exception(e)
+
+    asyncio.get_event_loop().run_in_executor(None, _update)
+
+
 class RequestError(Exception):
     pass
 
@@ -99,12 +118,14 @@ class ArrayCommand(object):
     COMMAND_PUT = 1
     COMMAND_DELETE = 2
     COMMAND_PING = 3
+    COMMAND_STAT = 4
 
     COMMAND_NAMES = {
         COMMAND_GET: 'GET',
         COMMAND_PUT: 'PUT',
         COMMAND_DELETE: 'DELETE',
         COMMAND_PING: 'PING',
+        COMMAND_STAT: 'STAT',
     }
 
     COMMAND_TYPES = {v: n for n, v in COMMAND_NAMES.items()}
@@ -128,10 +149,8 @@ class ArrayCommand(object):
         if isinstance(type, str):
             # Convert HTTP method string to integer.
             type = self.COMMAND_TYPES[type]
-        assert type in (self.COMMAND_GET, self.COMMAND_PUT,
-                        self.COMMAND_DELETE, self.COMMAND_PING)
-        assert status in (self.STATUS_NONE, self.STATUS_SUCCESS,
-                          self.STATUS_ERROR)
+        assert type in self.COMMAND_NAMES.keys()
+        assert status in self.STATUS_NAMES.keys()
         self.type = type
         self.status = status
         self.idlen = 0 if idlen is None else idlen
@@ -261,13 +280,20 @@ class ArrayServer(object):
         try:
             name = uuid.UUID(bytes=name)
         except ValueError as e:
-            LOGGER.debug(e, exc_info=True)
+            LOGGER.warning(e, exc_info=True)
             writer.close()
             return
         LOGGER.info('Connect: {0}'.format(name))
+
         try:
+            # Set up bidirectional queues for message passing with HTTP
+            # clients.
             inq, outq = self.clients.setdefault(name, (asyncio.Queue(),
                                                        asyncio.Queue()))
+
+            # Queue up a STAT command.
+            await inq.put(ArrayCommand(ArrayCommand.COMMAND_STAT))
+
             while True:
                 try:
                     cmd = await asyncio.wait_for(inq.get(), 30)
@@ -283,12 +309,26 @@ class ArrayServer(object):
                     # Read client response.
                     buffer = await asyncio.wait_for(
                         reader.read(struct.calcsize(ArrayCommand.FORMAT)), 5)
+                    # Decode header.
                     cmd = ArrayCommand.decode_header(buffer)
+
+                    # Decode body (if present) and handle response.
                     if cmd.length:
+                        # If command has a payload, get it.
                         buffer = await asyncio.wait_for(
                             reader.read(cmd.length), 10)
                         cmd.id = buffer[:cmd.idlen]
                         cmd.data = buffer[cmd.idlen:]
+                        LOGGER.debug('Payload %s bytes, data %s bytes',
+                                     cmd.length, cmd.datalen)
+                    if cmd.type == ArrayCommand.COMMAND_STAT:
+                        # Handle stat command by saving reported size and bytes
+                        # used.
+                        size, used = struct.unpack('qq', cmd.data)
+                        LOGGER.debug('Provides %s bytes and using %s bytes',
+                                     size, used)
+                        await update_stat(name, size, used)
+
                     LOGGER.debug('Received {0.length} bytes'.format(cmd))
                 except Exception as e:
                     LOGGER.exception(e)
@@ -300,9 +340,10 @@ class ArrayServer(object):
                     # ones above and treat them as non-fatal.
                     break
                 finally:
-                    # PING commands did not originate from the queue, so no
-                    # need to return them to HTTP side.
-                    if cmd.type != ArrayCommand.COMMAND_PING:
+                    # PING & STAT commands did not originate from the queue, so
+                    # no need to return them to HTTP side.
+                    if cmd.type not in (ArrayCommand.COMMAND_PING,
+                                        ArrayCommand.COMMAND_STAT):
                         await outq.put(cmd)
         finally:
             try:
@@ -331,7 +372,7 @@ class Command(BaseCommand):
     def handle(self, *args, bind='localhost', port=8765, http_port=8001,
                **kwargs):
         LOGGER.addHandler(logging.StreamHandler())
-        LOGGER.setLevel(logging.WARNING)
+        LOGGER.setLevel(logging.DEBUG)
 
         server = ArrayServer()
 
