@@ -26,7 +26,7 @@ class Command(BaseCommand):
 
     def handle_chunk(self, fs, chunk):
         data = None
-        for s in chunk.storage.all():
+        for s in chunk.storages.all():
             cloud = fs.get_storage(s.storage)
             try:
                 maybe_data = cloud.download(chunk)

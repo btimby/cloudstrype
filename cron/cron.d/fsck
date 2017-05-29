@@ -1,1 +1,2 @@
-*/5 * * * *       /usr/bin/env python3 /web/cloudstrype/manage.py fsck >> /var/log/cron.log 2>&1
+*/5 * * * *	root	/usr/bin/env python3 /web/cloudstrype/manage.py fsck >> /var/log/cron.log 2>&1
+#
