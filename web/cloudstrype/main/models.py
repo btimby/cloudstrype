@@ -291,8 +291,8 @@ class Storage(UidModelMixin, models.Model):
     user = models.ForeignKey(User, null=False, blank=False,
                              on_delete=models.CASCADE, related_name='storages')
     type = models.SmallIntegerField(null=False, choices=TYPES.items())
-    size = models.IntegerField(null=False, default=0)
-    used = models.IntegerField(null=False, default=0)
+    size = models.BigIntegerField(null=False, default=0)
+    used = models.BigIntegerField(null=False, default=0)
     auth = JSONField(default={})
     attrs = JSONField(default={})
 
