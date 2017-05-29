@@ -193,9 +193,9 @@ class MultiCloudReader(MultiCloudBase, FileLikeBase):
             # Since chunks are shared with other users, we need to get the
             # client for the chunk, not one of the clients for the current
             # user.
-            cloud = cs.storage.get_client()
+            client = cs.storage.get_client()
             try:
-                data = cloud.download(chunk)
+                data = client.download(chunk)
             except Exception as e:
                 LOGGER.exception(e)
                 continue
