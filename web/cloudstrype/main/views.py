@@ -130,10 +130,10 @@ class LoginComplete(OAuth2View):
         # If the token exists, update it. Otherwise create it.
         try:
             try:
-                storage = Storage.objects.get(user=user, type=client.type,
+                storage = Storage.objects.get(user=user, type=client.TYPE,
                                               attrs__uid=uid)
             except Storage.DoesNotExist:
-                storage = Storage(user=user, type=client.type)
+                storage = Storage(user=user, type=client.TYPE)
                 storage.attrs = {'uid': uid}
                 client.initialize(storage)
             storage.token = token
