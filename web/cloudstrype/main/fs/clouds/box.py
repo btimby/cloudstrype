@@ -144,4 +144,5 @@ class BoxAPIClient(BaseOAuth2APIClient):
             else:
                 # We created it, so nab the ID and continue to child.
                 parent_id = r.json()['id']
-        storage.attrs = {'root.id': parent_id}
+        storage.attrs = storage.attrs or {}
+        storage.attrs.update({'root.id': parent_id})

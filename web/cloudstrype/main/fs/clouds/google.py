@@ -205,4 +205,5 @@ class GDriveAPIClient(BaseOAuth2APIClient):
             # Create the directory:
             r = self.oauthsession.post(self.CREATE_URL, **kwargs)
             parent_id = r.json()['id']
-        storage.attrs = {'root.id': parent_id}
+        storage.attrs = storage.attrs or {}
+        storage.attrs.update({'root.id': parent_id})
