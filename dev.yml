@@ -89,6 +89,7 @@ services:
     env_file:
       - .env
       - .env-private
+      - .env-version
     environment:
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
@@ -114,6 +115,7 @@ services:
     env_file:
       - .env
       - .env-private
+      - .env-version
     environment:
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
@@ -142,6 +144,7 @@ services:
     env_file:
       - .env
       - .env-private
+      - .env-version
     environment:
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
@@ -166,6 +169,7 @@ services:
     env_file:
       - .env
       - .env-private
+      - .env-version
     environment:
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432

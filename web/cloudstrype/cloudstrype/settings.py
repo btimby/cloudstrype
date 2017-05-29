@@ -21,6 +21,11 @@ from os.path import join as pathjoin
 ROOT = environ.Path(__file__) - 4
 ENV = environ.Env()
 
+# Basic environment (also utilized in dev.yml)
+environ.Env.read_env(pathjoin(str(ROOT), '.env'))
+# private settings, may or may not exist.
+environ.Env.read_env(pathjoin(str(ROOT), '.env-private'))
+
 # Production version (populated by CI in deploy.sh)
 environ.Env.read_env(pathjoin(str(ROOT), '.env-version'))
 
