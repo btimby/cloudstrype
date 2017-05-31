@@ -1,6 +1,7 @@
 #!/bin/sh -x
 
-touch /var/log/cron.log
+rm -rf /var/log/cron.log
+mkfifo /var/log/cron.log
 
 cron
 
