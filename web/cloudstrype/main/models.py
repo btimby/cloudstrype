@@ -75,6 +75,7 @@ class UidManagerMixin(object):
 
     A Model can use a custom manager with this mixin to gain uid capabilities.
     """
+
     def get_queryset(self):
         "Return UidQuerySet instance."
         return UidQuerySet(self.model, using=self._db)
@@ -390,6 +391,7 @@ class UserDirQuerySet(UidQuerySet):
 
 class UserDirManager(models.Manager):
     """Manage UserDir model."""
+
     def get_queryset(self):
         """
         Override default QuerySet.
@@ -742,11 +744,8 @@ class Version(UidModelMixin, models.Model):
     size = models.IntegerField(default=0)
     md5 = models.CharField(max_length=32)
     sha1 = models.CharField(max_length=40)
-    # TODO: Currently mime type is derived solely from file name. This means it
-    # would be appropriate to store the mime attribute on File rather than
-    # Version. However, we should inspect the first chunk and use libmagic
-    # to set the mime for each version. When we start that, mime truly would be
-    # derived from the file body and thus belongs below.
+    # Mime type is derived from file name, but can be overwritten by libmagic
+    # during upgrade. Thus, it belongs with the Version, not the File.
     mime = models.CharField(max_length=64)
     created = models.DateTimeField(null=False, default=timezone.now)
 
