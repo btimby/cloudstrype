@@ -31,7 +31,7 @@ var app = app || {};
         idAddtribute: 'uid',
 
         url: function() {
-            return '/api/v1/me/dirs/path:/' + this.path + ':';
+            return '/api/v1/me/dirs/by-path:/' + this.path + ':';
         },
 
         defaults: {
@@ -55,7 +55,7 @@ var app = app || {};
         idAddtribute: 'uid',
 
         url: function() {
-            return '/api/v1/me/files/path:/' + this.path + ':';
+            return '/api/v1/me/files/by-path:/' + this.path + ':';
         },
 
         defaults: {
@@ -94,7 +94,7 @@ var app = app || {};
 
         url: function() {
             // TODO: use current directory.
-            return '/api/v1/me/dirs/path:/:';
+            return '/api/v1/me/dirs/by-path:/:';
         },
 
         initialize: function(models, options) {
@@ -139,7 +139,7 @@ var app = app || {};
             here because we need to initialize a model for the directory itself
             as well as a collection for all the directories and files it
             contains. All of which is returned in the same call. */
-            $.get('/api/v1/me/dirs/path:' + path + ':', function(data) {
+            $.get('/api/v1/me/dirs/by-path:' + path + ':', function(data) {
                 this.breadCrumbView.model.set(data.info);
                 this.pathListView.collection.add(data.dirs);
                 this.pathListView.collection.add(data.files);
@@ -235,7 +235,7 @@ var app = app || {};
                 init: function() {
                     this.on("processing", function(file) {
                         // TODO: inject current directory too.
-                        this.options.url = "/api/v1/me/files/path:/" + file.name + ":/data/";
+                        this.options.url = "/api/v1/me/files/by-path:/" + file.name + ":/data/";
                     });
                     // Ensure that when user clicks upload, Dropzone will
                     // "click" the hidden upload file field, allowing the user
@@ -247,7 +247,7 @@ var app = app || {};
                 // Ask Dropzone to kindly create a hiddenFileInput.
                 clickable: true,
                 // TODO: Should probably enable uploading to a directory in the API.
-                url: "/api/v1/me/files/path:/foobar:/data/",
+                url: "/api/v1/me/files/by-path:/foobar:/data/",
                 headers: {"X-CSRFToken": Cookies.get("csrftoken")}
             });
             this.listenTo(this.collection, 'change', this.render);
@@ -345,7 +345,7 @@ var app = app || {};
 
         save: function() {
             var name = $('#create-name-input').val();
-            $.post('/api/v1/me/dirs/path:/' + name + ':', function(data) {
+            $.post('/api/v1/me/dirs/by-path:/' + name + ':', function(data) {
                 var model = new app.DirectoryModel(data);
                 this.collection.add(model);
                 this.close();

@@ -6,7 +6,7 @@ from django.contrib.auth.hashers import make_password
 from django.db import migrations
 
 
-USER_EMAIL = 'admin@cloudstrype.localhost.com'
+USER_EMAIL = 'admin@cloudstrype.localhost.io'
 USER_PASS = 'password'
 
 

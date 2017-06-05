@@ -34,7 +34,6 @@ import random
 import logging
 import mimetypes
 import struct
-import zlib
 
 from os.path import join as pathjoin
 from os.path import split as pathsplit
@@ -42,7 +41,6 @@ from os.path import (
     dirname, basename
 )
 from hashlib import md5, sha1
-from zlib import crc32 as _crc32
 
 import magic
 
@@ -62,60 +60,7 @@ from main.fs.errors import (
 
 REPLICAS = 2
 LOGGER = logging.getLogger(__name__)
-FLAG_ZLIB = 1
 CHUNK_CACHE = caches['chunks']
-
-
-def twos_complement(input_value, num_bits):
-    """Calculate two's complement integer from the given input value's bits."""
-    mask = 2 ** (num_bits - 1)
-    return -(input_value & mask) + (input_value & ~mask)
-
-
-def crc32(data):
-    return twos_complement(_crc32(data), 32)
-
-
-def pack_data(data):
-    """
-    Prepare a data block for storage.
-
-    Compresses and prepends a header.
-    """
-    # TODO: encrypt.
-    # TODO: write metadata into header such as size.
-    flags = 0
-    try:
-        # Try to compress, and set flag.
-        data = zlib.compress(data)
-        flags |= FLAG_ZLIB
-    except Exception as e:
-        # Log error and continue without compression.
-        LOGGER.exception(e, exc_info=True)
-    # Pack our magic and flags.
-    header = struct.pack('BBH', 0, 0xff, flags)
-    # Return header and data for storage.
-    return header + data
-
-
-def unpack_data(data):
-    """
-    Prepare data chunk for reading.
-
-    Reverses operations of pack_data().
-    """
-    # First read our magic and flags.
-    m1, m2, flags = struct.unpack('BBH', data[:4])
-    # If no magic, or flag indicates no zlib, just return data
-    if m1 != 0 or m2 != 0xff:
-        return data
-    # Header check passed, remove header.
-    data = data[4:]
-    if flags & FLAG_ZLIB != FLAG_ZLIB:
-        # Not compressed, return data portion.
-        return data
-    # Decompress and return data.
-    return zlib.decompress(data)
 
 
 DirectoryListing = collections.namedtuple('DirectoryListing',
@@ -187,9 +132,9 @@ class MultiCloudReader(MultiCloudBase, FileLikeBase):
             raise EOFError('out of chunks')
         data = CHUNK_CACHE.get('chunk:%s' % chunk.uid)
         if data is not None:
-            return unpack_data(data)
+            return chunk.unpack(data)
         # Try providers in random order.
-        for cs in sorted(chunk.storage.all(), key=lambda k: random.random()):
+        for cs in sorted(chunk.storages.all(), key=lambda k: random.random()):
             # Since chunks are shared with other users, we need to get the
             # client for the chunk, not one of the clients for the current
             # user.
@@ -199,18 +144,7 @@ class MultiCloudReader(MultiCloudBase, FileLikeBase):
             except Exception as e:
                 LOGGER.exception(e)
                 continue
-            unpacked = unpack_data(data)
-            # unpacked = data
-            if len(unpacked) != chunk.size:
-                LOGGER.error('Size mismatch (%s != %s)', len(unpacked),
-                             chunk.size)
-                continue
-            checksum = crc32(unpacked)
-            if checksum != chunk.crc32:
-                LOGGER.error('CRC32 mismatch (%s != %s)', checksum,
-                             chunk.crc32)
-                continue
-            # If the chunk checks out, cache it and return it.
+            unpacked = chunk.unpack(data)
             CHUNK_CACHE.set('chunk:%s' % chunk.uid, data)
             return unpacked
         raise IOError('Failed to read chunk %s' % chunk.uid)
@@ -257,39 +191,30 @@ class MultiCloudWriter(MultiCloudBase, FileLikeBase):
 
         Writes chunk to multiple clouds.
         """
-        kwargs = {
-            'crc32': crc32(data),
-            'md5': md5(data).hexdigest(),
-            'size': len(data),
-        }
-        # Reuse a chunk if one exists.
-        try:
-            chunk = Chunk.objects.get(**kwargs)
-            # All that is left to do is to add this chunk to the version.
-        except Chunk.DoesNotExist:
-            data = pack_data(data)
-            chunk = Chunk.objects.create(**kwargs)
+        chunk = Chunk(size=len(data))
+        data = chunk.pack(data, self.user)
+        chunk.save()
 
-            # Upload to N random providers where N is desired replica count.
-            chunks_uploaded = 0
-            for storage in sorted(self.storage, key=lambda k: random.random()):
-                # We add one to replicas because replicas are the COPIES we
-                # write in addition to the base block.
-                if chunks_uploaded == self.replicas + 1:
-                    break
-                client = storage.get_client()
-                try:
-                    attrs = client.upload(chunk, data)
-                except Exception as e:
-                    LOGGER.exception(e)
-                    continue
-                cs = ChunkStorage(chunk=chunk, storage=storage)
-                cs.attrs = attrs or {}
-                cs.save()
-                chunk.storages.add(cs)
-                chunks_uploaded += 1
-            if chunks_uploaded < self.replicas + 1:
-                raise IOError('Failed to write chunk')
+        # Upload to N random providers where N is desired replica count.
+        chunks_uploaded = 0
+        for storage in sorted(self.storage, key=lambda k: random.random()):
+            # We add one to replicas because replicas are the COPIES we
+            # write in addition to the base block.
+            if chunks_uploaded == self.replicas + 1:
+                break
+            client = storage.get_client()
+            try:
+                attrs = client.upload(chunk, data)
+            except Exception as e:
+                LOGGER.exception(e)
+                continue
+            cs = ChunkStorage(chunk=chunk, storage=storage)
+            cs.attrs = attrs or {}
+            cs.save()
+            chunk.storages.add(cs)
+            chunks_uploaded += 1
+        if chunks_uploaded < self.replicas + 1:
+            raise IOError('Failed to write chunk')
 
         # Freshen the cache.
         CHUNK_CACHE.set('chunk:%s' % chunk.uid, data)

@@ -68,14 +68,14 @@ async def parse_request(reader, writer):
     try:
         client_id, chunk_id = path.strip('/').split('/', 1)
     except ValueError as e:
-        LOGGER.debug(e, exc_info=True)
+        LOGGER.debug('%s: %s', e, path, exc_info=True)
         await error_response(writer, 404, b'Not Found')
         raise RequestError()
 
     try:
         client_id = uuid.UUID(client_id)
     except ValueError as e:
-        LOGGER.debug(e, exc_info=True)
+        LOGGER.debug('%s: %s', e, client_id, exc_info=True)
         await error_response(writer, 404, b'Not Found')
         raise RequestError()
 
@@ -229,8 +229,7 @@ class ArrayServer(object):
 
         cmd = ArrayCommand(method, id=bytes(chunk_id, 'ascii'))
         if cmd.type == ArrayCommand.COMMAND_PUT:
-            datalen = int(headers['Content-Length'])
-            cmd.data = await reader.read(datalen)
+            cmd.data = await reader.read(int(headers['Content-Length']))
 
         LOGGER.info(
             'Send({0}): {1.type_name}({1.id}), {1.status_name}, id {1.idlen} '
@@ -325,8 +324,7 @@ class ArrayServer(object):
                         # Handle stat command by saving reported size and bytes
                         # used.
                         size, used = struct.unpack('qq', cmd.data)
-                        LOGGER.debug('Provides %s bytes and using %s bytes',
-                                     size, used)
+                        LOGGER.debug('Using %s bytes of %s', used, size)
                         await update_stat(name, size, used)
 
                     LOGGER.debug('Received {0.length} bytes'.format(cmd))

@@ -268,3 +268,9 @@ RAVEN_CONFIG = {
     'dsn': ENV('RAVEN_CONFIG_DSN', default=None),
     'release': CLOUDSTRYPE_VERSION,
 }
+
+ARRAY_HOST = ENV('ARRAY_HOST', default='localhost')
+ARRAY_PORT = ENV('ARRAY_PORT', default=8001)
+
+CRYPTO_MIN_KEYS = 50
+CRYPTO_MAX_KEY_USES = 1000

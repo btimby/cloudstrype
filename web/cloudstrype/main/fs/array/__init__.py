@@ -18,10 +18,11 @@ class ArrayClient(object):
     def __init__(self, storage):
         self.storage = storage
         self.user = storage.user
-        self.name = storage.name
+        self.name = storage.attrs['name']
 
     def request(self, method, chunk, headers={}, **kwargs):
-        url = pathjoin(settings.ARRAY_SERVER_URL, self.name, chunk.id)
+        url = 'http://%s:%s/' % (settings.ARRAY_HOST, settings.ARRAY_PORT)
+        url = pathjoin(url, self.name, chunk.uid)
         return requests.request(method, url, headers=headers, **kwargs)
 
     def download(self, chunk, **kwargs):

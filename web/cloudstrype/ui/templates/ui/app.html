@@ -52,7 +52,7 @@
             {{#if isDirectory}}
             <a href="#files{{path}}" title="Browse"><i class="fa fa-folder"></i>
             {{else}}
-            <a href="/api/v1/me/files/path:{{path}}:/data/" title="View"><i class="fa fa-file"></i>
+            <a href="/api/v1/me/files/by-path:{{path}}:/data/" title="View"><i class="fa fa-file"></i>
             {{/if}}
             {{display_name}}{{#if isDirectory}} /{{/if}}
             </a>

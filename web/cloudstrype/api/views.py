@@ -380,42 +380,6 @@ class UserFilePathView(views.APIView):
             raise exceptions.NotFound(path)
 
 
-class UrlUidFilenameUploadParser(parsers.FileUploadParser):
-    """
-    Override `get_filename()` to support our URL path structure.
-
-    Allows uploading to our Data views.
-
-    The default Parser expects a named arg "filename" in the URL pattern.
-    However to be consistent, we override it so that we can use the path or
-    uid in the url.
-    """
-
-    def get_filename(self, stream, media_type, parser_context):
-        try:
-            request = parser_context['request']
-            uid = parser_context['args'][0]
-        except (KeyError, IndexError):
-            return
-        if not uid.startswith('/'):
-            try:
-                return UserFile.objects.get(uid=uid, user=request.user).name
-            except UserFile.DoesNotExist:
-                return
-        return basename(uid)
-
-
-class UploadForm(forms.Form):
-    file = forms.FileField()
-
-
-class UploadBrowsableAPIRenderer(renderers.BrowsableAPIRenderer):
-    def get_context(self, *args, **kwargs):
-        context = super().get_context(*args, **kwargs)
-        context['post_form'] = UploadForm()
-        return context
-
-
 class DataUidVersionView(views.APIView):
     """
     File data view.
@@ -424,8 +388,7 @@ class DataUidVersionView(views.APIView):
     """
 
     permission_classes = [permissions.IsAuthenticated]
-    parser_classes = (UrlUidFilenameUploadParser,)
-    renderer_classes = (UploadBrowsableAPIRenderer, renderers.JSONRenderer)
+    parser_classes = (parsers.MultiPartParser,)
 
     def get(self, request, uid, version, format=None):
         fs = get_fs(request.user)
@@ -448,9 +411,10 @@ class DataUidVersionView(views.APIView):
             content_type=version.mime)
 
         # Adjust headers
+        content_disposition = 'filename="%s"' % file.name
         if 'download' in request.GET:
-            response['Content-Disposition'] = \
-                'attachment; filename="%s"' % file.name
+            content_disposition = 'attachment; %s' % content_disposition
+        response['Content-Disposition'] = content_disposition
 
         # Send the file.
         return response
@@ -489,8 +453,7 @@ class DataPathVersionView(views.APIView):
     """
 
     permission_classes = [permissions.IsAuthenticated]
-    parser_classes = (UrlUidFilenameUploadParser,)
-    renderer_classes = (UploadBrowsableAPIRenderer, renderers.JSONRenderer)
+    parser_classes = (parsers.MultiPartParser,)
 
     def get(self, request, path, version, format=None):
         fs = get_fs(request.user)
@@ -516,9 +479,10 @@ class DataPathVersionView(views.APIView):
             raise exceptions.NotFound(path)
 
         # Adjust headers.
+        content_disposition = 'filename="%s"' % file.name
         if 'download' in request.GET:
-            response['Content-Disposition'] = \
-                'attachment; filename="%s"' % file.name
+            content_disposition = 'attachment; %s' % content_disposition
+        response['Content-Disposition'] = content_disposition
 
         # Send the file.
         return response

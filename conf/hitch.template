@@ -6,14 +6,14 @@ frontend = {
 }
 
 pem-file = {
-    cert = "/ssl/combined.pem"
+    cert = "/etc/hitch/certs/cloudstrype.localhost.io.pem"
 }
 
 # Alas, both of these are required for my current mono/TLS implementation.
 ciphers = HIGH
 tls-protos = TLSv1.0, TLSv1.1, TLSv1.2
 
-backend = "[array]:8765"
+backend = "[array_server]:8765"
 workers = 1
 
 daemon = off

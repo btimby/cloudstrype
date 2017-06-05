@@ -4,7 +4,9 @@ Data models.
 This file contains the models that pertain to the whole application.
 """
 
+import random
 import uuid
+import zlib
 
 from os.path import (
     dirname, splitext
@@ -12,15 +14,18 @@ from os.path import (
 from os.path import join as pathjoin
 from os.path import split as pathsplit
 
+from cryptography.fernet import Fernet
+
 from django.contrib.auth.base_user import (
     AbstractBaseUser, BaseUserManager
 )
 from django.contrib.postgres.fields import JSONField
 # from django.contrib.postgres.search import SearchVectorField
 from django.core.exceptions import ObjectDoesNotExist
+from django.conf import settings
 from django.db import models, transaction, IntegrityError
 from django.db.models import Max
-from django.db.models.query import QuerySet
+from django.db.models.query import QuerySet, F
 from django.utils.translation import ugettext as _
 from django.utils import timezone
 from hashids import Hashids
@@ -253,6 +258,41 @@ class Option(models.Model):
     def __str__(self):
         return '<Option %s, %s, %s>' % (self.raid_level, self.raid_replicas,
                                         self.attrs)
+
+
+class KeyManager(models.Manager):
+    """Manager of crypto keys."""
+
+    def random_key(self, user):
+        """
+        Selects a random key for encryption.
+
+        Ensures there are at least MIN_KEYS available to choose from. Keys are
+        not used if the uses exceed MAX_KEY_USES.
+        """
+        keys = list(user.keys.filter(uses__lt=settings.CRYPTO_MAX_KEY_USES))
+        keys_needed = settings.CRYPTO_MIN_KEYS - len(keys)
+        if keys_needed:
+            keys.extend(self.create(user=user) for _ in range(keys_needed))
+        return random.choice(keys)
+
+
+class Key(models.Model):
+    user = models.ForeignKey(User, related_name='keys',
+                             on_delete=models.CASCADE)
+    key = models.CharField(null=False, max_length=44,
+                           default=Fernet.generate_key)
+    uses = models.IntegerField(null=False, default=0)
+
+    objects = KeyManager()
+
+    def encrypt(self, data):
+        self.uses += 1
+        Key.objects.filter(pk=self.pk).update(uses=F('uses') + 1)
+        return Fernet(self.key).encrypt(data)
+
+    def decrypt(self, data):
+        return Fernet(self.key).decrypt(data)
 
 
 class Storage(UidModelMixin, models.Model):
@@ -806,14 +846,26 @@ class Chunk(UidModelMixin, models.Model):
 
     version = models.ManyToManyField(to=Version, through='VersionChunk',
                                      related_name='chunks')
-    crc32 = models.IntegerField(null=False, blank=False, default=0)
-    md5 = models.CharField(null=False, blank=False, max_length=32)
+    key = models.ForeignKey(Key, related_name='chunks',
+                            on_delete=models.CASCADE)
     size = models.IntegerField(null=False, blank=False)
 
     objects = UidManager()
 
     def __str__(self):
         return '%s' % self.uid
+
+    def pack(self, data, user):
+        data = zlib.compress(data)
+        try:
+            self.key
+        except Key.DoesNotExist:
+            self.key = Key.objects.random_key(user)
+        return self.key.encrypt(data)
+
+    def unpack(self, data):
+        data = self.key.decrypt(data)
+        return zlib.decompress(data)
 
 
 class FileChunkManager(models.Manager):
