@@ -127,7 +127,7 @@ DATABASES = {
 CACHES = {
     'default': ENV.cache(default='locmemcache://'),
     'chunks': {
-        'BACKEND': 'django.core.cache.backends.filebased.FileBasedCache',
+        'BACKEND': 'main.cache.ChunkFileCache',
         'LOCATION': '/tmp/chunks',
     },
 }
