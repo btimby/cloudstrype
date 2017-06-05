@@ -33,7 +33,6 @@ import collections
 import random
 import logging
 import mimetypes
-import struct
 
 from os.path import join as pathjoin
 from os.path import split as pathsplit

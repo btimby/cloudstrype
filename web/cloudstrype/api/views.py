@@ -5,15 +5,12 @@ This file contains the serializers views and supporting code that produces the
 API.
 """
 
-from os.path import basename
-
-from django import forms
 from django.db.models import Count
 from django.http import StreamingHttpResponse
 
 from rest_framework import (
     serializers, permissions, views, generics, response, exceptions, parsers,
-    mixins, renderers
+    mixins,
 )
 
 from main.fs import get_fs
