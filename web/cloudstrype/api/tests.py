@@ -35,7 +35,7 @@ class APIFSTestCase(TestCase):
             # TODO: I would like to test multipart upload as well.
             r = self.client.post(
                 reverse('api:files_data_path', args=('/foo',)),
-                files={'file': BytesIO(TEST_FILE_BODY)})
+                {'file': BytesIO(TEST_FILE_BODY)})
             self.assertEqual(200, r.status_code)
             # TODO: I cannot figure out how to post multipart and receive JSON
             # self.assertEqual(15, len(r.json()))

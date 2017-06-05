@@ -24,7 +24,7 @@ class OAuth2APIClientTestCase(TestCase):
         }
         cls.storage.attrs = {'root.id': 1}
         cls.file = UserFile.objects.create(path='/foo', user=cls.user)
-        cls.chunk = Chunk.objects.create(size=1024)
+        cls.chunk = Chunk.objects.create(size=1024, user=cls.user)
         cls.file.file.version.add_chunk(cls.chunk)
 
     def setUp(self):

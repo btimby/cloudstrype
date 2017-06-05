@@ -61,10 +61,8 @@ class UserFileTestCase(TestCase):
             path='/foo/bar', user=self.user,
             parent=UserDir.objects.create(path='/foo', user=self.user))
 
-        chunk1 = Chunk.objects.create(size=1024)
-        chunk1.pack('foo', self.user)
-        chunk2 = Chunk.objects.create(size=1024)
-        chunk2.pack('foo', self.user)
+        chunk1 = Chunk.objects.create(size=1024, user=self.user)
+        chunk2 = Chunk.objects.create(size=1024, user=self.user)
         versionchunk = file.file.version.add_chunk(chunk1)
 
         self.assertEqual(1, versionchunk.serial)

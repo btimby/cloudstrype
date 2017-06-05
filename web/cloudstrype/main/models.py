@@ -852,15 +852,20 @@ class Chunk(UidModelMixin, models.Model):
 
     objects = UidManager()
 
+    def __init__(self, *args, **kwargs):
+        if not args and 'key' not in kwargs:
+            try:
+                user = kwargs.pop('user')
+            except KeyError:
+                raise ValueError('`user` required to create chunk')
+            kwargs['key'] = Key.objects.random_key(user)
+        super().__init__(*args, **kwargs)
+
     def __str__(self):
         return '%s' % self.uid
 
-    def pack(self, data, user):
+    def pack(self, data):
         data = zlib.compress(data)
-        try:
-            self.key
-        except Key.DoesNotExist:
-            self.key = Key.objects.random_key(user)
         return self.key.encrypt(data)
 
     def unpack(self, data):

@@ -190,9 +190,8 @@ class MultiCloudWriter(MultiCloudBase, FileLikeBase):
 
         Writes chunk to multiple clouds.
         """
-        chunk = Chunk(size=len(data))
-        data = chunk.pack(data, self.user)
-        chunk.save()
+        chunk = Chunk.objects.create(size=len(data), user=self.user)
+        data = chunk.pack(data)
 
         # Upload to N random providers where N is desired replica count.
         chunks_uploaded = 0
