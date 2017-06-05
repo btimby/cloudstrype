@@ -1,5 +1,7 @@
 import mock
 
+from io import BytesIO
+
 from django.test import TestCase
 from django.urls import reverse
 
@@ -32,8 +34,8 @@ class APIFSTestCase(TestCase):
                         MockClients(self.user).get_clients):
             # TODO: I would like to test multipart upload as well.
             r = self.client.post(
-                reverse('api:files_data_path', args=('/foo',)), TEST_FILE_BODY,
-                content_type="application/octet-stream")
+                reverse('api:files_data_path', args=('/foo',)),
+                files={'file': BytesIO(TEST_FILE_BODY)})
             self.assertEqual(200, r.status_code)
             # TODO: I cannot figure out how to post multipart and receive JSON
             # self.assertEqual(15, len(r.json()))

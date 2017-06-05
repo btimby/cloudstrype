@@ -5,7 +5,6 @@ from django.test import TestCase
 from main.models import (
     User, UserFile, Storage, Chunk, ChunkStorage,
 )
-from main.fs import crc32
 from main.fs.clouds.dropbox import DropboxAPIClient
 from main.fs.clouds.onedrive import OnedriveAPIClient
 from main.fs.clouds.box import BoxAPIClient
@@ -25,7 +24,7 @@ class OAuth2APIClientTestCase(TestCase):
         }
         cls.storage.attrs = {'root.id': 1}
         cls.file = UserFile.objects.create(path='/foo', user=cls.user)
-        cls.chunk = Chunk.objects.create(crc32=crc32(b'foo'), size=1024)
+        cls.chunk = Chunk.objects.create(size=1024)
         cls.file.file.version.add_chunk(cls.chunk)
 
     def setUp(self):

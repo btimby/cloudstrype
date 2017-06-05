@@ -263,13 +263,6 @@ class FilesystemTestCase(TestCase):
             # Two versions of the file should be produced.
             self.assertEqual(2, fi.file.versions.count())
 
-            # Both versions should share chunks
-            v1, v2 = fi.file.versions.all()
-            self.assertEqual(
-                [c.uid for c in v1.chunks.all()],
-                [c.uid for c in v2.chunks.all()],
-            )
-
 
 class SharingTestCase(TestCase):
     @classmethod
