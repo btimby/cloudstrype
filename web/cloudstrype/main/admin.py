@@ -1,7 +1,7 @@
 from django.contrib import admin
 
 from main.models import (
-    User, File, Version, Chunk, Storage,
+    User, File, Version, Chunk, Storage, Key,
 )
 
 
@@ -25,8 +25,13 @@ class ChunkAdmin(admin.ModelAdmin):
     pass
 
 
+class KeyAdmin(admin.ModelAdmin):
+    pass
+
+
 admin.site.register(User, UserAdmin)
 admin.site.register(Storage, StorageAdmin)
 admin.site.register(File, FileAdmin)
 admin.site.register(Version, VersionAdmin)
 admin.site.register(Chunk, ChunkAdmin)
+admin.site.register(Key, KeyAdmin)

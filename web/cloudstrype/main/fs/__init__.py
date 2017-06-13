@@ -51,6 +51,7 @@ from main.models import (
     UserDir, UserFile, File, FileTag, Chunk, ChunkStorage,
 )
 from main.fs.raid import chunker
+from main.fs.array import get_shared_arrays
 from main.fs.errors import (
     DirectoryNotFoundError, FileNotFoundError, PathNotFoundError,
     DirectoryConflictError, FileConflictError
@@ -73,7 +74,8 @@ class MultiCloudBase(object):
 
     def __init__(self, user):
         self.user = user
-        self.storage = user.storages.all()
+        self.storage = list(user.storages.all())
+        self.storage.extend(get_shared_arrays())
 
 
 class FileLikeBase(object):
@@ -184,6 +186,34 @@ class MultiCloudWriter(MultiCloudBase, FileLikeBase):
         self._buffer = []
         self._closed = False
 
+    def _write_chunk_replicas(self, chunk, data):
+        storages = sorted(self.storage, key=lambda k: random.random())
+        replicas = 0
+
+        # Try to upload up to three times.
+        for retry in range(3):
+            # Try each remaining provider in turn.
+            for storage in storages:
+                client = storage.get_client()
+                try:
+                    attrs = client.upload(chunk, data)
+                except Exception as e:
+                    LOGGER.exception(e, exc_info=True)
+                    # Try next provider.
+                    continue
+                else:
+                    # Remove this storage provider from the list.
+                    cs = ChunkStorage(chunk=chunk, storage=storages.pop(0))
+                    cs.attrs = attrs or {}
+                    cs.save()
+                    chunk.storages.add(cs)
+                    replicas += 1
+                # If we reach our goal, return, we are done.
+                if replicas == self.replicas + 1:
+                    return
+        # If we get here, we failed to reach our replica goal.
+        raise IOError('Failed to write chunk')
+
     def _write_chunk(self, data):
         """
         Write a single chunk.
@@ -193,26 +223,8 @@ class MultiCloudWriter(MultiCloudBase, FileLikeBase):
         chunk = Chunk.objects.create(size=len(data), user=self.user)
         data = chunk.pack(data)
 
-        # Upload to N random providers where N is desired replica count.
-        chunks_uploaded = 0
-        for storage in sorted(self.storage, key=lambda k: random.random()):
-            # We add one to replicas because replicas are the COPIES we
-            # write in addition to the base block.
-            if chunks_uploaded == self.replicas + 1:
-                break
-            client = storage.get_client()
-            try:
-                attrs = client.upload(chunk, data)
-            except Exception as e:
-                LOGGER.exception(e)
-                continue
-            cs = ChunkStorage(chunk=chunk, storage=storage)
-            cs.attrs = attrs or {}
-            cs.save()
-            chunk.storages.add(cs)
-            chunks_uploaded += 1
-        if chunks_uploaded < self.replicas + 1:
-            raise IOError('Failed to write chunk')
+        # Try to write replicas. If this fails, it raises.
+        self._write_chunk_replicas(chunk, data)
 
         # Freshen the cache.
         CHUNK_CACHE.set('chunk:%s' % chunk.uid, data)

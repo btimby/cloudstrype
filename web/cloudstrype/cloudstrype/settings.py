@@ -76,6 +76,7 @@ INSTALLED_APPS = [
     # oauth2_provider to allow desktop/mobile app authentication.
     'rest_framework.authtoken',
     'rest_auth',
+    'django_transfer',
 
     # Integrated apps (part of the project).
     'main',
@@ -219,7 +220,7 @@ LOGGING = {
     },
     'handlers': {
         'console': {
-            'level': 'WARNING',
+            'level': 'INFO',
             'class': 'logging.StreamHandler',
             'formatter': 'verbose',
         },
@@ -229,9 +230,9 @@ LOGGING = {
         },
     },
     'loggers': {
-        'django': {
+        'root': {
             'handlers': ['console'],
-            'level': ENV('DJANGO_LOG_LEVEL', default='INFO'),
+            'level': 'INFO', #ENV('DJANGO_LOG_LEVEL', default='INFO'),
         },
         'raven': {
             'level': 'WARNING',
@@ -271,6 +272,7 @@ RAVEN_CONFIG = {
 
 ARRAY_HOST = ENV('ARRAY_HOST', default='localhost')
 ARRAY_PORT = ENV('ARRAY_PORT', default=8001)
+ARRAY_SHARED_NAMES = ('154a7f48-3c11-4ea7-b323-506dc19282b1',)
 
 CRYPTO_MIN_KEYS = 50
 CRYPTO_MAX_KEY_USES = 1000

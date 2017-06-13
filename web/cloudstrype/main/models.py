@@ -237,7 +237,7 @@ class Option(models.Model):
               also increase the number of replicas stored. This increases
               reliability while decreasing usable space.''',
 
-        3: '''RAID level 3 breaks your files into chunks and uses a mathmatical
+        3: '''RAID level 3 breaks your files into chunks and uses a mathematical
               trick to gain redundancy without storing the file multiple times.
               RAID 3 uses 50% less space than storing a single replica, but
               provides the same level of redundancy. 50% more space is required

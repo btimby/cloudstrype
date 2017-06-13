@@ -119,15 +119,16 @@ class BaseOAuth2APIClient(object):
                 return self.oauthsession.request(method, url, headers=headers,
                                                  **kwargs)
             except TokenExpiredError:
+                LOGGER.warning('Refreshing access token', exc_info=True)
                 if tried_refresh:
-                    break
+                    raise
                 # Do our own, since requests_oauthlib is broken.
                 token = self.oauthsession.refresh_token(
                     self.REFRESH_TOKEN_URL,
                     refresh_token=self.token['refresh_token'],
                     client_id=self.client_id,
                     client_secret=self.client_secret)
-                self.update_token(token)
+                self._update_token(token)
                 tried_refresh = True
 
     def download(self, chunk, **kwargs):

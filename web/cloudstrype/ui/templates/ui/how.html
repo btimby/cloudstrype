@@ -3,51 +3,172 @@
 {% block jumbotron %}{% endblock %}
 
 {% block main %}
-        <!-- Call to Action Well -->
-        <div class="row">
-            <div class="col-lg-12">
-                <div class="well text-center">
-                    Click a logo below to start a new account.
-                </div>
+    {% if step == '1' %}
+    <!-- Call to Action Well -->
+    <div class="row">
+        <div class="col-lg-12">
+            <div class="well text-center">
+                <h1>Cloudstrype is cloud storage without storage.</h1>
             </div>
-            <!-- /.col-lg-12 -->
         </div>
-        <!-- /.row -->
+        <!-- /.col-lg-12 -->
+    </div>
+    <!-- /.row -->
 
     <div class="container">
         <!-- Content Row -->
         <div class="row">
-            <!-- /.col-md-2 -->
-            <div class="col-md-2">
-                <a href="/accounts/login/google/"><img src="/static/img/logos/google-drive-128x128.png"/></a>
-            </div>
-            <!-- /.col-md-2 -->
-            <div class="col-md-2">
-                <a href="/accounts/login/onedrive/"><img src="/static/img/logos/onedrive-128x128.png"/></a>
-            </div>
-            <!-- /.col-md-2 -->
-            <div class="col-md-2">
-                <a href="/accounts/login/smartfile/"><img src="/static/img/logos/smartfile-128x128.png"/></a>
-            </div>
-            <!-- /.col-md-2 -->
-            <div class="col-md-2">
-                <a href="/accounts/login/dropbox/"><img src="/static/img/logos/dropbox-128x128.png"/></a>
-            </div>
-            <!-- /.col-md-2 -->
-            <div class="col-md-2">
-                <a href="/accounts/login/amazon/"><img src="/static/img/logos/amazon-s3-128x128.png"/></a>
-            </div>
-            <!-- /.col-md-2 -->
-            <div class="col-md-2">
-                <a href="/accounts/login/box/"><img src="/static/img/logos/box-128x128.png"/></a>
+            <div class="col-md-12">
+                <ul>
+                    <li>Register as many cloud storage accounts as you like.</li>
+                    <li>Any files you upload are "chunked", encrypted and "striped" across those providers.</li>
+                    <li>Files are accessible even when one or more cloud providers are unavailable.</li>
+                    <li>Add your own harddrive space from multiple computers for additional storage.</li>
+                </ul>
             </div>
             <!-- /.col-md-2 -->
         </div>
         <!-- /.row -->
-        <hr/>
+
+        <!-- Content Row -->
+        <div class="row">
+            <div class="col-md-12">
+                <h2>Click one of your storage providers below.</h2>
+                <p>Authorize Cloudstrype to your account and return to see more.</p>
+            </div>
+            <!-- /.col-md-2 -->
+        </div>
+        <!-- /.row -->
+
+        <!-- Content Row -->
+        <div class="row">
+            <div class="col-md-2"></div>
+            <!-- /.col-md-2 -->
+            <div class="col-md-2">
+                <a href="/accounts/login/google/?next=/how/2/"><img src="/static/img/logos/google-drive-128x128.png"/></a>
+            </div>
+            <!-- /.col-md-2 -->
+            <div class="col-md-2">
+                <a href="/accounts/login/onedrive/?next=/how/2/"><img src="/static/img/logos/onedrive-128x128.png"/></a>
+            </div>
+            <!-- /.col-md-2 -->
+            <div class="col-md-2">
+                <a href="/accounts/login/dropbox/?next=/how/2/"><img src="/static/img/logos/dropbox-128x128.png"/></a>
+            </div>
+            <!-- /.col-md-2 -->
+            <div class="col-md-2">
+                <a href="/accounts/login/box/?next=/how/2/"><img src="/static/img/logos/box-128x128.png"/></a>
+            </div>
+            <!-- /.col-md-2 -->
+        </div>
+        <!-- /.row -->
+    </div>
+
+    {% else %}
+
+    <!-- Call to Action Well -->
+    <div class="row">
+        <div class="col-lg-12">
+            <div class="well text-center">
+                <h1>Congratulations.</h1>
+            </div>
+        </div>
+        <!-- /.col-lg-12 -->
+    </div>
+    <!-- /.row -->
+
+    <div class="container">
+        <!-- Content Row -->
+        <div class="row">
+            <div class="col-md-12">
+                <ul>
+                    <li>You now have a Cloudstrype account!</li>
+                    <li>You can log in any time using the provider you just registered.</li>
+                    <li>You can register more providers at any time.</li>
+                </ul>
+            </div>
+            <!-- /.col-md-2 -->
+        </div>
+        <!-- /.row -->
+
+        <!-- Content Row -->
+        <div class="row">
+            <div class="col-md-6">
+                <h2>Try uploading a file.</h2>
+                <form id="file-form">
+                {% csrf_token %}
+                <input id="file-select" type="file" name="file"/>
+                </form>
+            </div>
+            <!-- /.col-md-2 -->
+            <div class="col-md-6">
+            </div>
+            <!-- /.col-md-2 -->
+        </div>
+        <!-- /.row -->
+
+    {% endif %}
+
+    <hr/>
 
 {% block footer %}
 {{ block.super }}
 {% endblock %}
     </div>
+{% endblock %}
+
+{% block footscript %}
+{{ block.super }}
+    <script type="text/javascript">
+    <!--
+
+    $(document).ready(function() {
+
+        function csrfSafeMethod(method) {
+            // these HTTP methods do not require CSRF protection
+            return (/^(GET|HEAD|OPTIONS|TRACE)$/.test(method));
+        }
+
+        $.ajaxSetup({
+            beforeSend: function(xhr, settings) {
+                if (!csrfSafeMethod(settings.type) && !this.crossDomain) {
+                    xhr.setRequestHeader("X-CSRFToken", $("[name=csrfmiddlewaretoken]").val());
+                }
+            }
+        });
+
+        $('input[type=file]').on('change', function(e) {
+            var file = e.target.files[0];
+
+            var data = new FormData();
+
+            data.append('file', file, file.name);
+
+            $.ajax({
+                url: '/api/v1/me/files/by-path:/' + file.name + ':/data/',
+                type: 'POST',
+                data: data,
+                cache: false,
+                dataType: 'json',
+                processData: false,
+                contentType: false,
+                success: function(data, textStatus, xhr) {
+                    if (typeof data.error === 'undefined') {
+                        alert('success');
+                    } else {
+                        console.log('ERRORS: ' + data.error);
+                    }
+                },
+                error: function(xhr, textStatus, e) {
+                    console.log('ERRORS: ' + textStatus);
+                }
+            });
+
+        });
+
+    });
+
+    //-->
+    </script>
+
 {% endblock %}

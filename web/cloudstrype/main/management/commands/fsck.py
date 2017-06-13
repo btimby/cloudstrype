@@ -4,7 +4,7 @@ from hashlib import md5, sha1
 
 from django.core.management.base import BaseCommand
 
-from main.fs import crc32, get_fs
+from main.fs import get_fs
 from main.models import User, File
 
 
@@ -29,17 +29,7 @@ class Command(BaseCommand):
         for s in chunk.storages.all():
             cloud = s.storage.get_client()
             try:
-                maybe_data = cloud.download(chunk)
-                if len(maybe_data) != chunk.size:
-                    LOGGER.warning('%s:%s Size mismatch', chunk.uid, s)
-                if crc32(maybe_data) != chunk.crc32:
-                    LOGGER.warning('%s:%s CRC32 mismatch', chunk.uid, s)
-                if md5(maybe_data).hexdigest() != chunk.md5:
-                    LOGGER.warning('%s:%s MD5 mismatch', chunk.uid, s)
-                # Here is where I would otherwise return good data, but we want
-                # to keep checking so I will store it in data, which we return
-                # later.
-                data = maybe_data
+                data = chunk.unpack(cloud.download(chunk))
             except Exception as e:
                 LOGGER.warning('%s:%s Download error', chunk.uid, s)
                 LOGGER.exception(e)

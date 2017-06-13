@@ -51,7 +51,7 @@ class OAuth2View(View):
     OAuth2 workflow.
     """
 
-    def get_oauth2_client(self, request, provider_name):
+    def _get_oauth2_client(self, request, provider_name):
         for type, slug in Storage.TYPE_SLUGS.items():
             if slug == provider_name:
                 break
@@ -70,12 +70,13 @@ class Login(OAuth2View):
     """
 
     def get(self, request, provider_name):
+        next = request.GET.get('next', None)
         provider_name = provider_name.lower()
-        client = self.get_oauth2_client(request, provider_name)
+        client = self._get_oauth2_client(request, provider_name)
 
         url, state = client.authorization_url()
         # Store the generated state for validation in step two.
-        request.session['oauth2_state_%s' % provider_name] = state
+        request.session['oauth2_state_%s' % provider_name] = state, next
 
         return redirect(url)
 
@@ -97,11 +98,11 @@ class LoginComplete(OAuth2View):
             return redirect(reverse('login'))
         provider_name = provider_name.lower()
 
-        client = self.get_oauth2_client(request, provider_name)
+        client = self._get_oauth2_client(request, provider_name)
 
         try:
             # Retrieve the state saved in step 1.
-            client.oauthsession._state = \
+            client.oauthsession._state, next = \
                 request.session.pop('oauth2_state_%s' % provider_name)
         except KeyError:
             return HttpResponseBadRequest('Missing state')
@@ -136,7 +137,7 @@ class LoginComplete(OAuth2View):
                 storage = Storage(user=user, type=client.TYPE)
                 storage.attrs = {'uid': uid}
                 client.initialize(storage)
-            storage.token = token
+            storage.auth = token
             storage.size = size
             storage.used = used
             storage.save()
@@ -145,4 +146,7 @@ class LoginComplete(OAuth2View):
 
         _login(request, user)
 
-        return redirect(reverse('ui:new'))
+        if not next:
+            next = reverse('ui:new')
+
+        return redirect(next)

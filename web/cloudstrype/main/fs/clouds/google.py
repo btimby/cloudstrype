@@ -145,7 +145,7 @@ class GDriveAPIClient(BaseOAuth2APIClient):
         tokens are long-lived, so we don't rotate it when we perform a refresh.
         """
         return self.oauthsession.authorization_url(
-            self.AUTHORIZATION_URL, access_type='offline')
+            self.AUTHORIZATION_URL, access_type='offline', prompt='consent')
 
     def initialize(self, storage):
         """
