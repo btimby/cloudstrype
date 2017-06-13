@@ -57,12 +57,149 @@ import asyncio
 import logging
 
 from aiohttp import web
+from concurrent.futures import ThreadPoolExecutor
+from collections import deque
 
 from django.core.management.base import BaseCommand, CommandError
 
 
 LOGGER = logging.getLogger(__name__)
 LOGGER.addHandler(logging.NullHandler())
+
+MAX_CONCURRENT_CHUNKS = 3
+
+
+class ChunkReader(object):
+    def _read_chunk(self, chunk):
+        """Download a single chunk.
+
+        May need to contact multiple providers to read a replica if the first
+        provider fails."""
+        for storage in chunk.storages.all():
+            client = storage.get_client()
+            try:
+                return client.download(chunk)
+            except:
+                continue
+        raise IOError('Could not read chunk')
+
+    async def __iter__(self):
+        """Read the chunks of a file.
+
+        Uses futures and asyncio to parallelize the reading of chunks."""
+        if self._closed:
+            raise IOError('I/O operation on closed file')
+
+        # We use the event loop to schedule futures. We only want a limited
+        # number of futures executing at one time as chunks can be quite large.
+        # Therefore we schedule several, and then await completion of the first
+        # (oldest) and yield it before scheduling another (staying several
+        # steps ahead).
+        loop = asyncio.get_event_loop()
+        q = deque(MAX_CONCURRENT_CHUNKS)
+        exector = ThreadPoolExecutor()
+        # TODO: implement getting chunks as future.
+        chunks = <get_chunks_as_deque()>
+
+        while True:
+            # Start as many concurrent chunk downloads as we are allowed.
+            while len(d) < MAX_CONCURRENT_CHUNKS and len(chunks):
+                try:
+                    d.append(loop.run_in_executor(executor, self._read_chunk,
+                                                  chunks.popleft())
+                except IndexError:
+                    break
+
+            # If futures are pending, wait for the oldest and yield it's result
+            if len(d):
+                task = await asyncio.wait_for(d.popleft())
+                try:
+                    yield task.result()
+                except Exception as e:
+                    # Cancel and return
+                    while len(d):
+                        d.popleft().cancel()
+                    break
+
+            # If there are no more pending futures, and no more chunks to get
+            # we are done and can exit the loop.
+            if not len(d) and not len(chunks):
+                break
+
+
+class ChunkWriter(object):
+    def __init__(self):
+        self.executor = ThreadPoolExecutor()
+
+    def _write_chunk_replica(self, data, storage):
+        """Write a chunk replica.
+
+        Writes chunk data to a single provider."""
+        cs = ChunkStorage(storage=storage)
+        client = storage.get_client()
+        cs.attrs = client.upload(data)
+        return cs
+
+    def _write_chunk(self, data):
+        """Write a chunk.
+
+        Handles writing multiple replicas in parallel."""
+        chunk = Chunk()
+
+        tasks = []
+        goal = self.replicas
+        # Try each up to three times.
+        storages = itertools.chain(storages, storages, storages)
+
+        while True:
+            # Schedule enough replica writes to reach our goal.
+            while goal:
+                tasks.append(loop.run_in_executor(self.executor,
+                                              self._write_chunk_replica, data,
+                                              next(storages)))
+                goal -= 1
+
+            # Reap replica writes as they complete. Decrement goal for each
+            # that succeeds.
+            done, tasks = await asyncio.wait(
+                tasks, return_when=asyncio.FIRST_COMPLETED)
+
+            for t in done:
+                try:
+                    cs.append(t.result())
+                except:
+                    goal += 1
+
+        return chunk, cs
+
+    @atomic
+    def _write(self, f):
+        """Transactional write.
+
+        This future performs all database operations within a transaction."""
+        loop = asyncio.get_event_loop()
+        d = deque()
+
+        for data in chunker(f):
+            d.append(loop.run_in_executor(self.executor, self._write_chunk, data))
+
+            # If we reach our limit for concurrent operations, block until one
+            # completes.
+            if len(d) == MAX_CONCURRENT_CHUNKS:
+                chunk, chunkstorages = await asyncio.wait_for(d.popleft())
+                chunk.save()
+                for cs in chunkstorages:
+                    cs.chunk = chunk
+                    cs.save()
+
+    async def write(self, f):
+        """Write multiple replicas of each chunk of a file.
+
+        Uses a future to write a file chunk by chunk."""
+        loop = asyncio.get_event_loop()
+        task = loop.run_in_executor(self.executor, self._write, f)
+        await asyncio.wait_for(task)
+
 
 
 async def download(request):
