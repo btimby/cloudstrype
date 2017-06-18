@@ -6,5 +6,10 @@
 # https://linux.die.net/man/1/envsubst
 # envsubst < /etc/nginx/conf.d/cloudstrype.conf.template > /etc/nginx/conf.d/cloudstrype.conf
 cp /etc/nginx/conf.d/cloudstrype.conf.template /etc/nginx/conf.d/cloudstrype.conf
+
+mkdir -p /data/uploads/{0-9}
+
 /scripts/wait-for -t 60 web:8080
+
 nginx -g 'daemon off;'
+

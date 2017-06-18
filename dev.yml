@@ -24,13 +24,16 @@ services:
     command: memcached -vv
 
   nginx:
-    image: dimka2014/nginx-upload-with-progress-modules
+    build:
+      context: nginx
+    image: cloudstrype/nginx
     container_name: nginx
     volumes:
       - "/etc/nginx/conf.d"
       - "/etc/nginx/vhost.d"
       - "/usr/share/nginx/html"
-      - "./ssl:/etc/nginx/certs:ro"
+      - ".ssl:/etc/nginx/certs:ro"
+      - "/mnt/data/web:/data"
     depends_on:
       - web
     ports:
@@ -39,19 +42,17 @@ services:
     logging:
       driver: journald
       options:
-        tag: "web"
+        tag: "nginx"
+    command: /start
 
 # TODO: wrapper script to HUP hitch when cert is updated.
   hitch:
     build:
-      context: .
-      dockerfile: ./hitch/Dockerfile
+      context: hitch
     image: cloudstrype/hitch
     container_name: hitch
-    volumes:
-      - "./conf/hitch.template:/etc/hitch/hitch.conf"
-      - "./ssl:/etc/hitch/certs:ro"
-      - "./scripts:/scripts"
+    volumes_from:
+      - nginx
     depends_on:
       - array_server
     ports:
@@ -63,7 +64,7 @@ services:
       driver: journald
       options:
         tag: "hitch"
-    command: /scripts/hitch
+    command: /start
 
   nginx-gen:
     image: jwilder/docker-gen
@@ -98,16 +99,14 @@ services:
 
   web:
     build:
-      context: .
-      dockerfile: ./web/Dockerfile
+      context: web
     image: cloudstrype/web
     container_name: web
     depends_on:
       - postgres
     volumes:
       - /mnt/data/web:/data
-      - ./web:/web
-      - ./scripts:/scripts
+      - ./cloudstrype:/cloudstrype
     ports:
       - 8080
     env_file:
@@ -129,17 +128,17 @@ services:
       driver: journald
       options:
         tag: "web"
-    command: /scripts/web
+    command: /start
 
   migrate:
-    image: cloudstrype/web
+    build:
+      context: migrate
     container_name: migrate
     depends_on:
       - postgres
     volumes:
       - /mnt/data/web:/data
-      - ./web:/web
-      - ./scripts:/scripts
+      - ./cloudstrype:/cloudstrype
     env_file:
       - .env
       - .env-private
@@ -157,16 +156,14 @@ services:
 
   cron:
     build:
-      context: .
-      dockerfile: ./cron/Dockerfile
+      context: cron
     container_name: cron
     depends_on:
       - postgres
     volumes:
       - /mnt/data/web:/data
-      - ./web:/web
-      - ./scripts:/scripts
-      - ./cron/cron.d:/etc/cron.d
+      - ./cloudstrype:/cloudstrype
+      - ./cron.d:/etc/cron.d
     env_file:
       - .env
       - .env-private
@@ -180,17 +177,17 @@ services:
       driver: journald
       options:
         tag: "cron"
-    command: /scripts/cron
+    command: /start
 
   array_server:
-    image: cloudstrype/web
+    build:
+      context: array
     container_name: array_server
     depends_on:
       - postgres
     volumes:
       - /mnt/data/web:/data
-      - ./web:/web
-      - ./scripts:/scripts
+      - ./cloudstrype:/cloudstrype
     env_file:
       - .env
       - .env-private
@@ -206,4 +203,4 @@ services:
       driver: journald
       options:
         tag: "array_server"
-    command: /scripts/array
+    command: /start

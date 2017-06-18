@@ -76,6 +76,8 @@ INSTALLED_APPS = [
     # oauth2_provider to allow desktop/mobile app authentication.
     'rest_framework.authtoken',
     'rest_auth',
+
+    # Upload via nginx
     'django_transfer',
 
     # Integrated apps (part of the project).
@@ -92,6 +94,8 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+
+    'django_transfer.TransferMiddleware',
 ]
 
 ROOT_URLCONF = 'cloudstrype.urls'
