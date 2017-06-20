@@ -4,7 +4,7 @@ django-oauth-toolkit
 django-rest-auth
 django-extensions
 django-filter
-django-mailjet
+# django-mailjet
 django-environ
 django-transfer
 
@@ -14,7 +14,6 @@ requests_oauthlib
 uwsgi
 psycopg2
 hashids
-python-uptimerobot
 raven
 aiohttp
 python-magic

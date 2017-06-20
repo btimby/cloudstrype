@@ -4,6 +4,6 @@
 # envsubst < /etc/hitch/hitch.conf.template > /etc/hitch/hitch.conf
 cp /etc/hitch/hitch.conf.template /etc/hitch/hitch.conf
 
-/scripts/wait-for -t 60 ${ARRAY_HOST}:8765
+/wait-for -t 60 ${ARRAY_HOST}:8765
 
 hitch --config=/etc/hitch/hitch.conf

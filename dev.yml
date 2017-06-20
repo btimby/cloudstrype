@@ -25,14 +25,15 @@ services:
 
   nginx:
     build:
-      context: nginx
+      context: .
+      dockerfile: nginx/Dockerfile
     image: cloudstrype/nginx
     container_name: nginx
     volumes:
       - "/etc/nginx/conf.d"
       - "/etc/nginx/vhost.d"
       - "/usr/share/nginx/html"
-      - ".ssl:/etc/nginx/certs:ro"
+      - "./ssl:/etc/nginx/certs:ro"
       - "/mnt/data/web:/data"
     depends_on:
       - web
@@ -48,11 +49,12 @@ services:
 # TODO: wrapper script to HUP hitch when cert is updated.
   hitch:
     build:
-      context: hitch
+      context: .
+      dockerfile: hitch/Dockerfile
     image: cloudstrype/hitch
     container_name: hitch
-    volumes_from:
-      - nginx
+    volumes:
+      - "./ssl:/etc/hitch/certs:ro"
     depends_on:
       - array_server
     ports:
@@ -71,7 +73,7 @@ services:
     container_name: nginx-gen
     volumes:
       - "/var/run/docker.sock:/tmp/docker.sock:ro"
-      - "./conf/nginx.template:/etc/docker-gen/templates/nginx.template:ro"
+      - "./nginx/nginx.conf.template:/etc/docker-gen/templates/nginx.template:ro"
     volumes_from:
       - nginx
     logging:
@@ -99,14 +101,15 @@ services:
 
   web:
     build:
-      context: web
+      context: .
+      dockerfile: ./web/Dockerfile
     image: cloudstrype/web
     container_name: web
     depends_on:
       - postgres
     volumes:
       - /mnt/data/web:/data
-      - ./cloudstrype:/cloudstrype
+      - ./web:/web
     ports:
       - 8080
     env_file:
@@ -132,13 +135,14 @@ services:
 
   migrate:
     build:
-      context: migrate
+      context: .
+      dockerfile: migrate/Dockerfile
     container_name: migrate
     depends_on:
       - postgres
     volumes:
       - /mnt/data/web:/data
-      - ./cloudstrype:/cloudstrype
+      - ./web:/web
     env_file:
       - .env
       - .env-private
@@ -152,18 +156,19 @@ services:
       driver: journald
       options:
         tag: "migrate"
-    command: /scripts/migrate
+    command: /start
 
   cron:
     build:
-      context: cron
+      context: .
+      dockerfile: cron/Dockerfile
     container_name: cron
     depends_on:
       - postgres
     volumes:
       - /mnt/data/web:/data
-      - ./cloudstrype:/cloudstrype
-      - ./cron.d:/etc/cron.d
+      - ./web:/web
+      - ./cron/cron.d:/etc/cron.d
     env_file:
       - .env
       - .env-private
@@ -181,13 +186,14 @@ services:
 
   array_server:
     build:
-      context: array
+      context: .
+      dockerfile: array/Dockerfile
     container_name: array_server
     depends_on:
       - postgres
     volumes:
       - /mnt/data/web:/data
-      - ./cloudstrype:/cloudstrype
+      - ./web:/web
     env_file:
       - .env
       - .env-private

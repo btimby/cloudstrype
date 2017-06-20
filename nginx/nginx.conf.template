@@ -264,7 +264,8 @@ server {
                 # duplicating the @application location here instead...
                 error_page 403 = @application;
                 return 403;
-}        }
+            }
+         }
 
 #-------------------------
 #!!!!! CUSTOMIZATION !!!!!

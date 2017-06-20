@@ -3,5 +3,5 @@ MAINTAINER btimby@gmail.com
 
 RUN apt-get update && apt-get install -y cron
 
-COPY cron/start /start
+COPY array/start /start
 

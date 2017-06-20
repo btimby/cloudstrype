@@ -1,6 +1,6 @@
 #!/bin/sh -x
 
-/scripts/wait-for -t 60 ${MIGRATE_HOST}:${MIGRATE_PORT} -- echo "Migrations complete!"
+/wait-for -t 60 ${MIGRATE_HOST}:${MIGRATE_PORT} -- echo "Migrations complete!"
 
 cd /web/cloudstrype
 # /usr/bin/env python3 manage.py collectstatic --noinput
